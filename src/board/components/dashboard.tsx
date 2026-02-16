@@ -150,6 +150,7 @@ function collectGroupIssues(
   return issues;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: TUI navigation tree builder
 function buildNavItems(repos: RepoData[], tasks: Task[], activityCount: number): NavItem[] {
   const items: NavItem[] = [];
   if (activityCount > 0) {
@@ -201,6 +202,7 @@ function buildNavItems(repos: RepoData[], tasks: Task[], activityCount: number):
   return items;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flattens nested data into rows
 function buildFlatRows(
   repos: RepoData[],
   tasks: Task[],
@@ -402,6 +404,7 @@ interface RowRendererProps {
   readonly isMultiSelected?: boolean | undefined;
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: many row type variants
 function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: RowRendererProps) {
   switch (row.type) {
     case "sectionHeader": {
@@ -475,6 +478,7 @@ function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: RowRendere
 // Header (1) + blank after header (0) + status bar (1) + padding (2 top+bottom)
 const CHROME_ROWS = 4;
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
 function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const { exit } = useApp();
   const refreshMs = config.board.refreshInterval * 1000;
@@ -854,6 +858,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         return: boolean;
         escape: boolean;
       },
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard handler with many shortcuts
     ) => {
       // Help toggle works in any state
       if (input === "?") {

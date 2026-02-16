@@ -26,7 +26,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ci": "npm run typecheck && npm run check && npm run test"
+    "ci": "npm run typecheck && npm run check && npm run test",
+    "prepublishOnly": "npm run ci && npm run build"
   },
   "engines": {
     "node": ">=22"

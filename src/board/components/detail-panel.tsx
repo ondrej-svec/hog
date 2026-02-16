@@ -77,6 +77,7 @@ function BodySection({
   );
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: conditional rendering for issue vs task
 function DetailPanel({ issue, task, width }: DetailPanelProps) {
   if (!(issue || task)) {
     return (
@@ -114,7 +115,7 @@ function DetailPanel({ issue, task, width }: DetailPanelProps) {
         {(issue.assignees ?? []).length > 0 ? (
           <Box>
             <Text color="gray">Assignees: </Text>
-            <Text>{issue.assignees!.map((a) => a.login).join(", ")}</Text>
+            <Text>{(issue.assignees ?? []).map((a) => a.login).join(", ")}</Text>
           </Box>
         ) : null}
 
@@ -172,7 +173,8 @@ function DetailPanel({ issue, task, width }: DetailPanelProps) {
     );
   }
 
-  // TickTick task
+  // TickTick task — task is guaranteed non-null here (early return above covers null case)
+  const t = task as Task;
   return (
     <Box
       width={width}
@@ -182,48 +184,46 @@ function DetailPanel({ issue, task, width }: DetailPanelProps) {
       paddingX={1}
     >
       <Text color="yellow" bold>
-        {task!.title}
+        {t.title}
       </Text>
       <Text>{""}</Text>
 
       <Box>
         <Text color="gray">Priority: </Text>
-        <Text>{PRIORITY_LABELS[task!.priority] ?? "None"}</Text>
+        <Text>{PRIORITY_LABELS[t.priority] ?? "None"}</Text>
       </Box>
 
-      {task!.dueDate ? (
+      {t.dueDate ? (
         <Box>
           <Text color="gray">Due: </Text>
-          <Text>{new Date(task!.dueDate).toLocaleDateString()}</Text>
+          <Text>{new Date(t.dueDate).toLocaleDateString()}</Text>
         </Box>
       ) : null}
 
-      {(task!.tags ?? []).length > 0 ? (
+      {(t.tags ?? []).length > 0 ? (
         <Box>
           <Text color="gray">Tags: </Text>
-          <Text>{task!.tags.join(", ")}</Text>
+          <Text>{t.tags.join(", ")}</Text>
         </Box>
       ) : null}
 
-      {task!.content ? (
+      {t.content ? (
         <>
           <Text>{""}</Text>
-          <Text>{truncateLines(task!.content, 8)}</Text>
+          <Text>{truncateLines(t.content, 8)}</Text>
         </>
       ) : null}
 
-      {(task!.items ?? []).length > 0 ? (
+      {(t.items ?? []).length > 0 ? (
         <>
           <Text>{""}</Text>
           <Text color="gray">Checklist:</Text>
-          {task!.items.slice(0, 5).map((item) => (
+          {t.items.slice(0, 5).map((item) => (
             <Text key={item.id}>
               {item.status === 2 ? "\u2611" : "\u2610"} {item.title}
             </Text>
           ))}
-          {task!.items.length > 5 ? (
-            <Text color="gray">...and {task!.items.length - 5} more</Text>
-          ) : null}
+          {t.items.length > 5 ? <Text color="gray">...and {t.items.length - 5} more</Text> : null}
         </>
       ) : null}
     </Box>

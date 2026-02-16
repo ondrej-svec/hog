@@ -14,9 +14,10 @@
       "complexity": {
         "noExcessiveCognitiveComplexity": {
           "level": "warn",
-          "options": { "maxAllowedComplexity": 15 }
+          "options": { "maxAllowedComplexity": 25 }
         },
         "noVoid": "error",
+        "useLiteralKeys": "off",
         "useSimplifiedLogicExpression": "warn"
       },
       "correctness": {
@@ -47,7 +48,7 @@
               { "selector": { "kind": "function" }, "formats": ["camelCase"] },
               { "selector": { "kind": "variable" }, "formats": ["camelCase", "CONSTANT_CASE"] },
               { "selector": { "kind": "typeLike" }, "formats": ["PascalCase"] },
-              { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "PascalCase", "snake_case"] },
+              { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "PascalCase", "snake_case", "CONSTANT_CASE"] },
               { "selector": { "kind": "typeProperty" }, "formats": ["camelCase", "snake_case"] }
             ]
           }
@@ -79,6 +80,9 @@
         "rules": {
           "correctness": {
             "noUnusedImports": "warn"
+          },
+          "style": {
+            "noNonNullAssertion": "off"
           }
         }
       }
@@ -96,7 +100,7 @@
                   { "selector": { "kind": "function" }, "formats": ["camelCase", "PascalCase"] },
                   { "selector": { "kind": "variable" }, "formats": ["camelCase", "CONSTANT_CASE", "PascalCase"] },
                   { "selector": { "kind": "typeLike" }, "formats": ["PascalCase"] },
-                  { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "PascalCase", "snake_case"] },
+                  { "selector": { "kind": "objectLiteralProperty" }, "formats": ["camelCase", "PascalCase", "snake_case", "CONSTANT_CASE"] },
                   { "selector": { "kind": "typeProperty" }, "formats": ["camelCase", "snake_case"] }
                 ]
               }

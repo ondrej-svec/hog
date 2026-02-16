@@ -274,7 +274,7 @@ export interface StatusOption {
 export function fetchProjectStatusOptions(
   repo: string,
   projectNumber: number,
-  statusFieldId: string,
+  _statusFieldId: string,
 ): StatusOption[] {
   const [owner] = repo.split("/");
 

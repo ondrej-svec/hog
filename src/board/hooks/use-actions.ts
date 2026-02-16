@@ -59,7 +59,7 @@ function findIssueContext(
   selectedId: string | null,
   config: HogConfig,
 ): ActionContext {
-  if (!(selectedId && selectedId.startsWith("gh:"))) {
+  if (!selectedId?.startsWith("gh:")) {
     return { issue: null, repoName: null, repoConfig: null, statusOptions: [] };
   }
 
@@ -149,21 +149,22 @@ export function useActions({
     const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
     if (!(ctx.issue && ctx.repoConfig)) return;
 
-    const assignees = ctx.issue.assignees ?? [];
+    const { issue, repoConfig } = ctx;
+    const assignees = issue.assignees ?? [];
     if (assignees.some((a) => a.login === configRef.current.board.assignee)) {
       toast.info(`Already assigned to @${configRef.current.board.assignee}`);
       return;
     }
-    if (assignees.length > 0) {
-      toast.info(`Already assigned to @${assignees[0]!.login}`);
+    const firstAssignee = assignees[0];
+    if (firstAssignee) {
+      toast.info(`Already assigned to @${firstAssignee.login}`);
       return;
     }
 
-    const rc = ctx.repoConfig;
-    const t = toast.loading(`Picking ${rc.shortName}#${ctx.issue.number}...`);
-    pickIssue(configRef.current, { repo: rc, issueNumber: ctx.issue.number })
+    const t = toast.loading(`Picking ${repoConfig.shortName}#${issue.number}...`);
+    pickIssue(configRef.current, { repo: repoConfig, issueNumber: issue.number })
       .then((result) => {
-        const msg = `Picked ${rc.shortName}#${ctx.issue!.number} — assigned + synced to TickTick`;
+        const msg = `Picked ${repoConfig.shortName}#${issue.number} — assigned + synced to TickTick`;
         t.resolve(result.warning ? `${msg} (${result.warning})` : msg);
         refresh();
       })
@@ -180,14 +181,15 @@ export function useActions({
         return;
       }
 
+      const { issue, repoName } = ctx;
       const t = toast.loading("Commenting...");
       execFileAsync(
         "gh",
-        ["issue", "comment", String(ctx.issue.number), "--repo", ctx.repoName, "--body", body],
+        ["issue", "comment", String(issue.number), "--repo", repoName, "--body", body],
         { encoding: "utf-8", timeout: 30_000 },
       )
         .then(() => {
-          t.resolve(`Comment posted on #${ctx.issue!.number}`);
+          t.resolve(`Comment posted on #${issue.number}`);
           refresh();
         })
         .catch((err) => {
@@ -208,38 +210,40 @@ export function useActions({
         return;
       }
 
+      const { issue, repoName, repoConfig, statusOptions } = ctx;
+
       // Optimistic update: move issue to new section immediately
       mutateData((data) =>
-        optimisticSetStatus(data, ctx.repoName!, ctx.issue!.number, ctx.statusOptions, optionId),
+        optimisticSetStatus(data, repoName, issue.number, statusOptions, optionId),
       );
 
       const t = toast.loading("Moving...");
       const projectConfig: RepoProjectConfig = {
-        projectNumber: ctx.repoConfig.projectNumber,
-        statusFieldId: ctx.repoConfig.statusFieldId,
+        projectNumber: repoConfig.projectNumber,
+        statusFieldId: repoConfig.statusFieldId,
         optionId,
       };
 
-      updateProjectItemStatusAsync(ctx.repoName, ctx.issue.number, projectConfig)
+      updateProjectItemStatusAsync(repoName, issue.number, projectConfig)
         .then(async () => {
-          const optionName = ctx.statusOptions.find((o) => o.id === optionId)?.name ?? optionId;
+          const optionName = statusOptions.find((o) => o.id === optionId)?.name ?? optionId;
 
           // If terminal status, trigger completion action
-          if (TERMINAL_STATUS_RE.test(optionName) && ctx.repoConfig!.completionAction) {
+          if (TERMINAL_STATUS_RE.test(optionName) && repoConfig.completionAction) {
             try {
               await triggerCompletionActionAsync(
-                ctx.repoConfig!.completionAction,
-                ctx.repoName!,
-                ctx.issue!.number,
+                repoConfig.completionAction,
+                repoName,
+                issue.number,
               );
               t.resolve(
-                `#${ctx.issue!.number} \u2192 ${optionName} (${ctx.repoConfig!.completionAction.type})`,
+                `#${issue.number} \u2192 ${optionName} (${repoConfig.completionAction.type})`,
               );
             } catch {
-              toast.info(`#${ctx.issue!.number} \u2192 ${optionName} (completion action failed)`);
+              toast.info(`#${issue.number} \u2192 ${optionName} (completion action failed)`);
             }
           } else {
-            t.resolve(`#${ctx.issue!.number} \u2192 ${optionName}`);
+            t.resolve(`#${issue.number} \u2192 ${optionName}`);
           }
           refresh();
         })
@@ -258,20 +262,22 @@ export function useActions({
     const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
     if (!(ctx.issue && ctx.repoName)) return;
 
-    const assignees = ctx.issue.assignees ?? [];
+    const { issue, repoName } = ctx;
+    const assignees = issue.assignees ?? [];
     if (assignees.some((a) => a.login === configRef.current.board.assignee)) {
       toast.info(`Already assigned to @${configRef.current.board.assignee}`);
       return;
     }
-    if (assignees.length > 0) {
-      toast.info(`Already assigned to @${assignees[0]!.login}`);
+    const firstAssignee = assignees[0];
+    if (firstAssignee) {
+      toast.info(`Already assigned to @${firstAssignee.login}`);
       return;
     }
 
     const t = toast.loading("Assigning...");
-    assignIssueAsync(ctx.repoName, ctx.issue.number)
+    assignIssueAsync(repoName, issue.number)
       .then(() => {
-        t.resolve(`Assigned #${ctx.issue!.number} to @${configRef.current.board.assignee}`);
+        t.resolve(`Assigned #${issue.number} to @${configRef.current.board.assignee}`);
         refresh();
       })
       .catch((err) => {
@@ -283,12 +289,14 @@ export function useActions({
     const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
     if (!(ctx.issue && ctx.repoName)) return;
 
-    const assignees = ctx.issue.assignees ?? [];
+    const { issue, repoName } = ctx;
+    const assignees = issue.assignees ?? [];
     const selfAssigned = assignees.some((a) => a.login === configRef.current.board.assignee);
 
     if (!selfAssigned) {
-      if (assignees.length > 0) {
-        toast.info(`Assigned to @${assignees[0]!.login} \u2014 can only unassign self`);
+      const firstAssignee = assignees[0];
+      if (firstAssignee) {
+        toast.info(`Assigned to @${firstAssignee.login} \u2014 can only unassign self`);
       } else {
         toast.info("Not assigned");
       }
@@ -298,19 +306,11 @@ export function useActions({
     const t = toast.loading("Unassigning...");
     execFileAsync(
       "gh",
-      [
-        "issue",
-        "edit",
-        String(ctx.issue.number),
-        "--repo",
-        ctx.repoName,
-        "--remove-assignee",
-        "@me",
-      ],
+      ["issue", "edit", String(issue.number), "--repo", repoName, "--remove-assignee", "@me"],
       { encoding: "utf-8", timeout: 30_000 },
     )
       .then(() => {
-        t.resolve(`Unassigned #${ctx.issue!.number} from @${configRef.current.board.assignee}`);
+        t.resolve(`Unassigned #${issue.number} from @${configRef.current.board.assignee}`);
         refresh();
       })
       .catch((err) => {
@@ -337,7 +337,7 @@ export function useActions({
 
         // gh issue create returns the URL of the new issue
         const match = output.match(/\/(\d+)$/);
-        const issueNumber = match ? parseInt(match[1]!, 10) : 0;
+        const issueNumber = match?.[1] ? parseInt(match[1], 10) : 0;
         const shortName = configRef.current.repos.find((r) => r.name === repo)?.shortName ?? repo;
         t.resolve(`Created ${shortName}#${issueNumber}`);
         refresh();
@@ -441,14 +441,9 @@ export function useActions({
       for (const id of ids) {
         const ctx = findIssueContext(reposRef.current, id, configRef.current);
         if (ctx.issue && ctx.repoName) {
+          const { issue: ctxIssue, repoName: ctxRepo, statusOptions: ctxOpts } = ctx;
           mutateData((data) =>
-            optimisticSetStatus(
-              data,
-              ctx.repoName!,
-              ctx.issue!.number,
-              ctx.statusOptions,
-              optionId,
-            ),
+            optimisticSetStatus(data, ctxRepo, ctxIssue.number, ctxOpts, optionId),
           );
         }
       }

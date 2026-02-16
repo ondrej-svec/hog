@@ -88,7 +88,6 @@ const LEGACY_REPOS: RepoConfig[] = [
 // ── Config Migration ──
 
 function migrateConfig(raw: Record<string, unknown>): HogConfig {
-  // biome-ignore lint/complexity/useLiteralKeys: bracket access required by noPropertyAccessFromIndexSignature
   const version = typeof raw["version"] === "number" ? raw["version"] : 1;
 
   if (version < 2) {
@@ -105,7 +104,6 @@ function migrateConfig(raw: Record<string, unknown>): HogConfig {
     };
   }
 
-  // biome-ignore lint/complexity/useLiteralKeys: bracket access required by noPropertyAccessFromIndexSignature
   const currentVersion = typeof raw["version"] === "number" ? raw["version"] : 2;
   if (currentVersion < 3) {
     // v2 → v3: Add ticktick config, infer enabled from auth.json presence
@@ -131,7 +129,6 @@ export function loadFullConfig(): HogConfig {
     return config;
   }
 
-  // biome-ignore lint/complexity/useLiteralKeys: bracket access required by noPropertyAccessFromIndexSignature
   const version = typeof raw["version"] === "number" ? raw["version"] : 1;
   if (version < 3) {
     const migrated = migrateConfig(raw);

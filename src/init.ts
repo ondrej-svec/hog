@@ -98,6 +98,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
   }
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: interactive setup wizard with many steps
 async function runWizard(opts: InitOptions): Promise<void> {
   console.log("\n🐗 hog init — Setup Wizard\n");
 

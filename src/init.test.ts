@@ -52,7 +52,7 @@ describe("hog init wizard", () => {
   });
 
   function mockGhCalls() {
-    mockedExecFileSync.mockImplementation((cmd, args) => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argsArr = args as string[];
       if (argsArr[0] === "auth" && argsArr[1] === "status") return "";
       if (argsArr[0] === "api" && argsArr[1] === "user") {

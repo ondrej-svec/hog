@@ -112,6 +112,49 @@ describe("parseIssueRef", () => {
     mockFindRepo.mockReturnValue(makeRepo());
     expect(() => parseIssueRef("aibility/1000000", makeConfig())).toThrow("Invalid issue number");
   });
+
+  describe("malicious input fuzzing", () => {
+    const config = makeConfig();
+
+    it.each([
+      "../../etc/passwd/1",
+      "../../../1",
+      "repo/1; rm -rf /",
+      "repo/1$(whoami)",
+      "repo/1`id`",
+      "repo/1 && echo pwned",
+      "repo/1|cat /etc/passwd",
+    ])("rejects shell injection / path traversal: %s", (input) => {
+      expect(() => parseIssueRef(input, config)).toThrow();
+    });
+
+    it.each([
+      "repo/-1",
+      "repo/NaN",
+      "repo/Infinity",
+      "repo/1e10",
+      "repo/0x1",
+      "repo/1.5",
+    ])("rejects non-positive-integer issue numbers: %s", (input) => {
+      expect(() => parseIssueRef(input, config)).toThrow();
+    });
+
+    it.each(["repo\x00name/1", "\x00/1", "repo/\x001"])("rejects null bytes: %s", (input) => {
+      expect(() => parseIssueRef(input, config)).toThrow();
+    });
+
+    it.each([
+      "",
+      "   ",
+      "/",
+      "//",
+      "///1",
+      "repo/",
+      "/1",
+    ])("rejects malformed refs: %s", (input) => {
+      expect(() => parseIssueRef(input, config)).toThrow();
+    });
+  });
 });
 
 describe("pickIssue", () => {

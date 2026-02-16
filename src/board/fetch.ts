@@ -50,6 +50,7 @@ function formatError(err: unknown): string {
 }
 
 /** Fetch recent activity events for a repo (last 24h, max 30 events) */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub event types
 export function fetchRecentActivity(repoName: string, shortName: string): ActivityEvent[] {
   try {
     const output = execFileSync(

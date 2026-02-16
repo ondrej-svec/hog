@@ -60,11 +60,13 @@ export function useToast(): UseToastResult {
         while (next.length > MAX_VISIBLE) {
           const evictIdx = next.findIndex((x) => x.type !== "error" && x.type !== "loading");
           if (evictIdx >= 0) {
-            clearTimer(next[evictIdx]!.id);
+            const evictToast = next[evictIdx];
+            if (evictToast) clearTimer(evictToast.id);
             next.splice(evictIdx, 1);
           } else {
             // All are persistent — evict oldest anyway
-            clearTimer(next[0]!.id);
+            const oldest = next[0];
+            if (oldest) clearTimer(oldest.id);
             next.shift();
           }
         }

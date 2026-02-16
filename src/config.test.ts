@@ -16,7 +16,7 @@ const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 
 // Import after mocks are set up
-const { loadFullConfig, resolveProfile } = await import("./config.js");
+const { loadFullConfig, resolveProfile, validateRepoName } = await import("./config.js");
 
 import type { HogConfig } from "./config.js";
 
@@ -312,5 +312,65 @@ describe("resolveProfile", () => {
 
     mockExit.mockRestore();
     mockError.mockRestore();
+  });
+});
+
+describe("validateRepoName", () => {
+  it.each([
+    "owner/repo",
+    "my-org/my-repo",
+    "user_123/repo.js",
+    "org/repo-name.v2",
+  ])("accepts valid repo names: %s", (name) => {
+    expect(validateRepoName(name)).toBe(true);
+  });
+
+  describe("malicious input fuzzing", () => {
+    it.each([
+      "../../etc/passwd",
+      "owner/../../../etc/shadow",
+    ])("rejects path traversal: %s", (name) => {
+      expect(validateRepoName(name)).toBe(false);
+    });
+
+    it.each([
+      "; rm -rf /",
+      "owner/repo; echo pwned",
+      "$(whoami)/repo",
+      "`id`/repo",
+      "owner/repo && cat /etc/passwd",
+      "owner/repo | rm -rf /",
+    ])("rejects shell injection: %s", (name) => {
+      expect(validateRepoName(name)).toBe(false);
+    });
+
+    it.each([
+      "",
+      "   ",
+      "/",
+      "owner/",
+      "/repo",
+      "owner//repo",
+      "just-a-name",
+    ])("rejects malformed names: %s", (name) => {
+      expect(validateRepoName(name)).toBe(false);
+    });
+
+    it.each([
+      "repo\x00name/repo",
+      "owner/repo\x00",
+      "\x00/\x00",
+    ])("rejects null bytes: %s", (name) => {
+      expect(validateRepoName(name)).toBe(false);
+    });
+
+    it.each([
+      "owner/repo name",
+      "owner repo/name",
+      "owner/repo\ttab",
+      "owner/repo\nnewline",
+    ])("rejects whitespace in names: %s", (name) => {
+      expect(validateRepoName(name)).toBe(false);
+    });
   });
 });

@@ -6,11 +6,13 @@ const { config, options } = workerData as { config: HogConfig; options: FetchOpt
 
 const { fetchDashboard } = await import("./fetch.js");
 
+if (!parentPort) throw new Error("fetch-worker must run in a worker thread");
+
 try {
   const data = await fetchDashboard(config, options);
-  parentPort!.postMessage({ type: "success", data });
+  parentPort.postMessage({ type: "success", data });
 } catch (err) {
-  parentPort!.postMessage({
+  parentPort.postMessage({
     type: "error",
     error: err instanceof Error ? err.message : String(err),
   });
