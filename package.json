@@ -1,6 +1,6 @@
 {
   "name": "@hog-cli/hog",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Personal command deck — unified task dashboard for GitHub Projects + TickTick",
   "author": "Ondrej Svec",
   "repository": {
