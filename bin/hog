@@ -1,0 +1,7 @@
+#!/bin/bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && . "/opt/homebrew/opt/nvm/nvm.sh"
+nvm use 22 --silent
+HOG_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$HOG_DIR"
+exec node --import tsx src/cli.ts "$@"

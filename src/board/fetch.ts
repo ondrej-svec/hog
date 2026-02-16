@@ -1,0 +1,221 @@
+import { execFileSync } from "node:child_process";
+import { TickTickClient } from "../api.js";
+import type { HogConfig, RepoConfig } from "../config.js";
+import { getConfig, requireAuth } from "../config.js";
+import type { GitHubIssue, StatusOption } from "../github.js";
+import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
+import type { Task } from "../types.js";
+import { TaskStatus } from "../types.js";
+
+export interface RepoData {
+  repo: RepoConfig;
+  issues: GitHubIssue[];
+  statusOptions: StatusOption[];
+  error: string | null;
+}
+
+export interface ActivityEvent {
+  type: "comment" | "status" | "assignment" | "opened" | "closed" | "labeled";
+  repoShortName: string;
+  issueNumber: number;
+  actor: string;
+  summary: string;
+  timestamp: Date;
+}
+
+export interface DashboardData {
+  repos: RepoData[];
+  ticktick: Task[];
+  ticktickError: string | null;
+  activity: ActivityEvent[];
+  fetchedAt: Date;
+}
+
+export interface FetchOptions {
+  repoFilter?: string | undefined;
+  mineOnly?: boolean | undefined;
+  backlogOnly?: boolean | undefined;
+}
+
+export const SLACK_URL_RE = /https:\/\/[^/]+\.slack\.com\/archives\/[A-Z0-9]+\/p[0-9]+/i;
+
+export function extractSlackUrl(body: string | undefined): string | undefined {
+  if (!body) return undefined;
+  const match = body.match(SLACK_URL_RE);
+  return match?.[0];
+}
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Fetch recent activity events for a repo (last 24h, max 30 events) */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub event types
+export function fetchRecentActivity(repoName: string, shortName: string): ActivityEvent[] {
+  try {
+    const output = execFileSync(
+      "gh",
+      [
+        "api",
+        `repos/${repoName}/events`,
+        "--paginate",
+        "-q",
+        '.[] | select(.type == "IssuesEvent" or .type == "IssueCommentEvent" or .type == "PullRequestEvent") | {type: .type, actor: .actor.login, action: .payload.action, number: (.payload.issue.number // .payload.pull_request.number), title: (.payload.issue.title // .payload.pull_request.title), body: .payload.comment.body, created_at: .created_at}',
+      ],
+      { encoding: "utf-8", timeout: 15_000 },
+    );
+
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const events: ActivityEvent[] = [];
+
+    for (const line of output.trim().split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line) as {
+          type: string;
+          actor: string;
+          action: string;
+          number: number | null;
+          title: string | null;
+          body: string | null;
+          created_at: string;
+        };
+
+        const timestamp = new Date(ev.created_at);
+        if (timestamp.getTime() < cutoff) continue;
+        if (!ev.number) continue;
+
+        let eventType: ActivityEvent["type"];
+        let summary: string;
+
+        if (ev.type === "IssueCommentEvent") {
+          eventType = "comment";
+          const preview = ev.body ? ev.body.slice(0, 60).replace(/\n/g, " ") : "";
+          summary = `commented on #${ev.number}${preview ? ` — "${preview}${(ev.body?.length ?? 0) > 60 ? "..." : ""}"` : ""}`;
+        } else if (ev.type === "IssuesEvent") {
+          switch (ev.action) {
+            case "opened":
+              eventType = "opened";
+              summary = `opened #${ev.number}: ${ev.title ?? ""}`;
+              break;
+            case "closed":
+              eventType = "closed";
+              summary = `closed #${ev.number}`;
+              break;
+            case "assigned":
+              eventType = "assignment";
+              summary = `assigned #${ev.number}`;
+              break;
+            case "labeled":
+              eventType = "labeled";
+              summary = `labeled #${ev.number}`;
+              break;
+            default:
+              continue;
+          }
+        } else {
+          continue;
+        }
+
+        events.push({
+          type: eventType,
+          repoShortName: shortName,
+          issueNumber: ev.number,
+          actor: ev.actor,
+          summary,
+          timestamp,
+        });
+      } catch {
+        // Skip malformed event
+      }
+    }
+
+    return events.slice(0, 15);
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchDashboard(
+  config: HogConfig,
+  options: FetchOptions = {},
+): Promise<DashboardData> {
+  const repos = options.repoFilter
+    ? config.repos.filter(
+        (r) => r.shortName === options.repoFilter || r.name === options.repoFilter,
+      )
+    : config.repos;
+
+  // GitHub: synchronous (uses gh CLI via execFileSync)
+  const repoData: RepoData[] = repos.map((repo) => {
+    try {
+      const fetchOpts: { assignee?: string } = {};
+      if (options.mineOnly) {
+        fetchOpts.assignee = config.board.assignee;
+      }
+      const issues = fetchRepoIssues(repo.name, fetchOpts);
+
+      // Enrich issues with target dates + statuses from GitHub Projects (batched)
+      let statusOptions: StatusOption[] = [];
+      try {
+        const enrichMap = fetchProjectEnrichment(repo.name, repo.projectNumber);
+        for (const issue of issues) {
+          const e = enrichMap.get(issue.number);
+          if (e?.targetDate) issue.targetDate = e.targetDate;
+          if (e?.projectStatus) issue.projectStatus = e.projectStatus;
+        }
+        statusOptions = fetchProjectStatusOptions(
+          repo.name,
+          repo.projectNumber,
+          repo.statusFieldId,
+        );
+      } catch {
+        // Non-critical: silently skip if project fields fail
+      }
+
+      // Compute Slack thread URLs from issue bodies
+      for (const issue of issues) {
+        const slackUrl = extractSlackUrl(issue.body);
+        if (slackUrl) issue.slackThreadUrl = slackUrl;
+      }
+
+      return { repo, issues, statusOptions, error: null };
+    } catch (err) {
+      return { repo, issues: [], statusOptions: [], error: formatError(err) };
+    }
+  });
+
+  // TickTick: async (uses HTTP API) — skip when disabled in config
+  let ticktick: Task[] = [];
+  let ticktickError: string | null = null;
+  if (config.ticktick.enabled) {
+    try {
+      const auth = requireAuth();
+      const api = new TickTickClient(auth.accessToken);
+      const cfg = getConfig();
+      if (cfg.defaultProjectId) {
+        const tasks = await api.listTasks(cfg.defaultProjectId);
+        ticktick = tasks.filter((t) => t.status !== TaskStatus.Completed);
+      }
+    } catch (err) {
+      ticktickError = formatError(err);
+    }
+  }
+
+  // Activity: fetch recent events from all repos (non-blocking, best-effort)
+  const activity: ActivityEvent[] = [];
+  for (const repo of repos) {
+    const events = fetchRecentActivity(repo.name, repo.shortName);
+    activity.push(...events);
+  }
+  // Sort by timestamp descending
+  activity.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+  return {
+    repos: repoData,
+    ticktick,
+    ticktickError,
+    activity: activity.slice(0, 15),
+    fetchedAt: new Date(),
+  };
+}
