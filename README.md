@@ -8,7 +8,7 @@ Your personal command deck — a unified task dashboard for GitHub Projects and 
 ## Quick Start
 
 ```sh
-npm install -g @hog-cli/hog
+npm install -g @ondrej-svec/hog
 hog init     # interactive setup wizard
 hog board --live
 ```
