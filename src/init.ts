@@ -32,8 +32,44 @@ interface GhRepo {
   owner: { login: string };
 }
 
-function listRepos(): GhRepo[] {
-  return ghJson<GhRepo[]>(["repo", "list", "--json", "nameWithOwner,name,owner", "--limit", "100"]);
+function listUserOrgs(): string[] {
+  try {
+    const orgs = ghJson<{ login: string }[]>(["api", "user/orgs"]);
+    return orgs.map((o) => o.login);
+  } catch {
+    return [];
+  }
+}
+
+function listReposForOwner(owner?: string): GhRepo[] {
+  const args = [
+    "repo",
+    "list",
+    ...(owner ? [owner] : []),
+    "--json",
+    "nameWithOwner,name,owner",
+    "--limit",
+    "100",
+  ];
+  try {
+    return ghJson<GhRepo[]>(args);
+  } catch {
+    return [];
+  }
+}
+
+function listAllRepos(): GhRepo[] {
+  const orgs = listUserOrgs();
+  const personal = listReposForOwner();
+  const orgRepos = orgs.flatMap((org) => listReposForOwner(org));
+  const all = [...personal, ...orgRepos];
+  // Deduplicate by nameWithOwner
+  const seen = new Set<string>();
+  return all.filter((r) => {
+    if (seen.has(r.nameWithOwner)) return false;
+    seen.add(r.nameWithOwner);
+    return true;
+  });
 }
 
 interface GhProject {
@@ -129,8 +165,9 @@ async function runWizard(opts: InitOptions): Promise<void> {
   const login = getGitHubLogin();
   console.log(`  Detected GitHub user: ${login}\n`);
 
-  // Step 4: Select repos
-  const allRepos = listRepos();
+  // Step 4: Select repos (personal + org repos)
+  console.log("Fetching repositories...");
+  const allRepos = listAllRepos();
   if (allRepos.length === 0) {
     console.error("No repositories found. Check your GitHub CLI access.");
     process.exit(1);
