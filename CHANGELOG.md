@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/ondrej-svec/hog/compare/hog-v1.1.1...hog-v1.1.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* include organization repos in hog init wizard ([90e1326](https://github.com/ondrej-svec/hog/commit/90e1326feed62b2fca70638c05a83046e7d4f70d))
+
 ## [1.1.1](https://github.com/ondrej-svec/hog/compare/hog-v1.1.0...hog-v1.1.1) (2026-02-17)
 
 
