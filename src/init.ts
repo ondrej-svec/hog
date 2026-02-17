@@ -79,7 +79,15 @@ interface GhProject {
 
 function listOrgProjects(owner: string): GhProject[] {
   try {
-    return ghJson<GhProject[]>(["project", "list", "--owner", owner, "--format", "json"]);
+    const result = ghJson<{ projects: GhProject[] }>([
+      "project",
+      "list",
+      "--owner",
+      owner,
+      "--format",
+      "json",
+    ]);
+    return result.projects ?? [];
   } catch {
     return [];
   }
@@ -93,7 +101,7 @@ interface GhProjectField {
 
 function listProjectFields(owner: string, projectNumber: number): GhProjectField[] {
   try {
-    return ghJson<GhProjectField[]>([
+    const result = ghJson<{ fields: GhProjectField[] }>([
       "project",
       "field-list",
       String(projectNumber),
@@ -102,6 +110,7 @@ function listProjectFields(owner: string, projectNumber: number): GhProjectField
       "--format",
       "json",
     ]);
+    return result.fields ?? [];
   } catch {
     return [];
   }

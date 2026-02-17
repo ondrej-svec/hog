@@ -55,6 +55,9 @@ describe("hog init wizard", () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argsArr = args as string[];
       if (argsArr[0] === "auth" && argsArr[1] === "status") return "";
+      if (argsArr[0] === "api" && argsArr[1] === "user/orgs") {
+        return JSON.stringify([]);
+      }
       if (argsArr[0] === "api" && argsArr[1] === "user") {
         return JSON.stringify({ login: "test-user" });
       }
@@ -65,13 +68,15 @@ describe("hog init wizard", () => {
         ]);
       }
       if (argsArr[0] === "project" && argsArr[1] === "list") {
-        return JSON.stringify([{ number: 1, title: "Main Board" }]);
+        return JSON.stringify({ projects: [{ number: 1, title: "Main Board" }] });
       }
       if (argsArr[0] === "project" && argsArr[1] === "field-list") {
-        return JSON.stringify([
-          { id: "SF_auto", name: "Status", type: "ProjectV2SingleSelectField" },
-          { id: "F_other", name: "Priority", type: "ProjectV2SingleSelectField" },
-        ]);
+        return JSON.stringify({
+          fields: [
+            { id: "SF_auto", name: "Status", type: "ProjectV2SingleSelectField" },
+            { id: "F_other", name: "Priority", type: "ProjectV2SingleSelectField" },
+          ],
+        });
       }
       return "";
     });
