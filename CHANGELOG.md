@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.3](https://github.com/ondrej-svec/hog/compare/hog-v1.1.2...hog-v1.1.3) (2026-02-17)
+
+
+### Bug Fixes
+
+* parse wrapped JSON from gh project list and field-list ([6c1f794](https://github.com/ondrej-svec/hog/commit/6c1f794d74e7bf83023e56fee41d8136aa73201a))
+
 ## [1.1.2](https://github.com/ondrej-svec/hog/compare/hog-v1.1.1...hog-v1.1.2) (2026-02-17)
 
 
