@@ -32,13 +32,6 @@ vi.mock("@inquirer/prompts", () => ({
   select: (...args: unknown[]) => mockSelect(...args),
 }));
 
-// Mock auth module
-vi.mock("./auth.js", () => ({
-  getAuthorizationUrl: () => "https://example.com/auth",
-  exchangeCodeForToken: async () => "mock-token",
-  waitForAuthCode: async () => "mock-code",
-}));
-
 const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedExistsSync = vi.mocked(existsSync);
 
@@ -47,7 +40,7 @@ const { runInit } = await import("./init.js");
 describe("hog init wizard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: no existing config
+    // Default: no existing config, no auth.json
     mockedExistsSync.mockReturnValue(false);
   });
 
@@ -73,7 +66,16 @@ describe("hog init wizard", () => {
       if (argsArr[0] === "project" && argsArr[1] === "field-list") {
         return JSON.stringify({
           fields: [
-            { id: "SF_auto", name: "Status", type: "ProjectV2SingleSelectField" },
+            {
+              id: "SF_auto",
+              name: "Status",
+              type: "ProjectV2SingleSelectField",
+              options: [
+                { id: "opt-todo", name: "Todo" },
+                { id: "opt-progress", name: "In Progress" },
+                { id: "opt-done", name: "Done" },
+              ],
+            },
             { id: "F_other", name: "Priority", type: "ProjectV2SingleSelectField" },
           ],
         });
@@ -96,8 +98,6 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce("60") // refresh interval
       .mockResolvedValueOnce("20") // backlog limit
       .mockResolvedValueOnce("1500"); // focus duration
-    // TickTick
-    mockConfirm.mockResolvedValueOnce(false); // no ticktick
 
     await runInit({ force: true });
 
@@ -146,7 +146,6 @@ describe("hog init wizard", () => {
     mockGhCalls();
 
     mockCheckbox.mockResolvedValue([]); // no repos
-    mockConfirm.mockResolvedValueOnce(false); // no ticktick
     mockInput.mockResolvedValueOnce("60").mockResolvedValueOnce("20").mockResolvedValueOnce("1500");
 
     await runInit({ force: true });
@@ -181,7 +180,6 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce("60")
       .mockResolvedValueOnce("20")
       .mockResolvedValueOnce("1500");
-    mockConfirm.mockResolvedValueOnce(false); // no ticktick
 
     await runInit({ force: true });
 
@@ -189,6 +187,31 @@ describe("hog init wizard", () => {
     const saved = JSON.parse(savedJson);
 
     expect(saved.repos[0].completionAction).toEqual({ type: "addLabel", label: "review:pending" });
+  });
+
+  it("should show status option selector for updateProjectStatus", async () => {
+    mockGhCalls();
+
+    mockCheckbox.mockResolvedValue(["org/repo-one"]);
+    mockSelect
+      .mockResolvedValueOnce(1) // project number
+      .mockResolvedValueOnce("updateProjectStatus") // completion action
+      .mockResolvedValueOnce("opt-done"); // status option selector
+    mockInput
+      .mockResolvedValueOnce("r1") // short name
+      .mockResolvedValueOnce("60")
+      .mockResolvedValueOnce("20")
+      .mockResolvedValueOnce("1500");
+
+    await runInit({ force: true });
+
+    const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
+    const saved = JSON.parse(savedJson);
+
+    expect(saved.repos[0].completionAction).toEqual({
+      type: "updateProjectStatus",
+      optionId: "opt-done",
+    });
   });
 
   it("should configure multiple repos", async () => {
@@ -209,7 +232,6 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce("30") // refresh interval
       .mockResolvedValueOnce("10") // backlog limit
       .mockResolvedValueOnce("900"); // focus duration
-    mockConfirm.mockResolvedValueOnce(false); // no ticktick
 
     await runInit({ force: true });
 

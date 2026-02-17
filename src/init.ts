@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
-import { exchangeCodeForToken, getAuthorizationUrl, waitForAuthCode } from "./auth.js";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
-import { CONFIG_DIR, loadFullConfig, saveAuth, saveFullConfig } from "./config.js";
+import { CONFIG_DIR, loadFullConfig, saveFullConfig } from "./config.js";
 
 // ── gh CLI helpers ──
 
@@ -93,10 +92,16 @@ function listOrgProjects(owner: string): GhProject[] {
   }
 }
 
+interface GhProjectFieldOption {
+  id: string;
+  name: string;
+}
+
 interface GhProjectField {
   id: string;
   name: string;
   type: string;
+  options?: GhProjectFieldOption[];
 }
 
 function listProjectFields(owner: string, projectNumber: number): GhProjectField[] {
@@ -116,12 +121,18 @@ function listProjectFields(owner: string, projectNumber: number): GhProjectField
   }
 }
 
-function detectStatusFieldId(owner: string, projectNumber: number): string | null {
+interface StatusFieldInfo {
+  fieldId: string;
+  options: GhProjectFieldOption[];
+}
+
+function detectStatusField(owner: string, projectNumber: number): StatusFieldInfo | null {
   const fields = listProjectFields(owner, projectNumber);
   const statusField = fields.find(
     (f) => f.name === "Status" && f.type === "ProjectV2SingleSelectField",
   );
-  return statusField?.id ?? null;
+  if (!statusField) return null;
+  return { fieldId: statusField.id, options: statusField.options ?? [] };
 }
 
 // ── Wizard ──
@@ -219,8 +230,10 @@ async function runWizard(opts: InitOptions): Promise<void> {
 
     // Auto-detect status field
     console.log("  Detecting status field...");
-    let statusFieldId = detectStatusFieldId(owner, projectNumber);
-    if (statusFieldId) {
+    const statusInfo = detectStatusField(owner, projectNumber);
+    let statusFieldId: string;
+    if (statusInfo) {
+      statusFieldId = statusInfo.fieldId;
       console.log(`  Found status field: ${statusFieldId}`);
     } else {
       console.log("  Could not auto-detect status field.");
@@ -231,7 +244,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
 
     // Completion action
     const completionType = await select<CompletionAction["type"]>({
-      message: `  When a task is completed in TickTick, what should happen on GitHub?`,
+      message: `  When a task is completed, what should happen on GitHub?`,
       choices: [
         { name: "Close the issue", value: "closeIssue" as const },
         { name: "Add a label (e.g. review:pending)", value: "addLabel" as const },
@@ -247,9 +260,21 @@ async function runWizard(opts: InitOptions): Promise<void> {
       });
       completionAction = { type: "addLabel", label };
     } else if (completionType === "updateProjectStatus") {
-      const optionId = await input({
-        message: "  Status option ID to set:",
-      });
+      const statusOptions = statusInfo?.options ?? [];
+      let optionId: string;
+      if (statusOptions.length > 0) {
+        optionId = await select<string>({
+          message: "  Status to set when completed:",
+          choices: statusOptions.map((o) => ({
+            name: o.name,
+            value: o.id,
+          })),
+        });
+      } else {
+        optionId = await input({
+          message: "  Status option ID to set:",
+        });
+      }
       completionAction = { type: "updateProjectStatus", optionId };
     } else {
       completionAction = { type: "closeIssue" };
@@ -270,42 +295,12 @@ async function runWizard(opts: InitOptions): Promise<void> {
     });
   }
 
-  // Step 6: TickTick integration
-  const enableTickTick = await confirm({
-    message: "Enable TickTick integration?",
-    default: false,
-  });
-
+  // Step 6: TickTick integration (disabled by default, enable with `hog config ticktick:enable`)
+  const ticktickAlreadyEnabled = existsSync(`${CONFIG_DIR}/auth.json`);
   let ticktickAuth = false;
-  if (enableTickTick) {
-    const hasAuth = existsSync(`${CONFIG_DIR}/auth.json`);
-    if (hasAuth) {
-      console.log("  TickTick auth already configured.");
-      ticktickAuth = true;
-    } else {
-      const setupNow = await confirm({
-        message: "  Set up TickTick OAuth now?",
-        default: true,
-      });
-      if (setupNow) {
-        const clientId = await input({ message: "  TickTick OAuth client ID:" });
-        const clientSecret = await input({ message: "  TickTick OAuth client secret:" });
-        const url = getAuthorizationUrl(clientId);
-        console.log(`\n  Open this URL to authorize:\n\n    ${url}\n`);
-        try {
-          const { exec } = await import("node:child_process");
-          exec(`open "${url}"`);
-        } catch {
-          // User opens manually
-        }
-        console.log("  Waiting for authorization...");
-        const code = await waitForAuthCode();
-        const accessToken = await exchangeCodeForToken(clientId, clientSecret, code);
-        saveAuth({ accessToken, clientId, clientSecret });
-        console.log("  TickTick authenticated successfully.");
-        ticktickAuth = true;
-      }
-    }
+  if (ticktickAlreadyEnabled) {
+    ticktickAuth = true;
+    console.log("TickTick auth found — integration enabled.");
   }
 
   // Step 7: Board defaults
@@ -336,7 +331,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       assignee: login,
       focusDuration: Number.parseInt(focusDuration, 10) || 1500,
     },
-    ticktick: { enabled: enableTickTick && ticktickAuth },
+    ticktick: { enabled: ticktickAuth },
     profiles: existingConfig?.profiles ?? {},
   };
 
