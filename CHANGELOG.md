@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/ondrej-svec/hog/compare/hog-v1.1.3...hog-v1.2.0) (2026-02-17)
+
+
+### Features
+
+* **init:** status option selector and skip TickTick prompt ([e1e64dd](https://github.com/ondrej-svec/hog/commit/e1e64dd07bd8e272c7edb8f2d91c7c167d325e4c))
+
 ## [1.1.3](https://github.com/ondrej-svec/hog/compare/hog-v1.1.2...hog-v1.1.3) (2026-02-17)
 
 
