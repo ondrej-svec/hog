@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/ondrej-svec/hog/compare/hog-v1.3.0...hog-v1.4.0) (2026-02-18)
+
+
+### Features
+
+* **ai:** store OpenRouter key in config and surface it in hog init + hog config ai:set-key ([083c826](https://github.com/ondrej-svec/hog/commit/083c826dd3ca12a12ebe9b4146f3c0155ab4fa3c))
+
 ## [1.3.0](https://github.com/ondrej-svec/hog/compare/hog-v1.2.0...hog-v1.3.0) (2026-02-18)
 
 
