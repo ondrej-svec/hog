@@ -2,15 +2,19 @@ import { TextInput } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
 import type { RepoConfig } from "../../config.js";
+import type { LabelOption } from "../../github.js";
+import { LabelPicker } from "./label-picker.js";
 
 interface CreateIssueFormProps {
   readonly repos: RepoConfig[];
   readonly defaultRepo: string | null;
   readonly onSubmit: (repo: string, title: string, labels?: string[]) => void;
   readonly onCancel: () => void;
+  /** Session-level label cache — passed from dashboard so it persists across form open/close */
+  readonly labelCache?: Record<string, LabelOption[]>;
 }
 
-function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel }: CreateIssueFormProps) {
+function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel, labelCache }: CreateIssueFormProps) {
   const defaultRepoIdx = defaultRepo
     ? Math.max(
         0,
@@ -20,9 +24,12 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel }: CreateIssue
 
   const [repoIdx, setRepoIdx] = useState(defaultRepoIdx);
   const [title, setTitle] = useState("");
-  const [field, setField] = useState<"repo" | "title">("title");
+  const [field, setField] = useState<"repo" | "title" | "labels">("title");
 
   useInput((input, key) => {
+    // LabelPicker handles its own input in the labels step
+    if (field === "labels") return;
+
     if (key.escape) return onCancel();
 
     if (field === "repo") {
@@ -38,6 +45,36 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel }: CreateIssue
   });
 
   const selectedRepo = repos[repoIdx];
+
+  // Labels step — LabelPicker takes over input completely
+  if (field === "labels" && selectedRepo) {
+    return (
+      <Box flexDirection="column">
+        <Text color="cyan" bold>
+          Create Issue — Add Labels (optional)
+        </Text>
+        <Text dimColor>
+          Repo: {selectedRepo.shortName}  Title: {title}
+        </Text>
+        <LabelPicker
+          repo={selectedRepo.name}
+          currentLabels={[]}
+          labelCache={labelCache ?? {}}
+          onConfirm={(addLabels) => {
+            onSubmit(selectedRepo.name, title, addLabels.length > 0 ? addLabels : undefined);
+          }}
+          onCancel={() => {
+            // Esc skips labels and submits without them
+            onSubmit(selectedRepo.name, title);
+          }}
+          onError={() => {
+            // On fetch error, skip labels and submit
+            onSubmit(selectedRepo.name, title);
+          }}
+        />
+      </Box>
+    );
+  }
 
   return (
     <Box flexDirection="column">
@@ -69,8 +106,14 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel }: CreateIssue
             placeholder="issue title..."
             onChange={setTitle}
             onSubmit={(text) => {
-              if (text.trim() && selectedRepo) {
-                onSubmit(selectedRepo.name, text.trim());
+              const trimmed = text.trim();
+              if (!trimmed || !selectedRepo) return;
+              if (labelCache !== undefined) {
+                // Advance to labels step
+                setTitle(trimmed);
+                setField("labels");
+              } else {
+                onSubmit(selectedRepo.name, trimmed);
               }
             }}
           />
@@ -79,7 +122,7 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel }: CreateIssue
         )}
       </Box>
 
-      <Text dimColor>Tab:switch fields Enter:submit Esc:cancel</Text>
+      <Text dimColor>Tab:switch fields Enter:next Esc:cancel</Text>
     </Box>
   );
 }

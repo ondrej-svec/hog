@@ -1,5 +1,5 @@
 import type { HogConfig } from "../../config.js";
-import type { GitHubIssue, StatusOption } from "../../github.js";
+import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { UIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { BulkActionMenu } from "./bulk-action-menu.js";
@@ -9,6 +9,7 @@ import { CreateIssueForm } from "./create-issue-form.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { FocusMode } from "./focus-mode.js";
 import { HelpOverlay } from "./help-overlay.js";
+import { LabelPicker } from "./label-picker.js";
 import { SearchBar } from "./search-bar.js";
 import { StatusPicker } from "./status-picker.js";
 
@@ -44,6 +45,12 @@ export interface OverlayRendererProps {
   readonly onComment: (body: string) => void;
   // Help
   readonly onToggleHelp: () => void;
+  // Label picker
+  readonly labelCache: Record<string, LabelOption[]>;
+  readonly onLabelConfirm: (addLabels: string[], removeLabels: string[]) => void;
+  readonly onLabelError: (msg: string) => void;
+  // NL create overlay (placeholder — implemented in Phase 4)
+  readonly onNlCreateCancel: () => void;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -71,6 +78,9 @@ function OverlayRenderer({
   selectedIssue,
   onComment,
   onToggleHelp,
+  labelCache,
+  onLabelConfirm,
+  onLabelError,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
@@ -98,6 +108,7 @@ function OverlayRenderer({
           defaultRepo={defaultRepo}
           onSubmit={onCreateIssue}
           onCancel={onExitOverlay}
+          labelCache={labelCache}
         />
       ) : null}
 
@@ -128,6 +139,18 @@ function OverlayRenderer({
           durationSec={config.board.focusDuration ?? 1500}
           onExit={onFocusExit}
           onEndAction={onFocusEndAction}
+        />
+      ) : null}
+
+      {/* Label picker overlay */}
+      {mode === "overlay:label" && selectedIssue ? (
+        <LabelPicker
+          repo={defaultRepo ?? ""}
+          currentLabels={selectedIssue.labels.map((l) => l.name)}
+          labelCache={labelCache}
+          onConfirm={onLabelConfirm}
+          onCancel={onExitOverlay}
+          onError={onLabelError}
         />
       ) : null}
 

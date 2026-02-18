@@ -4,7 +4,7 @@ import { Box, Text, useApp, useStdout } from "ink";
 import { getClipboardArgs } from "../../clipboard.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
-import type { GitHubIssue, StatusOption } from "../../github.js";
+import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { Task } from "../../types.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActions } from "../hooks/use-actions.js";
@@ -466,6 +466,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // "Pick this issue?" after create — stores the newly created issue info
   const pendingPickRef = useRef<{ repo: string; issueNumber: number } | null>(null);
 
+  // Session-level label cache to avoid re-fetching on every overlay open
+  const labelCacheRef = useRef<Record<string, LabelOption[]>>({});
+
   const handleCreateIssueWithPrompt = useCallback(
     (repo: string, title: string, labels?: string[]) => {
       actions.handleCreateIssue(repo, title, labels).then((result) => {
@@ -869,6 +872,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         selectedIssue={selectedItem.issue}
         onComment={actions.handleComment}
         onToggleHelp={ui.toggleHelp}
+        labelCache={labelCacheRef.current}
+        onLabelConfirm={actions.handleLabelChange}
+        onLabelError={(msg) => toast.error(msg)}
+        onNlCreateCancel={ui.exitOverlay}
       />
 
       {/* Main content: scrollable list + optional detail panel (hidden during full-screen overlays) */}
