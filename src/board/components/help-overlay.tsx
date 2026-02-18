@@ -35,6 +35,7 @@ const SHORTCUTS = [
       { key: "c", desc: "Comment on issue" },
       { key: "m", desc: "Move status" },
       { key: "s", desc: "Open Slack thread" },
+      { key: "y", desc: "Copy issue link to clipboard" },
       { key: "n", desc: "Create new issue" },
     ],
   },

@@ -768,6 +768,19 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     openInBrowser(found.issue.slackThreadUrl);
   }, [repos, nav.selectedId]);
 
+  const handleCopyLink = useCallback(() => {
+    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+    if (!found) return;
+    const rc = config.repos.find((r) => r.name === found.repoName);
+    const label = `${rc?.shortName ?? found.repoName}#${found.issue.number}`;
+    try {
+      execFileSync("pbcopy", [], { input: found.issue.url });
+      toast.success(`Copied ${label} to clipboard`);
+    } catch {
+      toast.error(`Copy failed — ${found.issue.url}`);
+    }
+  }, [repos, nav.selectedId, config.repos, toast]);
+
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = useMemo((): "github" | "ticktick" | "mixed" => {
     let hasGh = false;
@@ -955,6 +968,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           handleSlack();
           return;
         }
+        if (input === "y") {
+          handleCopyLink();
+          return;
+        }
         if (input === "p") {
           actions.handlePick();
           return;
@@ -1021,6 +1038,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       exit,
       refresh,
       handleSlack,
+      handleCopyLink,
       handleOpen,
       actions,
       selectedItem.issue,
@@ -1238,7 +1256,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           <>
             <Text color="gray">
               j/k:nav Tab:section Enter:open Space:select /:search p:pick c:comment m:status
-              a/u:assign s:slack n:new f:focus ?:help q:quit
+              a/u:assign s:slack y:copy n:new f:focus ?:help q:quit
             </Text>
             {searchQuery && ui.state.mode !== "search" ? (
               <Text color="yellow"> filter: &quot;{searchQuery}&quot;</Text>
