@@ -257,7 +257,9 @@ export function useActions({
           } else {
             t.resolve(`#${issue.number} \u2192 ${optionName}`);
           }
-          refresh();
+          // Do NOT refresh here — GitHub Projects v2 GraphQL is eventually consistent
+          // and a refresh immediately after mutation returns stale data, overwriting
+          // the optimistic update. The auto-refresh interval will sync server state.
         })
         .catch((err) => {
           t.reject(`Status change failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -540,10 +542,12 @@ export function useActions({
       })();
       if (failed.length === 0) {
         t.resolve(`Moved ${total} issue${total > 1 ? "s" : ""} to ${optionName}`);
+        // Do not refresh — same eventual-consistency issue as single status change.
+        // Optimistic updates are correct; auto-refresh will sync server state.
       } else {
         t.reject(`${ok} moved to ${optionName}, ${failed.length} failed`);
+        refresh(); // revert optimistic updates for failed items
       }
-      refresh();
       return failed;
     },
     [toast, refresh, mutateData],
