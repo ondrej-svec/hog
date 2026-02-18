@@ -460,7 +460,7 @@ describe("useActions hook", () => {
       const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
         typeof useActions
       >;
-      await actions.handleCreateIssue("owner/repo", "New bug report");
+      await actions.handleCreateIssue("owner/repo", "New bug report", "");
 
       expect(mockExecFile).toHaveBeenCalledWith(
         "gh",
@@ -492,7 +492,7 @@ describe("useActions hook", () => {
       const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
         typeof useActions
       >;
-      await actions.handleCreateIssue("owner/repo", "Bug", ["bug", "high-priority"]);
+      await actions.handleCreateIssue("owner/repo", "Bug", "", ["bug", "high-priority"]);
 
       expect(mockExecFile).toHaveBeenCalledWith(
         "gh",

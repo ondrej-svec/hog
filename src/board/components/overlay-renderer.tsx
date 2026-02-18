@@ -24,7 +24,7 @@ export interface OverlayRendererProps {
   readonly onExitOverlay: () => void;
   // Create issue
   readonly defaultRepo: string | null;
-  readonly onCreateIssue: (repo: string, title: string, labels?: string[]) => void;
+  readonly onCreateIssue: (repo: string, title: string, body: string, labels?: string[]) => void;
   // Confirm pick
   readonly onConfirmPick: () => void;
   readonly onCancelPick: () => void;
@@ -181,6 +181,8 @@ function OverlayRenderer({
           labelCache={labelCache}
           onSubmit={onCreateIssue}
           onCancel={onExitOverlay}
+          onPauseRefresh={onPauseRefresh}
+          onResumeRefresh={onResumeRefresh}
           onLlmFallback={onLlmFallback}
         />
       ) : null}

@@ -1,17 +1,26 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Spinner, TextInput } from "@inkjs/ui";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdin } from "ink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ParsedIssue } from "../../ai.js";
 import { extractIssueFields } from "../../ai.js";
 import type { RepoConfig } from "../../config.js";
 import type { LabelOption } from "../../github.js";
+import { getInkInstance } from "../ink-instance.js";
+
+type Step = "input" | "body";
 
 interface NlCreateOverlayProps {
   readonly repos: RepoConfig[];
   readonly defaultRepoName: string | null;
   readonly labelCache: Record<string, LabelOption[]>;
-  readonly onSubmit: (repo: string, title: string, labels?: string[]) => void;
+  readonly onSubmit: (repo: string, title: string, body: string, labels?: string[]) => void;
   readonly onCancel: () => void;
+  readonly onPauseRefresh?: (() => void) | undefined;
+  readonly onResumeRefresh?: (() => void) | undefined;
   readonly onLlmFallback?: ((msg: string) => void) | undefined;
 }
 
@@ -21,13 +30,18 @@ function NlCreateOverlay({
   labelCache,
   onSubmit,
   onCancel,
+  onPauseRefresh,
+  onResumeRefresh,
   onLlmFallback,
 }: NlCreateOverlayProps) {
   const [, setInput] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [parsed, setParsed] = useState<ParsedIssue | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [step, setStep] = useState<Step>("input");
+  const [body, setBody] = useState("");
+  const [editingBody, setEditingBody] = useState(false);
+
   // Guard against double-submit. Safe because the parent (dashboard) always calls
   // onOverlayDone() → ui.exitOverlay() after onSubmit, unmounting this component
   // on both success and failure paths.
@@ -37,6 +51,18 @@ function NlCreateOverlay({
     validLabels: string[];
   } | null>(null);
 
+  // Stable refs to avoid stale closures
+  const onSubmitRef = useRef(onSubmit);
+  const onCancelRef = useRef(onCancel);
+  const onPauseRef = useRef(onPauseRefresh);
+  const onResumeRef = useRef(onResumeRefresh);
+  onSubmitRef.current = onSubmit;
+  onCancelRef.current = onCancel;
+  onPauseRef.current = onPauseRefresh;
+  onResumeRef.current = onResumeRefresh;
+
+  const { setRawMode } = useStdin();
+
   // Repo selection in preview (r key cycles)
   const defaultRepoIdx = defaultRepoName
     ? Math.max(
@@ -45,36 +71,82 @@ function NlCreateOverlay({
       )
     : 0;
   const [repoIdx, setRepoIdx] = useState(defaultRepoIdx);
-
   const selectedRepo = repos[repoIdx];
 
   useInput((inputChar, key) => {
-    if (isParsing) return;
+    if (isParsing || editingBody) return;
 
     if (key.escape) {
+      if (step === "body") {
+        // Esc from body step goes back to preview
+        setStep("input");
+        setParsed((p) => p); // keep parsed
+        return;
+      }
       onCancel();
       return;
     }
 
     // Preview mode controls
-    if (parsed) {
+    if (parsed && step === "input") {
       if (key.return) {
-        if (submittedRef.current) return;
-        submittedRef.current = true;
-        if (!selectedRepo) return;
-
-        setCreateError(null);
-        const labels = buildLabelList(parsed);
-        onSubmit(selectedRepo.name, parsed.title, labels.length > 0 ? labels : undefined);
+        // Advance to body step
+        setStep("body");
         return;
       }
-
       if (inputChar === "r") {
         setRepoIdx((i) => (i + 1) % repos.length);
         return;
       }
     }
+
+    // Body step: ctrl+e opens $EDITOR
+    if (step === "body" && inputChar === "\x05") {
+      setEditingBody(true);
+    }
   });
+
+  // Launch $EDITOR for body input
+  useEffect(() => {
+    if (!editingBody) return;
+
+    const editorEnv = process.env["VISUAL"] ?? process.env["EDITOR"] ?? "vi";
+    const [cmd, ...extraArgs] = editorEnv.split(" ").filter(Boolean);
+    if (!cmd) {
+      setEditingBody(false);
+      return;
+    }
+
+    let tmpDir: string | null = null;
+    let tmpFile: string | null = null;
+
+    try {
+      onPauseRef.current?.();
+      tmpDir = mkdtempSync(join(tmpdir(), "hog-body-"));
+      tmpFile = join(tmpDir, "body.md");
+      writeFileSync(tmpFile, body);
+
+      const inkInstance = getInkInstance();
+      inkInstance?.clear();
+      setRawMode(false);
+
+      spawnSync(cmd, [...extraArgs, tmpFile], { stdio: "inherit" });
+
+      const content = readFileSync(tmpFile, "utf-8");
+      setRawMode(true);
+      setBody(content.trimEnd());
+    } finally {
+      onResumeRef.current?.();
+      if (tmpFile) {
+        try {
+          rmSync(tmpDir!, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+      setEditingBody(false);
+    }
+  }, [editingBody, body, setRawMode]);
 
   // Parse on Enter from TextInput — capture context at submit time to avoid double-fire
   const handleInputSubmit = useCallback(
@@ -106,7 +178,6 @@ function NlCreateOverlay({
           setIsParsing(false);
           return;
         }
-        // Filter labels against allowlist (prevents invalid gh --label calls)
         const filteredLabels =
           validLabels.length > 0
             ? result.labels.filter((l) => validLabels.includes(l))
@@ -128,6 +199,52 @@ function NlCreateOverlay({
           ✨ Creating Issue
         </Text>
         <Spinner label="Parsing..." />
+      </Box>
+    );
+  }
+
+  // ── Body step ──
+  if (parsed && step === "body") {
+    if (editingBody) {
+      return (
+        <Box flexDirection="column">
+          <Text color="cyan" bold>
+            ✨ Creating Issue
+          </Text>
+          <Text color="cyan">Opening editor for body…</Text>
+        </Box>
+      );
+    }
+    return (
+      <Box flexDirection="column">
+        <Text color="cyan" bold>
+          ✨ Creating Issue
+        </Text>
+        <Box>
+          <Text dimColor>Title: </Text>
+          <Text>{parsed.title}</Text>
+        </Box>
+        <Box>
+          <Text color="cyan">body: </Text>
+          <TextInput
+            defaultValue={body}
+            placeholder="optional description (ctrl+e for editor)"
+            onChange={setBody}
+            onSubmit={(text) => {
+              if (submittedRef.current) return;
+              submittedRef.current = true;
+              if (!selectedRepo) return;
+              const labels = buildLabelList(parsed);
+              onSubmitRef.current(
+                selectedRepo.name,
+                parsed.title,
+                text.trim(),
+                labels.length > 0 ? labels : undefined,
+              );
+            }}
+          />
+        </Box>
+        <Text dimColor>Enter:create ctrl+e:editor Esc:back</Text>
       </Box>
     );
   }
@@ -172,8 +289,7 @@ function NlCreateOverlay({
             ⚠ No due:* label in this repo — will try to create label on submit
           </Text>
         ) : null}
-        {createError ? <Text color="red">{createError}</Text> : null}
-        <Text dimColor>Enter:create Esc:cancel</Text>
+        <Text dimColor>Enter:add body Esc:cancel</Text>
       </Box>
     );
   }

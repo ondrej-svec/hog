@@ -8,7 +8,7 @@ import { LabelPicker } from "./label-picker.js";
 interface CreateIssueFormProps {
   readonly repos: RepoConfig[];
   readonly defaultRepo: string | null;
-  readonly onSubmit: (repo: string, title: string, labels?: string[]) => void;
+  readonly onSubmit: (repo: string, title: string, body: string, labels?: string[]) => void;
   readonly onCancel: () => void;
   /** Session-level label cache — passed from dashboard so it persists across form open/close */
   readonly labelCache?: Record<string, LabelOption[]>;
@@ -67,15 +67,15 @@ function CreateIssueForm({
           currentLabels={[]}
           labelCache={labelCache ?? {}}
           onConfirm={(addLabels) => {
-            onSubmit(selectedRepo.name, title, addLabels.length > 0 ? addLabels : undefined);
+            onSubmit(selectedRepo.name, title, "", addLabels.length > 0 ? addLabels : undefined);
           }}
           onCancel={() => {
             // Esc skips labels and submits without them
-            onSubmit(selectedRepo.name, title);
+            onSubmit(selectedRepo.name, title, "");
           }}
           onError={() => {
             // On fetch error, skip labels and submit
-            onSubmit(selectedRepo.name, title);
+            onSubmit(selectedRepo.name, title, "");
           }}
         />
       </Box>
@@ -119,7 +119,7 @@ function CreateIssueForm({
                 setTitle(trimmed);
                 setField("labels");
               } else {
-                onSubmit(selectedRepo.name, trimmed);
+                onSubmit(selectedRepo.name, trimmed, "");
               }
             }}
           />
