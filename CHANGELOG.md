@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/ondrej-svec/hog/compare/hog-v1.6.0...hog-v1.6.1) (2026-02-18)
+
+
+### Bug Fixes
+
+* **board:** don't refresh after successful status change ([d6cc905](https://github.com/ondrej-svec/hog/commit/d6cc905c35263316c0f77c5909286539aab2f6e0))
+
 ## [1.6.0](https://github.com/ondrej-svec/hog/compare/hog-v1.5.0...hog-v1.6.0) (2026-02-18)
 
 
