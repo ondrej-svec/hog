@@ -385,6 +385,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     autoRefreshPaused,
     refresh,
     mutateData,
+    pauseAutoRefresh,
+    resumeAutoRefresh,
   } = useData(config, options, refreshMs);
 
   // Stable empty arrays to avoid new references when data is null
@@ -871,6 +873,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onSearchSubmit={ui.exitOverlay}
         selectedIssue={selectedItem.issue}
         onComment={actions.handleComment}
+        onPauseRefresh={pauseAutoRefresh}
+        onResumeRefresh={resumeAutoRefresh}
         onToggleHelp={ui.toggleHelp}
         labelCache={labelCacheRef.current}
         onLabelConfirm={actions.handleLabelChange}

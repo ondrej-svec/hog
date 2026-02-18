@@ -43,6 +43,8 @@ export interface OverlayRendererProps {
   // Comment
   readonly selectedIssue: GitHubIssue | null;
   readonly onComment: (body: string) => void;
+  readonly onPauseRefresh: () => void;
+  readonly onResumeRefresh: () => void;
   // Help
   readonly onToggleHelp: () => void;
   // Label picker
@@ -77,6 +79,8 @@ function OverlayRenderer({
   onSearchSubmit,
   selectedIssue,
   onComment,
+  onPauseRefresh,
+  onResumeRefresh,
   onToggleHelp,
   labelCache,
   onLabelConfirm,
@@ -169,6 +173,8 @@ function OverlayRenderer({
           issueNumber={selectedIssue.number}
           onSubmit={onComment}
           onCancel={onExitOverlay}
+          onPauseRefresh={onPauseRefresh}
+          onResumeRefresh={onResumeRefresh}
         />
       ) : null}
     </>
