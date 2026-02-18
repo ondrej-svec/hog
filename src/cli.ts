@@ -12,13 +12,16 @@ import { extractIssueFields, hasLlmApiKey } from "./ai.js";
 import { TickTickClient } from "./api.js";
 import type { CompletionAction, RepoConfig } from "./config.js";
 import {
+  clearLlmAuth,
   findRepo,
   getConfig,
+  getLlmAuth,
   loadFullConfig,
   requireAuth,
   resolveProfile,
   saveConfig,
   saveFullConfig,
+  saveLlmAuth,
   validateRepoName,
 } from "./config.js";
 import { runInit } from "./init.js";
@@ -556,6 +559,81 @@ config
       jsonOut({ ok: true, message: "TickTick disabled" });
     } else {
       printSuccess("TickTick integration disabled. Board will no longer show TickTick tasks.");
+    }
+  });
+
+config
+  .command("ai:set-key <key>")
+  .description("Store an OpenRouter API key for AI-enhanced issue creation (I key on board)")
+  .action((key: string) => {
+    if (!key.startsWith("sk-or-")) {
+      console.error('Error: key must start with "sk-or-". Get one at https://openrouter.ai/keys');
+      process.exit(1);
+    }
+    saveLlmAuth(key);
+    if (useJson()) {
+      jsonOut({ ok: true, message: "OpenRouter key saved" });
+    } else {
+      printSuccess("OpenRouter key saved to ~/.config/hog/auth.json");
+      console.log("  Press I on the board to create issues with natural language.");
+    }
+  });
+
+config
+  .command("ai:clear-key")
+  .description("Remove the stored OpenRouter API key")
+  .action(() => {
+    const existing = getLlmAuth();
+    if (!existing) {
+      if (useJson()) {
+        jsonOut({ ok: true, message: "No key was stored" });
+      } else {
+        console.log("No OpenRouter key stored.");
+      }
+      return;
+    }
+    clearLlmAuth();
+    if (useJson()) {
+      jsonOut({ ok: true, message: "OpenRouter key removed" });
+    } else {
+      printSuccess("OpenRouter key removed from ~/.config/hog/auth.json");
+    }
+  });
+
+config
+  .command("ai:status")
+  .description("Show whether AI-enhanced issue creation is available and which source provides it")
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential if/else for display only
+  .action(() => {
+    const envOr = process.env["OPENROUTER_API_KEY"];
+    const envAnt = process.env["ANTHROPIC_API_KEY"];
+    const stored = getLlmAuth();
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          active: !!(envOr ?? envAnt ?? stored),
+          source: envOr
+            ? "env:OPENROUTER_API_KEY"
+            : envAnt
+              ? "env:ANTHROPIC_API_KEY"
+              : stored
+                ? "config:auth.json"
+                : null,
+          provider: envOr ? "openrouter" : envAnt ? "anthropic" : stored ? "openrouter" : null,
+        },
+      });
+    } else if (envOr) {
+      console.log("AI: active (source: OPENROUTER_API_KEY env var, provider: openrouter)");
+    } else if (envAnt) {
+      console.log("AI: active (source: ANTHROPIC_API_KEY env var, provider: anthropic)");
+    } else if (stored) {
+      console.log("AI: active (source: ~/.config/hog/auth.json, provider: openrouter)");
+    } else {
+      console.log("AI: off — heuristic-only mode");
+      console.log("  Enable with: hog config ai:set-key <sk-or-...>");
+      console.log("  Or set env:  export OPENROUTER_API_KEY=sk-or-...");
     }
   });
 

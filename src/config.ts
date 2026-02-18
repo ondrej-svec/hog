@@ -11,6 +11,7 @@ interface AuthData {
   accessToken: string;
   clientId: string;
   clientSecret: string;
+  openrouterApiKey?: string;
 }
 
 // ── Config Schema (Zod) ──
@@ -200,6 +201,27 @@ export function saveAuth(data: AuthData): void {
   writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, {
     mode: 0o600,
   });
+}
+
+export function getLlmAuth(): { provider: "openrouter"; apiKey: string } | null {
+  const auth = getAuth();
+  if (auth?.openrouterApiKey) return { provider: "openrouter", apiKey: auth.openrouterApiKey };
+  return null;
+}
+
+export function saveLlmAuth(openrouterApiKey: string): void {
+  const existing = getAuth();
+  const updated: AuthData = existing
+    ? { ...existing, openrouterApiKey }
+    : { accessToken: "", clientId: "", clientSecret: "", openrouterApiKey };
+  saveAuth(updated);
+}
+
+export function clearLlmAuth(): void {
+  const existing = getAuth();
+  if (!existing) return;
+  const { openrouterApiKey: _, ...rest } = existing;
+  saveAuth(rest as AuthData);
 }
 
 export function getConfig(): ConfigData {

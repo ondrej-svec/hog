@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
-import { CONFIG_DIR, loadFullConfig, saveFullConfig } from "./config.js";
+import { CONFIG_DIR, loadFullConfig, saveFullConfig, saveLlmAuth } from "./config.js";
 
 // ── gh CLI helpers ──
 
@@ -318,7 +318,31 @@ async function runWizard(opts: InitOptions): Promise<void> {
     default: "1500",
   });
 
-  // Step 8: Build and write config
+  // Step 8: AI / LLM key (optional)
+  console.log("\nAI-enhanced issue creation (optional):");
+  console.log(
+    '  Press I on the board to create issues with natural language (e.g. "fix login bug #backend @alice due friday").',
+  );
+  console.log("  Without a key the heuristic parser still works — labels, assignee, and due dates");
+  console.log("  are extracted from #, @, and due tokens. An OpenRouter key enables richer title");
+  console.log("  cleanup and inference for ambiguous input.");
+  const setupLlm = await confirm({
+    message: "  Set up an OpenRouter API key now?",
+    default: false,
+  });
+  if (setupLlm) {
+    console.log("  Get a free key at https://openrouter.ai/keys");
+    const llmKey = await input({
+      message: "  OpenRouter API key:",
+      validate: (v) => (v.trim().startsWith("sk-or-") ? true : 'Key must start with "sk-or-"'),
+    });
+    saveLlmAuth(llmKey.trim());
+    console.log("  OpenRouter key saved to ~/.config/hog/auth.json");
+  } else {
+    console.log("  Skipped. You can add it later: hog config ai:set-key");
+  }
+
+  // Step 9: Build and write config
   const existingConfig = configExists ? loadFullConfig() : undefined;
   const config: HogConfig = {
     version: 3,

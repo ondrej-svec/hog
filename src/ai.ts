@@ -8,7 +8,11 @@
  *
  * The merge strategy: heuristic wins on explicitly-marked tokens (#, @, due);
  * LLM wins only on ambiguous title cleanup.
+ *  3. Stored key fallback — when no env var is set, reads openrouterApiKey from auth.json
+ *     (stored via `hog init` or `hog config ai:set-key`).
  */
+
+import { getLlmAuth } from "./config.js";
 
 export interface ParsedIssue {
   title: string;
@@ -91,7 +95,8 @@ function detectProvider(): { provider: "openrouter" | "anthropic"; apiKey: strin
   if (orKey) return { provider: "openrouter", apiKey: orKey };
   const antKey = process.env["ANTHROPIC_API_KEY"];
   if (antKey) return { provider: "anthropic", apiKey: antKey };
-  return null;
+  // Fall back to key stored via `hog init` / `hog config ai:set-key`
+  return getLlmAuth();
 }
 
 async function callLLM(
