@@ -464,7 +464,7 @@ describe("useActions hook", () => {
 
       expect(mockExecFile).toHaveBeenCalledWith(
         "gh",
-        ["issue", "create", "--repo", "owner/repo", "--title", "New bug report"],
+        ["issue", "create", "--repo", "owner/repo", "--title", "New bug report", "--body", ""],
         expect.any(Object),
       );
 
@@ -503,6 +503,8 @@ describe("useActions hook", () => {
           "owner/repo",
           "--title",
           "Bug",
+          "--body",
+          "",
           "--label",
           "bug",
           "--label",

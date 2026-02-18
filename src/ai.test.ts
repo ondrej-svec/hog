@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { extractIssueFields, hasLlmApiKey, parseHeuristic } from "./ai.js";
+
+vi.mock("./config.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./config.js")>();
+  return { ...actual, getLlmAuth: () => null };
+});
 
 describe("parseHeuristic", () => {
   it("returns null when title is empty after stripping tokens", async () => {

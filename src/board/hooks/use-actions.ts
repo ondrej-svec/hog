@@ -325,7 +325,7 @@ export function useActions({
       title: string,
       labels?: string[],
     ): Promise<{ repo: string; issueNumber: number } | null> => {
-      const args = ["issue", "create", "--repo", repo, "--title", title];
+      const args = ["issue", "create", "--repo", repo, "--title", title, "--body", ""];
       if (labels && labels.length > 0) {
         for (const label of labels) {
           args.push("--label", label);

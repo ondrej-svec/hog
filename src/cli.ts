@@ -785,7 +785,7 @@ issueCommand
       return;
     }
 
-    const args = ["issue", "create", "--repo", repo, "--title", parsed.title];
+    const args = ["issue", "create", "--repo", repo, "--title", parsed.title, "--body", ""];
     for (const label of labels) {
       args.push("--label", label);
     }
