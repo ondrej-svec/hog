@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/ondrej-svec/hog/compare/hog-v1.5.0...hog-v1.6.0) (2026-02-18)
+
+
+### Features
+
+* **board:** due date via GitHub Projects v2 date field with body fallback ([a41dbad](https://github.com/ondrej-svec/hog/commit/a41dbad3f1865ef814aa0aee66ebc82170b80a8b))
+
 ## [1.5.0](https://github.com/ondrej-svec/hog/compare/hog-v1.4.0...hog-v1.5.0) (2026-02-18)
 
 
