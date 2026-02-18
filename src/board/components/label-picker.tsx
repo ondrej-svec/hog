@@ -24,26 +24,37 @@ function LabelPicker({
 }: LabelPickerProps) {
   const [labels, setLabels] = useState<LabelOption[] | null>(labelCache[repo] ?? null);
   const [loading, setLoading] = useState(labels === null);
+  const [fetchAttempted, setFetchAttempted] = useState(false);
   // Selected label names (start with current labels pre-selected)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set(currentLabels));
   const [cursor, setCursor] = useState(0);
   const submittedRef = useRef(false);
 
-  // Fetch labels lazily on mount if not cached
+  // Fetch labels lazily on mount if not cached.
+  // `fetchAttempted` guards against re-firing on error (labels stays null on error,
+  // so removing `labels` from deps and using this flag breaks the infinite loop).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `labels` intentionally omitted — fetchAttempted flag prevents the infinite re-fetch loop that occurs when labels stays null after an error
   useEffect(() => {
-    if (labels !== null) return;
+    if (labels !== null || fetchAttempted) return;
+    setFetchAttempted(true);
     setLoading(true);
+    let canceled = false;
     fetchRepoLabelsAsync(repo)
       .then((fetched) => {
+        if (canceled) return;
         labelCache[repo] = fetched;
         setLabels(fetched);
         setLoading(false);
       })
       .catch(() => {
+        if (canceled) return;
         setLoading(false);
         onError(`Could not fetch labels for ${repo}`);
       });
-  }, [repo, labels, labelCache, onError]);
+    return () => {
+      canceled = true;
+    };
+  }, [repo, fetchAttempted, labelCache, onError]);
 
   useInput((input, key) => {
     if (loading) return;

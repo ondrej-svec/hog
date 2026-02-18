@@ -782,7 +782,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     nav,
     multiSelect,
     selectedIssue: selectedItem.issue,
-    selectedRepoName: selectedItem.repoName,
     selectedRepoStatusOptionsLength: selectedRepoStatusOptions.length,
     actions: {
       exit,
@@ -879,8 +878,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         labelCache={labelCacheRef.current}
         onLabelConfirm={actions.handleLabelChange}
         onLabelError={(msg) => toast.error(msg)}
-        onNlCreateSubmit={handleCreateIssueWithPrompt}
-        onNlCreateCancel={ui.exitOverlay}
         onLlmFallback={(msg) => toast.info(msg)}
       />
 

@@ -98,14 +98,13 @@ async function callLLM(
   userText: string,
   validLabels: string[],
   today: Date,
+  providerConfig: { provider: "openrouter" | "anthropic"; apiKey: string },
 ): Promise<LLMResult | null> {
-  const providerConfig = detectProvider();
-  if (!providerConfig) return null;
-
   const { provider, apiKey } = providerConfig;
   const todayStr = today.toISOString().slice(0, 10);
   const systemPrompt = `Extract GitHub issue fields. Today is ${todayStr}. Return JSON with: title (string), labels (string[]), due_date (YYYY-MM-DD or null), assignee (string or null).`;
-  const userContent = `<input>${userText}</input>\n<valid_labels>${validLabels.join(",")}</valid_labels>`;
+  const escapedText = userText.replace(/<\/input>/gi, "< /input>");
+  const userContent = `<input>${escapedText}</input>\n<valid_labels>${validLabels.join(",")}</valid_labels>`;
 
   const jsonSchema = {
     name: "issue",
@@ -169,14 +168,18 @@ async function callLLM(
 
     let raw: unknown;
     if (provider === "openrouter") {
-      const choices = json["choices"] as { message?: { content?: string } }[] | undefined;
-      const content = choices?.[0]?.message?.content;
+      const choicesRaw = json["choices"];
+      if (!Array.isArray(choicesRaw)) return null;
+      const firstChoice = choicesRaw[0] as { message?: { content?: string } } | undefined;
+      const content = firstChoice?.message?.content;
       if (!content) return null;
       raw = JSON.parse(content);
     } else {
       // Anthropic: content[0].text
-      const content = json["content"] as { type: string; text?: string }[] | undefined;
-      const text = content?.[0]?.text;
+      const contentRaw = json["content"];
+      if (!Array.isArray(contentRaw)) return null;
+      const firstItem = contentRaw[0] as { type: string; text?: string } | undefined;
+      const text = firstItem?.text;
       if (!text) return null;
       raw = JSON.parse(text);
     }
@@ -184,12 +187,15 @@ async function callLLM(
     if (!raw || typeof raw !== "object") return null;
     const r = raw as Record<string, unknown>;
 
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
     return {
       title: typeof r["title"] === "string" ? r["title"] : "",
       labels: Array.isArray(r["labels"])
         ? (r["labels"] as unknown[]).filter((l): l is string => typeof l === "string")
         : [],
-      due_date: typeof r["due_date"] === "string" ? r["due_date"] : null,
+      due_date:
+        typeof r["due_date"] === "string" && ISO_DATE_RE.test(r["due_date"]) ? r["due_date"] : null,
       assignee: typeof r["assignee"] === "string" ? r["assignee"] : null,
     };
   } catch {
@@ -224,7 +230,7 @@ export async function extractIssueFields(
   const providerConfig = detectProvider();
   if (!providerConfig) return heuristic;
 
-  const llmResult = await callLLM(input, options.validLabels ?? [], today);
+  const llmResult = await callLLM(input, options.validLabels ?? [], today, providerConfig);
   if (!llmResult) {
     options.onLlmFallback?.("AI parsing unavailable, used keyword matching");
     return heuristic;

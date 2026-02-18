@@ -52,9 +52,6 @@ export interface OverlayRendererProps {
   readonly labelCache: Record<string, LabelOption[]>;
   readonly onLabelConfirm: (addLabels: string[], removeLabels: string[]) => void;
   readonly onLabelError: (msg: string) => void;
-  // NL create overlay
-  readonly onNlCreateSubmit: (repo: string, title: string, labels?: string[]) => void;
-  readonly onNlCreateCancel: () => void;
   readonly onLlmFallback?: ((msg: string) => void) | undefined;
 }
 
@@ -88,8 +85,6 @@ function OverlayRenderer({
   labelCache,
   onLabelConfirm,
   onLabelError,
-  onNlCreateSubmit,
-  onNlCreateCancel,
   onLlmFallback,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
@@ -151,9 +146,9 @@ function OverlayRenderer({
       ) : null}
 
       {/* Label picker overlay */}
-      {mode === "overlay:label" && selectedIssue ? (
+      {mode === "overlay:label" && selectedIssue && defaultRepo ? (
         <LabelPicker
-          repo={defaultRepo ?? ""}
+          repo={defaultRepo}
           currentLabels={selectedIssue.labels.map((l) => l.name)}
           labelCache={labelCache}
           onConfirm={onLabelConfirm}
@@ -184,8 +179,8 @@ function OverlayRenderer({
           repos={config.repos}
           defaultRepoName={defaultRepo}
           labelCache={labelCache}
-          onSubmit={onNlCreateSubmit}
-          onCancel={onNlCreateCancel}
+          onSubmit={onCreateIssue}
+          onCancel={onExitOverlay}
           onLlmFallback={onLlmFallback}
         />
       ) : null}

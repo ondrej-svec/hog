@@ -37,7 +37,6 @@ interface UseKeyboardOptions {
   >;
   multiSelect: Pick<UseMultiSelectResult, "count" | "toggle" | "clear">;
   selectedIssue: GitHubIssue | null;
-  selectedRepoName: string | null;
   selectedRepoStatusOptionsLength: number;
   actions: KeyboardActions;
   onSearchEscape: () => void;
@@ -53,7 +52,6 @@ export function useKeyboard({
   nav,
   multiSelect,
   selectedIssue,
-  selectedRepoName,
   selectedRepoStatusOptionsLength,
   actions,
   onSearchEscape,
@@ -74,7 +72,6 @@ export function useKeyboard({
     toastInfo,
   } = actions;
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard handler with many shortcuts
   const handleInput = useCallback(
     (
       input: string,
@@ -86,6 +83,7 @@ export function useKeyboard({
         return: boolean;
         escape: boolean;
       },
+      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard handler with many shortcuts
     ) => {
       // Help toggle works in any state
       if (input === "?") {
@@ -268,7 +266,6 @@ export function useKeyboard({
       handleEnterLabel,
       handleEnterCreateNl,
       selectedIssue,
-      selectedRepoName,
       selectedRepoStatusOptionsLength,
       toastInfo,
       nav.selectedId,

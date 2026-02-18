@@ -23,12 +23,19 @@ function NlCreateOverlay({
   onCancel,
   onLlmFallback,
 }: NlCreateOverlayProps) {
-  const [input, setInput] = useState("");
+  const [, setInput] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [parsed, setParsed] = useState<ParsedIssue | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  // Guard against double-submit. Safe because the parent (dashboard) always calls
+  // onOverlayDone() → ui.exitOverlay() after onSubmit, unmounting this component
+  // on both success and failure paths.
   const submittedRef = useRef(false);
+  const parseParamsRef = useRef<{
+    input: string;
+    validLabels: string[];
+  } | null>(null);
 
   // Repo selection in preview (r key cycles)
   const defaultRepoIdx = defaultRepoName
@@ -69,24 +76,27 @@ function NlCreateOverlay({
     }
   });
 
-  // Parse on Enter from TextInput (fires after isParsing = true, TextInput unmounts)
-  const handleInputSubmit = useCallback((text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    setInput(trimmed);
-    setParseError(null);
-    setIsParsing(true);
-  }, []);
+  // Parse on Enter from TextInput — capture context at submit time to avoid double-fire
+  const handleInputSubmit = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const validLabels = selectedRepo
+        ? (labelCache[selectedRepo.name] ?? []).map((l) => l.name)
+        : [];
+      parseParamsRef.current = { input: trimmed, validLabels };
+      setInput(trimmed);
+      setParseError(null);
+      setIsParsing(true);
+    },
+    [selectedRepo, labelCache],
+  );
 
   useEffect(() => {
-    if (!isParsing) return;
+    if (!(isParsing && parseParamsRef.current)) return;
+    const { input: capturedInput, validLabels } = parseParamsRef.current;
 
-    const validLabels = selectedRepo
-      ? (labelCache[selectedRepo.name] ?? []).map((l) => l.name)
-      : [];
-
-    extractIssueFields(input, {
+    extractIssueFields(capturedInput, {
       validLabels,
       onLlmFallback: onLlmFallback,
     })
@@ -96,14 +106,19 @@ function NlCreateOverlay({
           setIsParsing(false);
           return;
         }
-        setParsed(result);
+        // Filter labels against allowlist (prevents invalid gh --label calls)
+        const filteredLabels =
+          validLabels.length > 0
+            ? result.labels.filter((l) => validLabels.includes(l))
+            : result.labels;
+        setParsed({ ...result, labels: filteredLabels });
         setIsParsing(false);
       })
       .catch(() => {
         setParseError("Parsing failed — please try again");
         setIsParsing(false);
       });
-  }, [isParsing, input, selectedRepo, labelCache, onLlmFallback]);
+  }, [isParsing, onLlmFallback]);
 
   // ── Spinner view ──
   if (isParsing) {
@@ -152,6 +167,11 @@ function NlCreateOverlay({
             <Text>{formatDue(parsed.dueDate)}</Text>
           </Box>
         ) : null}
+        {parsed.dueDate && selectedRepo && !hasDueLabelInCache(labelCache, selectedRepo.name) ? (
+          <Text color="yellow">
+            ⚠ No due:* label in this repo — will try to create label on submit
+          </Text>
+        ) : null}
         {createError ? <Text color="red">{createError}</Text> : null}
         <Text dimColor>Enter:create Esc:cancel</Text>
       </Box>
@@ -187,27 +207,16 @@ function buildLabelList(parsed: ParsedIssue): string[] {
   return labels;
 }
 
-/** Format YYYY-MM-DD as "Mon Feb 20 (label: due:2026-02-20)". */
+/** Check whether any due:* label exists in the cache for the given repo. */
+function hasDueLabelInCache(labelCache: Record<string, LabelOption[]>, repoName: string): boolean {
+  return (labelCache[repoName] ?? []).some((l) => l.name.startsWith("due:"));
+}
+
+/** Format YYYY-MM-DD as "Wed Feb 18 (label: due:2026-02-18)". */
 function formatDue(dueDate: string): string {
   const d = new Date(`${dueDate}T12:00:00`);
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monNames = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
-  const day = dayNames[d.getDay()] ?? "";
-  const mon = monNames[d.getMonth()] ?? "";
-  return `${day} ${mon} ${d.getDate()} (label: due:${dueDate})`;
+  const human = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  return `${human} (label: due:${dueDate})`;
 }
 
 export { NlCreateOverlay };
