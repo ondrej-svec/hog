@@ -1,8 +1,8 @@
 import { render } from "ink";
 import type { HogConfig } from "../config.js";
-import { setInkInstance } from "./ink-instance.js";
 import { Dashboard } from "./components/dashboard.js";
 import type { FetchOptions } from "./fetch.js";
+import { setInkInstance } from "./ink-instance.js";
 
 export async function runLiveDashboard(
   config: HogConfig,

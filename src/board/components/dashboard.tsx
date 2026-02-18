@@ -1,8 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useStdout } from "ink";
-import { getClipboardArgs } from "../../clipboard.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { Task } from "../../types.js";
@@ -879,13 +879,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         labelCache={labelCacheRef.current}
         onLabelConfirm={actions.handleLabelChange}
         onLabelError={(msg) => toast.error(msg)}
+        onNlCreateSubmit={handleCreateIssueWithPrompt}
         onNlCreateCancel={ui.exitOverlay}
+        onLlmFallback={(msg) => toast.info(msg)}
       />
 
       {/* Main content: scrollable list + optional detail panel (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
       ui.state.mode !== "overlay:create" &&
+      ui.state.mode !== "overlay:createNl" &&
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "focus" ? (

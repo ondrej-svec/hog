@@ -10,6 +10,7 @@ import type { FocusEndAction } from "./focus-mode.js";
 import { FocusMode } from "./focus-mode.js";
 import { HelpOverlay } from "./help-overlay.js";
 import { LabelPicker } from "./label-picker.js";
+import { NlCreateOverlay } from "./nl-create-overlay.js";
 import { SearchBar } from "./search-bar.js";
 import { StatusPicker } from "./status-picker.js";
 
@@ -51,8 +52,10 @@ export interface OverlayRendererProps {
   readonly labelCache: Record<string, LabelOption[]>;
   readonly onLabelConfirm: (addLabels: string[], removeLabels: string[]) => void;
   readonly onLabelError: (msg: string) => void;
-  // NL create overlay (placeholder — implemented in Phase 4)
+  // NL create overlay
+  readonly onNlCreateSubmit: (repo: string, title: string, labels?: string[]) => void;
   readonly onNlCreateCancel: () => void;
+  readonly onLlmFallback?: ((msg: string) => void) | undefined;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -85,15 +88,16 @@ function OverlayRenderer({
   labelCache,
   onLabelConfirm,
   onLabelError,
+  onNlCreateSubmit,
+  onNlCreateCancel,
+  onLlmFallback,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
   return (
     <>
       {/* Help overlay (stacks on top of any mode) */}
-      {helpVisible ? (
-        <HelpOverlay currentMode={mode} onClose={onToggleHelp} />
-      ) : null}
+      {helpVisible ? <HelpOverlay currentMode={mode} onClose={onToggleHelp} /> : null}
 
       {/* Status picker overlay */}
       {mode === "overlay:status" && selectedRepoStatusOptions.length > 0 ? (
@@ -160,11 +164,7 @@ function OverlayRenderer({
 
       {/* Search bar */}
       {mode === "search" ? (
-        <SearchBar
-          defaultValue={searchQuery}
-          onChange={onSearchChange}
-          onSubmit={onSearchSubmit}
-        />
+        <SearchBar defaultValue={searchQuery} onChange={onSearchChange} onSubmit={onSearchSubmit} />
       ) : null}
 
       {/* Comment input */}
@@ -175,6 +175,18 @@ function OverlayRenderer({
           onCancel={onExitOverlay}
           onPauseRefresh={onPauseRefresh}
           onResumeRefresh={onResumeRefresh}
+        />
+      ) : null}
+
+      {/* NL create overlay */}
+      {mode === "overlay:createNl" ? (
+        <NlCreateOverlay
+          repos={config.repos}
+          defaultRepoName={defaultRepo}
+          labelCache={labelCache}
+          onSubmit={onNlCreateSubmit}
+          onCancel={onNlCreateCancel}
+          onLlmFallback={onLlmFallback}
         />
       ) : null}
     </>
