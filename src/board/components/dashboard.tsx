@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
 import type { GitHubIssue, StatusOption } from "../../github.js";
@@ -8,24 +8,18 @@ import type { Task } from "../../types.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActions } from "../hooks/use-actions.js";
 import { refreshAgeColor, useData } from "../hooks/use-data.js";
+import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
-import { BulkActionMenu } from "./bulk-action-menu.js";
-import { CommentInput } from "./comment-input.js";
-import { ConfirmPrompt } from "./confirm-prompt.js";
-import { CreateIssueForm } from "./create-issue-form.js";
 import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
-import { FocusMode } from "./focus-mode.js";
-import { HelpOverlay } from "./help-overlay.js";
-import { IssueRow } from "./issue-row.js";
-import { SearchBar } from "./search-bar.js";
-import { StatusPicker } from "./status-picker.js";
-import { TaskRow } from "./task-row.js";
+import { OverlayRenderer } from "./overlay-renderer.js";
+import type { FlatRow } from "./row-renderer.js";
+import { RowRenderer } from "./row-renderer.js";
 import { ToastContainer } from "./toast-container.js";
 
 // ── Types ──
@@ -35,30 +29,6 @@ interface DashboardProps {
   readonly options: FetchOptions;
   readonly activeProfile?: string | null;
 }
-
-type FlatRow =
-  | {
-      type: "sectionHeader";
-      key: string;
-      navId: string;
-      label: string;
-      count: number;
-      countLabel: string;
-      isCollapsed: boolean;
-    }
-  | {
-      type: "subHeader";
-      key: string;
-      navId: string | null;
-      text: string;
-      count?: number;
-      isCollapsed?: boolean;
-    }
-  | { type: "issue"; key: string; navId: string; issue: GitHubIssue; repoName: string }
-  | { type: "task"; key: string; navId: string; task: Task }
-  | { type: "activity"; key: string; navId: null; event: ActivityEvent }
-  | { type: "error"; key: string; navId: null; text: string }
-  | { type: "gap"; key: string; navId: null };
 
 // ── Helpers ──
 
@@ -393,84 +363,6 @@ function findSelectedIssueWithRepo(
 
 function isHeaderId(id: string | null): boolean {
   return id != null && (id.startsWith("header:") || id.startsWith("sub:"));
-}
-
-// ── Row Renderer ──
-
-interface RowRendererProps {
-  readonly row: FlatRow;
-  readonly selectedId: string | null;
-  readonly selfLogin: string;
-  readonly isMultiSelected?: boolean | undefined;
-}
-
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: many row type variants
-function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: RowRendererProps) {
-  switch (row.type) {
-    case "sectionHeader": {
-      const arrow = row.isCollapsed ? "\u25B6" : "\u25BC";
-      const isSel = selectedId === row.navId;
-      return (
-        <Box>
-          <Text color={isSel ? "cyan" : "white"} bold>
-            {arrow} {row.label}
-          </Text>
-          <Text color="gray">
-            {" "}
-            ({row.count} {row.countLabel})
-          </Text>
-        </Box>
-      );
-    }
-    case "subHeader": {
-      if (row.navId) {
-        const arrow = row.isCollapsed ? "\u25B6" : "\u25BC";
-        const isSel = selectedId === row.navId;
-        return (
-          <Box>
-            <Text color={isSel ? "cyan" : "gray"}>
-              {"  "}
-              {arrow} {row.text}
-            </Text>
-            <Text color="gray"> ({row.count})</Text>
-          </Box>
-        );
-      }
-      return <Text color="gray"> {row.text}</Text>;
-    }
-    case "issue": {
-      const checkbox = isMultiSelected != null ? (isMultiSelected ? "\u2611 " : "\u2610 ") : "";
-      return (
-        <Box>
-          {checkbox ? <Text color={isMultiSelected ? "cyan" : "gray"}>{checkbox}</Text> : null}
-          <IssueRow issue={row.issue} selfLogin={selfLogin} isSelected={selectedId === row.navId} />
-        </Box>
-      );
-    }
-    case "task": {
-      const checkbox = isMultiSelected != null ? (isMultiSelected ? "\u2611 " : "\u2610 ") : "";
-      return (
-        <Box>
-          {checkbox ? <Text color={isMultiSelected ? "cyan" : "gray"}>{checkbox}</Text> : null}
-          <TaskRow task={row.task} isSelected={selectedId === row.navId} />
-        </Box>
-      );
-    }
-    case "activity": {
-      const ago = timeAgo(row.event.timestamp);
-      return (
-        <Text dimColor>
-          {"  "}
-          {ago}: <Text color="gray">@{row.event.actor}</Text> {row.event.summary}{" "}
-          <Text dimColor>({row.event.repoShortName})</Text>
-        </Text>
-      );
-    }
-    case "error":
-      return <Text color="red"> Error: {row.text}</Text>;
-    case "gap":
-      return <Text>{""}</Text>;
-  }
 }
 
 // ── Dashboard ──
@@ -859,214 +751,33 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     [multiSelect, actions, ui],
   );
 
-  // Main input handler — active in normal mode (and multiSelect/focus for nav)
-  const handleInput = useCallback(
-    (
-      input: string,
-      key: {
-        downArrow: boolean;
-        upArrow: boolean;
-        tab: boolean;
-        shift: boolean;
-        return: boolean;
-        escape: boolean;
-      },
-      // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard handler with many shortcuts
-    ) => {
-      // Help toggle works in any state
-      if (input === "?") {
-        ui.toggleHelp();
-        return;
-      }
+  // Keyboard input — all useInput handlers live in use-keyboard.ts
+  const onSearchEscape = useCallback(() => {
+    ui.exitOverlay();
+    setSearchQuery("");
+  }, [ui]);
 
-      // Escape: in multiSelect, clear selection and return to normal
-      // In focus mode, FocusMode component handles Escape
-      if (key.escape && ui.state.mode !== "focus") {
-        if (ui.state.mode === "multiSelect") {
-          multiSelect.clear();
-        }
-        ui.exitOverlay();
-        return;
-      }
-
-      // Navigation (works in normal, multiSelect, focus)
-      if (ui.canNavigate) {
-        if (input === "j" || key.downArrow) {
-          nav.moveDown();
-          return;
-        }
-        if (input === "k" || key.upArrow) {
-          nav.moveUp();
-          return;
-        }
-        if (key.tab) {
-          // Section jump clears selection (per spec: "changing repo section")
-          if (ui.state.mode === "multiSelect") {
-            multiSelect.clear();
-            ui.clearMultiSelect();
-          }
-          key.shift ? nav.prevSection() : nav.nextSection();
-          return;
-        }
-      }
-
-      // Multi-select mode actions
-      if (ui.state.mode === "multiSelect") {
-        // Space toggles selection on current item
-        if (input === " ") {
-          const id = nav.selectedId;
-          if (id && !isHeaderId(id)) {
-            multiSelect.toggle(id);
-            // If selection becomes empty, return to normal
-            // (checked after toggle, so we need to check the new state)
-          }
-          return;
-        }
-        // Enter opens bulk action menu when items are selected
-        if (key.return) {
-          if (multiSelect.count > 0) {
-            ui.enterBulkAction();
-          }
-          return;
-        }
-        // 'm' in multiSelect with selection opens status picker directly for bulk
-        if (input === "m" && multiSelect.count > 0) {
-          // We can't use the normal ENTER_STATUS transition from multiSelect,
-          // so we'll go through bulk action menu. But for UX convenience, let's
-          // handle it as a direct status picker.
-          // Actually the reducer only allows overlay:status from normal mode.
-          // Let's just open the bulk action menu instead.
-          ui.enterBulkAction();
-          return;
-        }
-        return; // No other actions in multiSelect mode
-      }
-
-      // Toast error actions (dismiss/retry) — work in normal mode
-      if (input === "d") {
-        if (handleErrorAction("dismiss")) return;
-      }
-      if (input === "r" && handleErrorAction("retry")) return;
-
-      // Actions (only in normal mode)
-      if (ui.canAct) {
-        if (input === "/") {
-          multiSelect.clear();
-          ui.enterSearch();
-          return;
-        }
-        if (input === "q") {
-          exit();
-          return;
-        }
-        if (input === "r" || input === "R") {
-          multiSelect.clear();
-          refresh();
-          return;
-        }
-        if (input === "s") {
-          handleSlack();
-          return;
-        }
-        if (input === "y") {
-          handleCopyLink();
-          return;
-        }
-        if (input === "p") {
-          actions.handlePick();
-          return;
-        }
-        if (input === "a") {
-          actions.handleAssign();
-          return;
-        }
-        if (input === "u") {
-          actions.handleUnassign();
-          return;
-        }
-        if (input === "c") {
-          if (selectedItem.issue) {
-            multiSelect.clear();
-            ui.enterComment();
-          }
-          return;
-        }
-        if (input === "m") {
-          if (selectedItem.issue && selectedRepoStatusOptions.length > 0) {
-            multiSelect.clear();
-            ui.enterStatus();
-          } else if (selectedItem.issue) {
-            toast.info("Issue not in a project board");
-          }
-          return;
-        }
-        if (input === "n") {
-          multiSelect.clear();
-          ui.enterCreate();
-          return;
-        }
-        if (input === "f") {
-          handleEnterFocus();
-          return;
-        }
-
-        // Space on an item: toggle selection + enter multiSelect mode
-        if (input === " ") {
-          const id = nav.selectedId;
-          if (id && !isHeaderId(id)) {
-            multiSelect.toggle(id);
-            ui.enterMultiSelect();
-          } else if (isHeaderId(nav.selectedId)) {
-            nav.toggleSection();
-          }
-          return;
-        }
-
-        if (key.return) {
-          if (isHeaderId(nav.selectedId)) {
-            nav.toggleSection();
-            return;
-          }
-          handleOpen();
-          return;
-        }
-      }
-    },
-    [
-      ui,
-      nav,
+  useKeyboard({
+    ui,
+    nav,
+    multiSelect,
+    selectedIssue: selectedItem.issue,
+    selectedRepoStatusOptionsLength: selectedRepoStatusOptions.length,
+    actions: {
       exit,
       refresh,
       handleSlack,
       handleCopyLink,
       handleOpen,
-      actions,
-      selectedItem.issue,
-      selectedRepoStatusOptions.length,
-      toast,
-      nav.selectedId,
-      multiSelect,
       handleEnterFocus,
+      handlePick: actions.handlePick,
+      handleAssign: actions.handleAssign,
+      handleUnassign: actions.handleUnassign,
       handleErrorAction,
-    ],
-  );
-
-  // Active when NOT in a text-input overlay
-  const inputActive =
-    ui.state.mode === "normal" || ui.state.mode === "multiSelect" || ui.state.mode === "focus";
-  useInput(handleInput, { isActive: inputActive });
-
-  // Search mode input handler
-  const handleSearchEscape = useCallback(
-    (_input: string, key: { escape: boolean }) => {
-      if (key.escape) {
-        ui.exitOverlay();
-        setSearchQuery("");
-      }
+      toastInfo: toast.info,
     },
-    [ui],
-  );
-  useInput(handleSearchEscape, { isActive: ui.state.mode === "search" });
+    onSearchEscape,
+  });
 
   // Loading state
   if (status === "loading" && !data) {
@@ -1115,60 +826,32 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
       {error ? <Text color="red">Error: {error}</Text> : null}
 
-      {/* Help overlay (stacks on top) */}
-      {ui.state.helpVisible ? (
-        <HelpOverlay currentMode={ui.state.mode} onClose={ui.toggleHelp} />
-      ) : null}
-
-      {/* Status picker overlay */}
-      {ui.state.mode === "overlay:status" && selectedRepoStatusOptions.length > 0 ? (
-        <StatusPicker
-          options={selectedRepoStatusOptions}
-          currentStatus={multiSelect.count > 0 ? undefined : selectedItem.issue?.projectStatus}
-          onSelect={multiSelect.count > 0 ? handleBulkStatusSelect : actions.handleStatusChange}
-          onCancel={ui.exitOverlay}
-        />
-      ) : null}
-
-      {/* Create issue form overlay */}
-      {ui.state.mode === "overlay:create" ? (
-        <CreateIssueForm
-          repos={config.repos}
-          defaultRepo={selectedItem.repoName}
-          onSubmit={handleCreateIssueWithPrompt}
-          onCancel={ui.exitOverlay}
-        />
-      ) : null}
-
-      {/* Confirm pick prompt (after issue create) */}
-      {ui.state.mode === "overlay:confirmPick" ? (
-        <ConfirmPrompt
-          message="Pick this issue?"
-          onConfirm={handleConfirmPick}
-          onCancel={handleCancelPick}
-        />
-      ) : null}
-
-      {/* Bulk action menu overlay */}
-      {ui.state.mode === "overlay:bulkAction" ? (
-        <BulkActionMenu
-          count={multiSelect.count}
-          selectionType={multiSelectType}
-          onSelect={handleBulkAction}
-          onCancel={ui.exitOverlay}
-        />
-      ) : null}
-
-      {/* Focus mode overlay */}
-      {ui.state.mode === "focus" && focusLabel ? (
-        <FocusMode
-          key={focusKey}
-          label={focusLabel}
-          durationSec={config.board.focusDuration ?? 1500}
-          onExit={handleFocusExit}
-          onEndAction={handleFocusEndAction}
-        />
-      ) : null}
+      {/* Overlays — rendered by OverlayRenderer */}
+      <OverlayRenderer
+        uiState={ui.state}
+        config={config}
+        selectedRepoStatusOptions={selectedRepoStatusOptions}
+        currentStatus={multiSelect.count > 0 ? undefined : selectedItem.issue?.projectStatus}
+        onStatusSelect={multiSelect.count > 0 ? handleBulkStatusSelect : actions.handleStatusChange}
+        onExitOverlay={ui.exitOverlay}
+        defaultRepo={selectedItem.repoName}
+        onCreateIssue={handleCreateIssueWithPrompt}
+        onConfirmPick={handleConfirmPick}
+        onCancelPick={handleCancelPick}
+        multiSelectCount={multiSelect.count}
+        multiSelectType={multiSelectType}
+        onBulkAction={handleBulkAction}
+        focusLabel={focusLabel}
+        focusKey={focusKey}
+        onFocusExit={handleFocusExit}
+        onFocusEndAction={handleFocusEndAction}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        onSearchSubmit={ui.exitOverlay}
+        selectedIssue={selectedItem.issue}
+        onComment={actions.handleComment}
+        onToggleHelp={ui.toggleHelp}
+      />
 
       {/* Main content: scrollable list + optional detail panel (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
@@ -1220,20 +903,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
             </Box>
           ) : null}
         </Box>
-      ) : null}
-
-      {/* Search bar */}
-      {ui.state.mode === "search" ? (
-        <SearchBar defaultValue={searchQuery} onChange={setSearchQuery} onSubmit={ui.exitOverlay} />
-      ) : null}
-
-      {/* Comment input */}
-      {ui.state.mode === "overlay:comment" && selectedItem.issue ? (
-        <CommentInput
-          issueNumber={selectedItem.issue.number}
-          onSubmit={actions.handleComment}
-          onCancel={ui.exitOverlay}
-        />
       ) : null}
 
       {/* Toast notifications */}
