@@ -1,7 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { TextInput } from "@inkjs/ui";
 import { Box, Text, useInput, useStdin } from "ink";
 import { useEffect, useRef, useState } from "react";

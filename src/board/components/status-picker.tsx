@@ -17,7 +17,13 @@ function isTerminal(name: string): boolean {
   return TERMINAL_STATUS_RE.test(name);
 }
 
-function StatusPicker({ options, currentStatus, onSelect, onCancel, showTerminalStatuses = true }: StatusPickerProps) {
+function StatusPicker({
+  options,
+  currentStatus,
+  onSelect,
+  onCancel,
+  showTerminalStatuses = true,
+}: StatusPickerProps) {
   const [selectedIdx, setSelectedIdx] = useState(() => {
     const idx = options.findIndex((o) => o.name === currentStatus);
     return idx >= 0 ? idx : 0;
@@ -92,7 +98,11 @@ function StatusPicker({ options, currentStatus, onSelect, onCancel, showTerminal
         return (
           <Text
             key={opt.id}
-            {...(isSelected ? { color: "cyan" as const } : terminal ? { color: "yellow" as const } : {})}
+            {...(isSelected
+              ? { color: "cyan" as const }
+              : terminal
+                ? { color: "yellow" as const }
+                : {})}
             dimColor={isCurrent}
           >
             {prefix}

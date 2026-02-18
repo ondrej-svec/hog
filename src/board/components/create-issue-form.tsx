@@ -14,7 +14,13 @@ interface CreateIssueFormProps {
   readonly labelCache?: Record<string, LabelOption[]>;
 }
 
-function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel, labelCache }: CreateIssueFormProps) {
+function CreateIssueForm({
+  repos,
+  defaultRepo,
+  onSubmit,
+  onCancel,
+  labelCache,
+}: CreateIssueFormProps) {
   const defaultRepoIdx = defaultRepo
     ? Math.max(
         0,
@@ -54,7 +60,7 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel, labelCache }:
           Create Issue — Add Labels (optional)
         </Text>
         <Text dimColor>
-          Repo: {selectedRepo.shortName}  Title: {title}
+          Repo: {selectedRepo.shortName} Title: {title}
         </Text>
         <LabelPicker
           repo={selectedRepo.name}
@@ -107,7 +113,7 @@ function CreateIssueForm({ repos, defaultRepo, onSubmit, onCancel, labelCache }:
             onChange={setTitle}
             onSubmit={(text) => {
               const trimmed = text.trim();
-              if (!trimmed || !selectedRepo) return;
+              if (!(trimmed && selectedRepo)) return;
               if (labelCache !== undefined) {
                 // Advance to labels step
                 setTitle(trimmed);
