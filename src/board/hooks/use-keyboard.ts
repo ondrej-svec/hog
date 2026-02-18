@@ -17,6 +17,8 @@ interface KeyboardActions {
   handlePick: () => void;
   handleAssign: () => void;
   handleUnassign: () => void;
+  handleEnterLabel: () => void;
+  handleEnterCreateNl: () => void;
   handleErrorAction: (action: "dismiss" | "retry") => boolean;
   toastInfo: (msg: string) => void;
 }
@@ -25,10 +27,17 @@ interface UseKeyboardOptions {
   ui: UseUIStateResult;
   nav: Pick<
     UseNavigationResult,
-    "moveUp" | "moveDown" | "prevSection" | "nextSection" | "toggleSection" | "selectedId"
+    | "moveUp"
+    | "moveDown"
+    | "prevSection"
+    | "nextSection"
+    | "toggleSection"
+    | "collapseAll"
+    | "selectedId"
   >;
   multiSelect: Pick<UseMultiSelectResult, "count" | "toggle" | "clear">;
   selectedIssue: GitHubIssue | null;
+  selectedRepoName: string | null;
   selectedRepoStatusOptionsLength: number;
   actions: KeyboardActions;
   onSearchEscape: () => void;
@@ -44,6 +53,7 @@ export function useKeyboard({
   nav,
   multiSelect,
   selectedIssue,
+  selectedRepoName,
   selectedRepoStatusOptionsLength,
   actions,
   onSearchEscape,
@@ -58,6 +68,8 @@ export function useKeyboard({
     handlePick,
     handleAssign,
     handleUnassign,
+    handleEnterLabel,
+    handleEnterCreateNl,
     handleErrorAction,
     toastInfo,
   } = actions;
@@ -204,6 +216,21 @@ export function useKeyboard({
           handleEnterFocus();
           return;
         }
+        if (input === "C") {
+          nav.collapseAll();
+          return;
+        }
+        if (input === "l") {
+          if (selectedIssue) {
+            multiSelect.clear();
+            handleEnterLabel();
+          }
+          return;
+        }
+        if (input === "I") {
+          handleEnterCreateNl();
+          return;
+        }
 
         // Space on an item: toggle selection + enter multiSelect mode
         if (input === " ") {
@@ -238,7 +265,10 @@ export function useKeyboard({
       handlePick,
       handleAssign,
       handleUnassign,
+      handleEnterLabel,
+      handleEnterCreateNl,
       selectedIssue,
+      selectedRepoName,
       selectedRepoStatusOptionsLength,
       toastInfo,
       nav.selectedId,

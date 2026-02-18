@@ -1,6 +1,7 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useStdout } from "ink";
+import { getClipboardArgs } from "../../clipboard.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
 import type { GitHubIssue, StatusOption } from "../../github.js";
@@ -640,12 +641,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, [nav.selectedId, repos, tasks]);
 
   // Status options for the selected issue's repo (for status picker, single or bulk)
+  // Terminal statuses are now included — StatusPicker renders them with a "(Done)" suffix
   const selectedRepoStatusOptions = useMemo(() => {
     // In multi-select, use the constrained repo
     const repoName = multiSelect.count > 0 ? multiSelect.constrainedRepo : selectedItem.repoName;
     if (!repoName || repoName === "ticktick") return [];
     const rd = repos.find((r) => r.repo.name === repoName);
-    return rd?.statusOptions.filter((o) => !isTerminalStatus(o.name)) ?? [];
+    return rd?.statusOptions ?? [];
   }, [selectedItem.repoName, repos, multiSelect.count, multiSelect.constrainedRepo]);
 
   // Input handlers
@@ -665,11 +667,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     if (!found) return;
     const rc = config.repos.find((r) => r.name === found.repoName);
     const label = `${rc?.shortName ?? found.repoName}#${found.issue.number}`;
-    try {
-      execFileSync("pbcopy", [], { input: found.issue.url });
-      toast.success(`Copied ${label} to clipboard`);
-    } catch {
-      toast.error(`Copy failed — ${found.issue.url}`);
+    const clipArgs = getClipboardArgs();
+    if (clipArgs) {
+      const [cmd, ...args] = clipArgs;
+      if (!cmd) {
+        toast.info(`${label} — ${found.issue.url}`);
+        return;
+      }
+      const result = spawnSync(cmd, args, {
+        input: found.issue.url,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      if (result.status === 0) {
+        toast.success(`Copied ${label} to clipboard`);
+      } else {
+        toast.info(`${label} — ${found.issue.url}`);
+      }
+    } else {
+      toast.info(`${label} — ${found.issue.url}`);
     }
   }, [repos, nav.selectedId, config.repos, toast]);
 
@@ -762,6 +777,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     nav,
     multiSelect,
     selectedIssue: selectedItem.issue,
+    selectedRepoName: selectedItem.repoName,
     selectedRepoStatusOptionsLength: selectedRepoStatusOptions.length,
     actions: {
       exit,
@@ -773,6 +789,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handlePick: actions.handlePick,
       handleAssign: actions.handleAssign,
       handleUnassign: actions.handleUnassign,
+      handleEnterLabel: ui.enterLabel,
+      handleEnterCreateNl: ui.enterCreateNl,
       handleErrorAction,
       toastInfo: toast.info,
     },
@@ -925,7 +943,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           <>
             <Text color="gray">
               j/k:nav Tab:section Enter:open Space:select /:search p:pick c:comment m:status
-              a/u:assign s:slack y:copy n:new f:focus ?:help q:quit
+              a/u:assign s:slack y:copy l:labels n:new I:nlcreate C:collapse f:focus ?:help q:quit
             </Text>
             {searchQuery && ui.state.mode !== "search" ? (
               <Text color="yellow"> filter: &quot;{searchQuery}&quot;</Text>

@@ -8,6 +8,8 @@ export type UIMode =
   | "overlay:comment"
   | "overlay:status"
   | "overlay:create"
+  | "overlay:createNl"
+  | "overlay:label"
   | "overlay:bulkAction"
   | "overlay:confirmPick"
   | "overlay:help"
@@ -29,6 +31,8 @@ export type UIAction =
   | { type: "ENTER_COMMENT" }
   | { type: "ENTER_STATUS" }
   | { type: "ENTER_CREATE" }
+  | { type: "ENTER_CREATE_NL" }
+  | { type: "ENTER_LABEL" }
   | { type: "ENTER_MULTI_SELECT" }
   | { type: "ENTER_BULK_ACTION" }
   | { type: "ENTER_CONFIRM_PICK" }
@@ -67,6 +71,14 @@ function uiReducer(state: UIState, action: UIAction): UIState {
     case "ENTER_CREATE":
       if (state.mode !== "normal") return state;
       return { ...state, mode: "overlay:create", previousMode: "normal" };
+
+    case "ENTER_CREATE_NL":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:createNl", previousMode: "normal" };
+
+    case "ENTER_LABEL":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:label", previousMode: "normal" };
 
     case "ENTER_MULTI_SELECT":
       if (state.mode !== "normal" && state.mode !== "multiSelect") return state;
@@ -135,6 +147,8 @@ export interface UseUIStateResult {
   enterComment: () => void;
   enterStatus: () => void;
   enterCreate: () => void;
+  enterCreateNl: () => void;
+  enterLabel: () => void;
   enterMultiSelect: () => void;
   enterBulkAction: () => void;
   enterConfirmPick: () => void;
@@ -157,6 +171,8 @@ export function useUIState(): UseUIStateResult {
     enterComment: useCallback(() => dispatch({ type: "ENTER_COMMENT" }), []),
     enterStatus: useCallback(() => dispatch({ type: "ENTER_STATUS" }), []),
     enterCreate: useCallback(() => dispatch({ type: "ENTER_CREATE" }), []),
+    enterCreateNl: useCallback(() => dispatch({ type: "ENTER_CREATE_NL" }), []),
+    enterLabel: useCallback(() => dispatch({ type: "ENTER_LABEL" }), []),
     enterMultiSelect: useCallback(() => dispatch({ type: "ENTER_MULTI_SELECT" }), []),
     enterBulkAction: useCallback(() => dispatch({ type: "ENTER_BULK_ACTION" }), []),
     enterConfirmPick: useCallback(() => dispatch({ type: "ENTER_CONFIRM_PICK" }), []),

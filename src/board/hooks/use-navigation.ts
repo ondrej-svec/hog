@@ -20,7 +20,8 @@ interface NavState {
 type NavAction =
   | { type: "SET_ITEMS"; items: NavItem[] }
   | { type: "SELECT"; id: string; section?: SectionId | undefined }
-  | { type: "TOGGLE_SECTION"; section: SectionId };
+  | { type: "TOGGLE_SECTION"; section: SectionId }
+  | { type: "COLLAPSE_ALL" };
 
 function arraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -49,8 +50,11 @@ function navReducer(state: NavState, action: NavAction): NavState {
     case "SET_ITEMS": {
       const sections = [...new Set(action.items.map((i) => i.section))];
       const isFirstLoad = state.sections.length === 0;
-      // On first load, collapse all sections; on refresh, preserve collapsed state
-      const collapsedSections = isFirstLoad ? new Set(sections) : state.collapsedSections;
+      // On first load: expand all sections except Activity (collapse it by default)
+      // On refresh: preserve collapsed state
+      const collapsedSections = isFirstLoad
+        ? new Set(sections.filter((s) => s === "activity"))
+        : state.collapsedSections;
       const selectionValid =
         state.selectedId != null && action.items.some((i) => i.id === state.selectedId);
 
@@ -95,6 +99,9 @@ function navReducer(state: NavState, action: NavAction): NavState {
       }
       return { ...state, collapsedSections: next };
     }
+    case "COLLAPSE_ALL": {
+      return { ...state, collapsedSections: new Set(state.sections) };
+    }
     default:
       return state;
   }
@@ -120,6 +127,7 @@ export interface UseNavigationResult {
   nextSection: () => void;
   prevSection: () => void;
   toggleSection: () => void;
+  collapseAll: () => void;
   select: (id: string) => void;
   isCollapsed: (section: SectionId) => boolean;
 }
@@ -192,6 +200,10 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     dispatch({ type: "TOGGLE_SECTION", section: key });
   }, [selectedIndex, visibleItems]);
 
+  const collapseAll = useCallback(() => {
+    dispatch({ type: "COLLAPSE_ALL" });
+  }, []);
+
   const allItemsRef = useRef(allItems);
   allItemsRef.current = allItems;
 
@@ -214,6 +226,7 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     nextSection,
     prevSection,
     toggleSection,
+    collapseAll,
     select,
     isCollapsed,
   };

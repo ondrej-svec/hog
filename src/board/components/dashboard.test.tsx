@@ -509,10 +509,7 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand the repo section by pressing Enter on the header
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no need to press Enter
     const frame = instance.lastFrame()!;
     // Sub-headers should show with expand indicator (▼) and count
     expect(frame).toContain("In Progress");
@@ -536,16 +533,13 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand the repo section (header is selected and collapsed by default)
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no Enter needed
     let frame = instance.lastFrame()!;
     // Both sub-sections should be visible with issues
     expect(frame).toContain("In Progress");
     expect(frame).toContain("Active task");
 
-    // Navigate down to the sub-header "In Progress"
+    // Navigate down to the sub-header "In Progress" (header is selected first)
     instance.stdin.write("j");
     await delay(50);
 
@@ -576,10 +570,7 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand repo section
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no Enter needed
     let frame = instance.lastFrame()!;
     // Sub-headers start expanded — should show ▼
     expect(frame).toContain("\u25BC");
@@ -627,10 +618,7 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand repo
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no Enter needed
     const frame = instance.lastFrame()!;
     // "In Progress" header visible
     expect(frame).toContain("In Progress");
@@ -668,10 +656,7 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand repo
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no Enter needed
     const frame = instance.lastFrame()!;
     // Auto-detected non-terminal statuses should appear as separate headers
     expect(frame).toContain("Planning");
@@ -708,10 +693,7 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Expand repo
-    instance.stdin.write("\r");
-    await delay(100);
-
+    // Sections start expanded by default — no Enter needed
     const frame = instance.lastFrame()!;
     // Merged group should show combined count (3 issues total)
     expect(frame).toContain("(3)");
