@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/ondrej-svec/hog/compare/hog-v1.4.0...hog-v1.5.0) (2026-02-18)
+
+
+### Features
+
+* **board:** add optional body step to NL issue creation with ctrl+e editor support ([acbc4ad](https://github.com/ondrej-svec/hog/commit/acbc4ad9afd6100d932382ad76bd3dd3e82d1424))
+
+
+### Bug Fixes
+
+* **board:** pass --body '' to gh issue create to satisfy non-interactive mode ([240effe](https://github.com/ondrej-svec/hog/commit/240effe56da11621f8461fa4f8fa75cdafef0f78))
+
 ## [1.4.0](https://github.com/ondrej-svec/hog/compare/hog-v1.3.0...hog-v1.4.0) (2026-02-18)
 
 
