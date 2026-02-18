@@ -51,6 +51,8 @@ export function useData(
 ): DataState & {
   refresh: () => void;
   mutateData: (fn: (data: DashboardData) => DashboardData) => void;
+  pauseAutoRefresh: () => void;
+  resumeAutoRefresh: () => void;
 } {
   const [state, setState] = useState<DataState>(INITIAL_STATE);
   const activeRequestRef = useRef<{ canceled: boolean } | null>(null);
@@ -184,5 +186,13 @@ export function useData(
     });
   }, []);
 
-  return { ...state, refresh, mutateData };
+  const pauseAutoRefresh = useCallback(() => {
+    setState((prev) => ({ ...prev, autoRefreshPaused: true }));
+  }, []);
+
+  const resumeAutoRefresh = useCallback(() => {
+    setState((prev) => ({ ...prev, autoRefreshPaused: false }));
+  }, []);
+
+  return { ...state, refresh, mutateData, pauseAutoRefresh, resumeAutoRefresh };
 }

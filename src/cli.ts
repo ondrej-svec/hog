@@ -6,7 +6,9 @@ if (major < 22) {
   process.exit(1);
 }
 
+import { execFileSync } from "node:child_process";
 import { Command } from "commander";
+import { extractIssueFields, hasLlmApiKey } from "./ai.js";
 import { TickTickClient } from "./api.js";
 import type { CompletionAction, RepoConfig } from "./config.js";
 import {
@@ -650,6 +652,77 @@ config
       printSuccess(`Default profile set to "${name}".`);
     }
   });
+
+// -- Issue commands --
+
+interface IssueCreateOptions {
+  repo?: string;
+  dryRun?: boolean;
+}
+
+const issueCommand = new Command("issue").description("GitHub issue utilities");
+
+issueCommand
+  .command("create <text>")
+  .description("Create a GitHub issue from natural language text")
+  .option("--repo <repo>", "Target repository (owner/name)")
+  .option("--dry-run", "Print parsed fields without creating the issue")
+  .action(async (text: string, opts: IssueCreateOptions) => {
+    const config = loadFullConfig();
+    const repo = opts.repo ?? config.repos[0]?.name;
+    if (!repo) {
+      console.error(
+        "Error: no repo specified. Use --repo owner/name or configure repos in hog init.",
+      );
+      process.exit(1);
+    }
+
+    if (hasLlmApiKey()) {
+      console.error("[info] LLM parsing enabled");
+    }
+
+    const parsed = await extractIssueFields(text, {
+      onLlmFallback: (msg) => console.error(`[warn] ${msg}`),
+    });
+
+    if (!parsed) {
+      console.error(
+        "Error: could not parse a title from input. Ensure your text has a non-empty title.",
+      );
+      process.exit(1);
+    }
+
+    const labels = [...parsed.labels];
+    if (parsed.dueDate) labels.push(`due:${parsed.dueDate}`);
+
+    // Show parsed fields
+    console.error(`Title:    ${parsed.title}`);
+    if (labels.length > 0) console.error(`Labels:   ${labels.join(", ")}`);
+    if (parsed.assignee) console.error(`Assignee: @${parsed.assignee}`);
+    if (parsed.dueDate) console.error(`Due:      ${parsed.dueDate}`);
+    console.error(`Repo:     ${repo}`);
+
+    if (opts.dryRun) {
+      console.error("[dry-run] Skipping issue creation.");
+      return;
+    }
+
+    const args = ["issue", "create", "--repo", repo, "--title", parsed.title];
+    for (const label of labels) {
+      args.push("--label", label);
+    }
+
+    try {
+      execFileSync("gh", args, { stdio: "inherit" });
+    } catch (err) {
+      console.error(
+        `Error: gh issue create failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      process.exit(1);
+    }
+  });
+
+program.addCommand(issueCommand);
 
 // -- Run --
 

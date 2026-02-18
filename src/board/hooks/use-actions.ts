@@ -31,6 +31,7 @@ export interface UseActionsResult {
   handleStatusChange: (optionId: string) => void;
   handleAssign: () => void;
   handleUnassign: () => void;
+  handleLabelChange: (addLabels: string[], removeLabels: string[]) => void;
   handleCreateIssue: (
     repo: string,
     title: string,
@@ -352,6 +353,31 @@ export function useActions({
     [toast, refresh, onOverlayDone],
   );
 
+  const handleLabelChange = useCallback(
+    (addLabels: string[], removeLabels: string[]) => {
+      const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
+      if (!(ctx.issue && ctx.repoName)) return;
+      const { issue, repoName } = ctx;
+
+      const args = ["issue", "edit", String(issue.number), "--repo", repoName];
+      for (const label of addLabels) args.push("--add-label", label);
+      for (const label of removeLabels) args.push("--remove-label", label);
+
+      const t = toast.loading("Updating labels...");
+      execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000 })
+        .then(() => {
+          t.resolve(`Labels updated on #${issue.number}`);
+          refresh();
+          onOverlayDone();
+        })
+        .catch((err) => {
+          t.reject(`Label update failed: ${err instanceof Error ? err.message : String(err)}`);
+          onOverlayDone();
+        });
+    },
+    [toast, refresh, onOverlayDone],
+  );
+
   // ── Bulk actions ──
   // Each returns an array of IDs that failed (empty = all succeeded)
 
@@ -495,6 +521,7 @@ export function useActions({
     handleStatusChange,
     handleAssign,
     handleUnassign,
+    handleLabelChange,
     handleCreateIssue,
     handleBulkAssign,
     handleBulkUnassign,

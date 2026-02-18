@@ -317,6 +317,31 @@ export function addLabel(repo: string, issueNumber: number, label: string): void
   runGh(["issue", "edit", String(issueNumber), "--repo", repo, "--add-label", label]);
 }
 
+export interface LabelOption {
+  name: string;
+  color: string;
+}
+
+/**
+ * Fetch all labels defined in the repo asynchronously.
+ * Uses execFileAsync (not execFileSync) to avoid blocking the React render thread.
+ */
+export async function fetchRepoLabelsAsync(repo: string): Promise<LabelOption[]> {
+  try {
+    const result = await runGhJsonAsync<LabelOption[]>([
+      "label",
+      "list",
+      "--repo",
+      repo,
+      "--json",
+      "name,color",
+    ]);
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
 export function updateProjectItemStatus(
   repo: string,
   issueNumber: number,
