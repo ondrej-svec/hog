@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/ondrej-svec/hog/compare/hog-v1.2.0...hog-v1.3.0) (2026-02-18)
+
+
+### Features
+
+* **board:** add y keybinding to copy issue link to clipboard ([257985c](https://github.com/ondrej-svec/hog/commit/257985c4dff9546e8e8eb21389f34d9cf712bbab))
+* **board:** Board UX improvements + natural language issue creation ([#12](https://github.com/ondrej-svec/hog/issues/12)) ([2d33a19](https://github.com/ondrej-svec/hog/commit/2d33a197555efcae956cd0e848372d369befc9a0))
+
 ## [1.2.0](https://github.com/ondrej-svec/hog/compare/hog-v1.1.3...hog-v1.2.0) (2026-02-17)
 
 
