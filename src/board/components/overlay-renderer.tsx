@@ -24,7 +24,13 @@ export interface OverlayRendererProps {
   readonly onExitOverlay: () => void;
   // Create issue
   readonly defaultRepo: string | null;
-  readonly onCreateIssue: (repo: string, title: string, body: string, labels?: string[]) => void;
+  readonly onCreateIssue: (
+    repo: string,
+    title: string,
+    body: string,
+    dueDate: string | null,
+    labels?: string[],
+  ) => void;
   // Confirm pick
   readonly onConfirmPick: () => void;
   readonly onCancelPick: () => void;

@@ -472,8 +472,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const labelCacheRef = useRef<Record<string, LabelOption[]>>({});
 
   const handleCreateIssueWithPrompt = useCallback(
-    (repo: string, title: string, body: string, labels?: string[]) => {
-      actions.handleCreateIssue(repo, title, body, labels).then((result) => {
+    (repo: string, title: string, body: string, dueDate: string | null, labels?: string[]) => {
+      actions.handleCreateIssue(repo, title, body, dueDate, labels).then((result) => {
         if (result) {
           pendingPickRef.current = result;
           ui.enterConfirmPick();

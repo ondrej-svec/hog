@@ -2,8 +2,17 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { useCallback, useRef } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
-import type { GitHubIssue, RepoProjectConfig, StatusOption } from "../../github.js";
-import { assignIssueAsync, updateProjectItemStatusAsync } from "../../github.js";
+import type {
+  GitHubIssue,
+  RepoDueDateConfig,
+  RepoProjectConfig,
+  StatusOption,
+} from "../../github.js";
+import {
+  assignIssueAsync,
+  updateProjectItemDateAsync,
+  updateProjectItemStatusAsync,
+} from "../../github.js";
 import { pickIssue } from "../../pick.js";
 import type { DashboardData, RepoData } from "../fetch.js";
 import type { ToastAPI } from "./use-toast.js";
@@ -36,6 +45,7 @@ export interface UseActionsResult {
     repo: string,
     title: string,
     body: string,
+    dueDate?: string | null,
     labels?: string[],
   ) => Promise<{ repo: string; issueNumber: number } | null>;
   /** Bulk actions — return failed IDs (empty = all succeeded) */
@@ -325,9 +335,19 @@ export function useActions({
       repo: string,
       title: string,
       body: string,
+      dueDate?: string | null,
       labels?: string[],
     ): Promise<{ repo: string; issueNumber: number } | null> => {
-      const args = ["issue", "create", "--repo", repo, "--title", title, "--body", body];
+      const repoConfig = configRef.current.repos.find((r) => r.name === repo);
+
+      // If due date but no project date field configured, fall back to body text
+      let effectiveBody = body;
+      if (dueDate && !repoConfig?.dueDateFieldId) {
+        const dueLine = `Due: ${dueDate}`;
+        effectiveBody = body ? `${body}\n\n${dueLine}` : dueLine;
+      }
+
+      const args = ["issue", "create", "--repo", repo, "--title", title, "--body", effectiveBody];
       if (labels && labels.length > 0) {
         for (const label of labels) {
           args.push("--label", label);
@@ -341,7 +361,19 @@ export function useActions({
         // gh issue create returns the URL of the new issue
         const match = output.match(/\/(\d+)$/);
         const issueNumber = match?.[1] ? parseInt(match[1], 10) : 0;
-        const shortName = configRef.current.repos.find((r) => r.name === repo)?.shortName ?? repo;
+        const shortName = repoConfig?.shortName ?? repo;
+
+        // If due date field configured, set it on the project item (best-effort)
+        if (issueNumber > 0 && dueDate && repoConfig?.dueDateFieldId) {
+          const dueDateConfig: RepoDueDateConfig = {
+            projectNumber: repoConfig.projectNumber,
+            dueDateFieldId: repoConfig.dueDateFieldId,
+          };
+          updateProjectItemDateAsync(repo, issueNumber, dueDateConfig, dueDate).catch(() => {
+            // best-effort: don't fail the whole create if date field update fails
+          });
+        }
+
         t.resolve(`Created ${shortName}#${issueNumber}`);
         refresh();
         onOverlayDone();

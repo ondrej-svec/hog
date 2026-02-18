@@ -17,7 +17,13 @@ interface NlCreateOverlayProps {
   readonly repos: RepoConfig[];
   readonly defaultRepoName: string | null;
   readonly labelCache: Record<string, LabelOption[]>;
-  readonly onSubmit: (repo: string, title: string, body: string, labels?: string[]) => void;
+  readonly onSubmit: (
+    repo: string,
+    title: string,
+    body: string,
+    dueDate: string | null,
+    labels?: string[],
+  ) => void;
   readonly onCancel: () => void;
   readonly onPauseRefresh?: (() => void) | undefined;
   readonly onResumeRefresh?: (() => void) | undefined;
@@ -137,9 +143,9 @@ function NlCreateOverlay({
       setBody(content.trimEnd());
     } finally {
       onResumeRef.current?.();
-      if (tmpFile) {
+      if (tmpFile && tmpDir) {
         try {
-          rmSync(tmpDir!, { recursive: true, force: true });
+          rmSync(tmpDir, { recursive: true, force: true });
         } catch {
           // ignore cleanup errors
         }
@@ -239,6 +245,7 @@ function NlCreateOverlay({
                 selectedRepo.name,
                 parsed.title,
                 text.trim(),
+                parsed.dueDate,
                 labels.length > 0 ? labels : undefined,
               );
             }}
@@ -251,7 +258,7 @@ function NlCreateOverlay({
 
   // ── Preview view ──
   if (parsed) {
-    const labels = buildLabelList(parsed);
+    const labels = [...parsed.labels];
     return (
       <Box flexDirection="column">
         <Text color="cyan" bold>
@@ -284,11 +291,6 @@ function NlCreateOverlay({
             <Text>{formatDue(parsed.dueDate)}</Text>
           </Box>
         ) : null}
-        {parsed.dueDate && selectedRepo && !hasDueLabelInCache(labelCache, selectedRepo.name) ? (
-          <Text color="yellow">
-            ⚠ No due:* label in this repo — will try to create label on submit
-          </Text>
-        ) : null}
         <Text dimColor>Enter:add body Esc:cancel</Text>
       </Box>
     );
@@ -314,25 +316,15 @@ function NlCreateOverlay({
   );
 }
 
-/** Build the final label list including a due:{date} label if present. */
+/** Build the label list from parsed issue (labels only, due date goes in body). */
 function buildLabelList(parsed: ParsedIssue): string[] {
-  const labels = [...parsed.labels];
-  if (parsed.dueDate) {
-    labels.push(`due:${parsed.dueDate}`);
-  }
-  return labels;
+  return [...parsed.labels];
 }
 
-/** Check whether any due:* label exists in the cache for the given repo. */
-function hasDueLabelInCache(labelCache: Record<string, LabelOption[]>, repoName: string): boolean {
-  return (labelCache[repoName] ?? []).some((l) => l.name.startsWith("due:"));
-}
-
-/** Format YYYY-MM-DD as "Wed Feb 18 (label: due:2026-02-18)". */
+/** Format YYYY-MM-DD as "Wed Feb 18". */
 function formatDue(dueDate: string): string {
   const d = new Date(`${dueDate}T12:00:00`);
-  const human = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-  return `${human} (label: due:${dueDate})`;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
 }
 
 export { NlCreateOverlay };

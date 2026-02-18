@@ -135,6 +135,39 @@ function detectStatusField(owner: string, projectNumber: number): StatusFieldInf
   return { fieldId: statusField.id, options: statusField.options ?? [] };
 }
 
+const DATE_FIELD_NAME_RE = /^(target\s*date|due\s*date|due|deadline)$/i;
+
+function detectDateField(owner: string, projectNumber: number): GhProjectField | null {
+  const fields = listProjectFields(owner, projectNumber);
+  return fields.find((f) => DATE_FIELD_NAME_RE.test(f.name)) ?? null;
+}
+
+function createDateField(owner: string, projectNumber: number, fieldName: string): string | null {
+  try {
+    // Create the field and then list fields to get the ID
+    execFileSync(
+      "gh",
+      [
+        "project",
+        "field-create",
+        String(projectNumber),
+        "--owner",
+        owner,
+        "--name",
+        fieldName,
+        "--data-type",
+        "DATE",
+      ],
+      { encoding: "utf-8", timeout: 30_000 },
+    );
+    // Re-list to find the newly created field
+    const fields = listProjectFields(owner, projectNumber);
+    return fields.find((f) => f.name === fieldName)?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Wizard ──
 
 export interface InitOptions {
@@ -242,6 +275,39 @@ async function runWizard(opts: InitOptions): Promise<void> {
       });
     }
 
+    // Detect due date field
+    console.log("  Detecting due date field...");
+    let dueDateFieldId: string | undefined;
+    const existingDateField = detectDateField(owner, projectNumber);
+    if (existingDateField) {
+      console.log(`  Found date field: "${existingDateField.name}" (${existingDateField.id})`);
+      const useDateField = await confirm({
+        message: `  Use "${existingDateField.name}" for due dates?`,
+        default: true,
+      });
+      if (useDateField) {
+        dueDateFieldId = existingDateField.id;
+      }
+    } else {
+      console.log("  No due date field found in this project.");
+      const createField = await confirm({
+        message: '  Create a "Due Date" field for due dates?',
+        default: false,
+      });
+      if (createField) {
+        console.log('  Creating "Due Date" field...');
+        const newFieldId = createDateField(owner, projectNumber, "Due Date");
+        if (newFieldId) {
+          dueDateFieldId = newFieldId;
+          console.log(`  Created "Due Date" field (${newFieldId})`);
+        } else {
+          console.log("  Could not create field — due dates will be stored in issue body.");
+        }
+      } else {
+        console.log("  Skipped — due dates will be stored in issue body.");
+      }
+    }
+
     // Completion action
     const completionType = await select<CompletionAction["type"]>({
       message: `  When a task is completed, what should happen on GitHub?`,
@@ -291,6 +357,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       shortName,
       projectNumber,
       statusFieldId,
+      ...(dueDateFieldId ? { dueDateFieldId } : {}),
       completionAction,
     });
   }

@@ -28,6 +28,9 @@ export interface RepoProjectConfig {
   optionId: string;
 }
 
+/** Matches common date field names used in GitHub Projects v2 (case-insensitive). */
+const DATE_FIELD_NAME_RE = /^(target\s*date|due\s*date|due|deadline)$/i;
+
 function runGh(args: string[]): string {
   return execFileSync("gh", args, { encoding: "utf-8", timeout: 30_000 }).trim();
 }
@@ -156,7 +159,7 @@ export function fetchProjectFields(
 
     for (const fv of fieldValues) {
       if (!fv) continue;
-      if ("date" in fv && fv.field?.name === "Target date") {
+      if ("date" in fv && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
         fields.targetDate = fv.date;
       }
       if ("name" in fv && fv.field?.name === "Status") {
@@ -236,7 +239,7 @@ export function fetchProjectEnrichment(
       const fieldValues = item.fieldValues?.nodes ?? [];
       for (const fv of fieldValues) {
         if (!fv) continue;
-        if ("date" in fv && fv.field?.name === "Target date" && fv.date) {
+        if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
           enrichment.targetDate = fv.date;
         }
         if ("name" in fv && fv.field?.name === "Status" && fv.name) {
@@ -536,6 +539,109 @@ export async function updateProjectItemStatusAsync(
     `fieldId=${statusFieldId}`,
     "-F",
     `optionId=${optionId}`,
+  ]);
+}
+
+export interface RepoDueDateConfig {
+  projectNumber: number;
+  dueDateFieldId: string;
+}
+
+/**
+ * Set a date field value on a GitHub Projects v2 item for the given issue.
+ * Uses the same 3-step pattern as updateProjectItemStatusAsync.
+ */
+export async function updateProjectItemDateAsync(
+  repo: string,
+  issueNumber: number,
+  projectConfig: RepoDueDateConfig,
+  dueDate: string,
+): Promise<void> {
+  const [owner, repoName] = repo.split("/");
+
+  const findItemQuery = `
+    query($owner: String!, $repo: String!, $issueNumber: Int!) {
+      repository(owner: $owner, name: $repo) {
+        issue(number: $issueNumber) {
+          projectItems(first: 10) {
+            nodes {
+              id
+              project { number }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const findResult = await runGhJsonAsync<GraphQLResult>([
+    "api",
+    "graphql",
+    "-f",
+    `query=${findItemQuery}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `repo=${repoName}`,
+    "-F",
+    `issueNumber=${String(issueNumber)}`,
+  ]);
+
+  const items = findResult?.data?.repository?.issue?.projectItems?.nodes ?? [];
+  const projectItem = items.find((item) => item?.project?.number === projectConfig.projectNumber);
+
+  if (!projectItem?.id) return;
+
+  const projectQuery = `
+    query($owner: String!) {
+      organization(login: $owner) {
+        projectV2(number: ${projectConfig.projectNumber}) {
+          id
+        }
+      }
+    }
+  `;
+
+  const projectResult = await runGhJsonAsync<GraphQLProjectResult>([
+    "api",
+    "graphql",
+    "-f",
+    `query=${projectQuery}`,
+    "-F",
+    `owner=${owner}`,
+  ]);
+
+  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  if (!projectId) return;
+
+  const mutation = `
+    mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $date: Date!) {
+      updateProjectV2ItemFieldValue(
+        input: {
+          projectId: $projectId
+          itemId: $itemId
+          fieldId: $fieldId
+          value: { date: $date }
+        }
+      ) {
+        projectV2Item { id }
+      }
+    }
+  `;
+
+  await runGhAsync([
+    "api",
+    "graphql",
+    "-f",
+    `query=${mutation}`,
+    "-F",
+    `projectId=${projectId}`,
+    "-F",
+    `itemId=${projectItem.id}`,
+    "-F",
+    `fieldId=${projectConfig.dueDateFieldId}`,
+    "-F",
+    `date=${dueDate}`,
   ]);
 }
 

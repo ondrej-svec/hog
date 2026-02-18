@@ -29,6 +29,7 @@ const REPO_CONFIG_SCHEMA = z.object({
   shortName: z.string().min(1),
   projectNumber: z.number().int().positive(),
   statusFieldId: z.string().min(1),
+  dueDateFieldId: z.string().optional(),
   completionAction: COMPLETION_ACTION_SCHEMA,
   statusGroups: z.array(z.string()).optional(),
 });

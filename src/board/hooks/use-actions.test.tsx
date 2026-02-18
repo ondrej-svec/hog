@@ -474,6 +474,44 @@ describe("useActions hook", () => {
       instance.unmount();
     });
 
+    it("should append due date to body when no dueDateFieldId configured", async () => {
+      mockExecFile.mockReturnValue({
+        stdout: "https://github.com/owner/repo/issues/101\n",
+        stderr: "",
+      });
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: null,
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      await actions.handleCreateIssue("owner/repo", "Fix login", "Some details", "2026-03-01");
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "gh",
+        [
+          "issue",
+          "create",
+          "--repo",
+          "owner/repo",
+          "--title",
+          "Fix login",
+          "--body",
+          "Some details\n\nDue: 2026-03-01",
+        ],
+        expect.any(Object),
+      );
+
+      instance.unmount();
+    });
+
     it("should pass labels when provided", async () => {
       mockExecFile.mockReturnValue({
         stdout: "https://github.com/owner/repo/issues/100\n",
@@ -492,7 +530,7 @@ describe("useActions hook", () => {
       const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
         typeof useActions
       >;
-      await actions.handleCreateIssue("owner/repo", "Bug", "", ["bug", "high-priority"]);
+      await actions.handleCreateIssue("owner/repo", "Bug", "", null, ["bug", "high-priority"]);
 
       expect(mockExecFile).toHaveBeenCalledWith(
         "gh",
