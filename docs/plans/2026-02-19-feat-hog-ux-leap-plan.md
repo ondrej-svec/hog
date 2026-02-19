@@ -1,7 +1,7 @@
 ---
 title: "hog UX Leap: From Good to Great"
 type: feat
-status: active
+status: completed
 date: 2026-02-19
 brainstorm: docs/brainstorms/2026-02-19-hog-ux-leap-brainstorm.md
 deepened: 2026-02-19
@@ -164,13 +164,13 @@ All new overlays follow the same 7-step pattern:
 - `src/board/hooks/use-keyboard.ts` — add `handleToggleMine` to `KeyboardActions`, bind `t`
 
 **Acceptance criteria:**
-- [ ] `t` toggles between all issues and issues where `assignees.some(a.login === config.board.assignee)`
-- [ ] Status bar shows `filter: @me` when active
-- [ ] `t` again clears the filter
-- [ ] Filter composes with `/` search (both can be active simultaneously)
-- [ ] Works with `searchQuery` — both filters apply to the same `filteredRepos` memo
-- [ ] `R` (refresh) clears `mineOnly` (state reset via re-mount)
-- [ ] `t` in overlay/search/multiSelect/focus mode: no-op (guarded by `ui.canAct`)
+- [x] `t` toggles between all issues and issues where `assignees.some(a.login === config.board.assignee)`
+- [x] Status bar shows `filter: @me` when active
+- [x] `t` again clears the filter
+- [x] Filter composes with `/` search (both can be active simultaneously)
+- [x] Works with `searchQuery` — both filters apply to the same `filteredRepos` memo
+- [x] `R` (refresh) clears `mineOnly` (state reset via re-mount)
+- [x] `t` in overlay/search/multiSelect/focus mode: no-op (guarded by `ui.canAct`)
 
 ---
 
@@ -211,14 +211,14 @@ overlay:*:   [j/k] nav  [Enter] select  [Esc] cancel
 - `src/board/components/help-overlay.tsx` — update SHORTCUTS to include new keys
 
 **Acceptance criteria:**
-- [ ] Normal mode shows 6–8 most common shortcuts (not a wall of all shortcuts)
-- [ ] Search mode shows search-specific hints
-- [ ] MultiSelect mode shows selection count + selection actions
-- [ ] Focus mode shows `Focus mode — [Esc] exit`
-- [ ] Overlay modes show `[j/k] nav  [Enter] select  [Esc] cancel`
-- [ ] `filter: @me` and `filter: "query"` indicators still appear in the bar
-- [ ] Total terminal rows consumed is unchanged (`CHROME_ROWS = 4`)
-- [ ] Help overlay SHORTCUTS updated with all current keybindings
+- [x] Normal mode shows 6–8 most common shortcuts (not a wall of all shortcuts)
+- [x] Search mode shows search-specific hints
+- [x] MultiSelect mode shows selection count + selection actions
+- [x] Focus mode shows `Focus mode — [Esc] exit`
+- [x] Overlay modes show `[j/k] nav  [Enter] select  [Esc] cancel`
+- [x] `filter: @me` and `filter: "query"` indicators still appear in the bar
+- [x] Total terminal rows consumed is unchanged (`CHROME_ROWS = 4`)
+- [x] Help overlay SHORTCUTS updated with all current keybindings
 
 ---
 
@@ -279,14 +279,14 @@ Loading state: `fetching comments...` in dimmed text.
 - `src/board/components/dashboard.tsx` — add `commentCacheRef`, pass `fetchComments` + `commentsState` to `DetailPanel`
 
 **Acceptance criteria:**
-- [ ] Detail panel shows comments section when `width >= 120` (same condition as rest of panel)
-- [ ] Comments are NOT fetched while browsing — only fetched when panel is visible for the focused issue
-- [ ] Loading state shows `fetching comments...` in dimmed text
-- [ ] Fetched comments cached in `commentCacheRef` — no re-fetch on re-select of same issue
-- [ ] Shows last 5 comments (newest last), formatted as `@author · Xh ago\n  body...`
-- [ ] Error state shows `could not load comments` in red
-- [ ] Empty comments (0) shows `No comments yet.` in dimmed text
-- [ ] Issue with no detail panel visible (narrow terminal): no `gh` call triggered
+- [x] Detail panel shows comments section when `width >= 120` (same condition as rest of panel)
+- [x] Comments are NOT fetched while browsing — only fetched when panel is visible for the focused issue
+- [x] Loading state shows `fetching comments...` in dimmed text
+- [x] Fetched comments cached in `commentCacheRef` — no re-fetch on re-select of same issue
+- [x] Shows last 5 comments (newest last), formatted as `@author · Xh ago\n  body...`
+- [x] Error state shows `could not load comments` in red
+- [x] Empty comments (0) shows `No comments yet.` in dimmed text
+- [x] Issue with no detail panel visible (narrow terminal): no `gh` call triggered
 
 ---
 
@@ -404,20 +404,20 @@ overlay:fuzzyPicker
 - `package.json` — add `fzf` dependency
 
 **Acceptance criteria:**
-- [ ] `F` opens the fuzzy picker from normal mode
-- [ ] `F` in overlay/search/multiSelect/focus: no-op (guarded by `ui.canAct`)
-- [ ] Picker shows all issues across all repos currently loaded — no extra `gh` calls
-- [ ] Typing filters using `fzf-for-js` on title + repo + number + labels, weighted by field
-- [ ] Results ranked by match quality; `#123` queries surface exact issue number first
-- [ ] `fuzzyIndex` built in `useMemo` tied to `allIssues` (not query) — no index rebuild on keystroke
-- [ ] Only visible rows rendered (12–15); cursor scrolls to follow selection
-- [ ] Arrow keys / Ctrl-J/K navigate the results list (not j/k — those are query input)
-- [ ] `Enter` on a result: board cursor jumps to that issue, picker closes
-- [ ] `Escape`: picker closes, returns to normal mode, board cursor unchanged
-- [ ] Cursor resets to 0 on every query change
-- [ ] Row format: `repo/name · #N · title · [label1] [label2] · @assignee`
-- [ ] Empty query: show first 20 issues (unsorted)
-- [ ] No results: show `No issues match "<query>"`
+- [x] `F` opens the fuzzy picker from normal mode
+- [x] `F` in overlay/search/multiSelect/focus: no-op (guarded by `ui.canAct`)
+- [x] Picker shows all issues across all repos currently loaded — no extra `gh` calls
+- [x] Typing filters using `fzf-for-js` on title + repo + number + labels, weighted by field
+- [x] Results ranked by match quality; `#123` queries surface exact issue number first
+- [x] `fuzzyIndex` built in `useMemo` tied to `allIssues` (not query) — no index rebuild on keystroke
+- [x] Only visible rows rendered (12–15); cursor scrolls to follow selection
+- [x] Arrow keys / Ctrl-J/K navigate the results list (not j/k — those are query input)
+- [x] `Enter` on a result: board cursor jumps to that issue, picker closes
+- [x] `Escape`: picker closes, returns to normal mode, board cursor unchanged
+- [x] Cursor resets to 0 on every query change
+- [x] Row format: `repo/name · #N · title · [label1] [label2] · @assignee`
+- [x] Empty query: show first 20 issues (unsorted)
+- [x] No results: show `No issues match "<query>"`
 
 ---
 
@@ -563,21 +563,21 @@ const viewportHeight = Math.max(5, termSize.rows - CHROME_ROWS - overlayBarRows 
 - `src/board/components/hint-bar.tsx` — add `u` for undo when log has undoable entries
 
 **Acceptance criteria:**
-- [ ] `L` toggles the action log pane; collapsed by default
-- [ ] Pane auto-expands when a `status: "error"` entry is pushed
-- [ ] Pane shows last 5 entries with `✓`/`✗`/`⋯` prefix, description, and `Xs ago` timestamp
-- [ ] `u` undoes the last reversible entry (status change or assign/unassign)
-- [ ] `u` with no undoable entry: toast "Nothing to undo"
-- [ ] Undo thunk cleared before execution (not after); prevents double-undo
-- [ ] Undo of status change: optimistic update + API call + toast `#42 moved back → Todo`
-- [ ] Undo of assign: calls `gh issue edit --remove-assignee @me` + optimistic update
-- [ ] Undo failure: error toast + `refresh()` to revert optimistic state
-- [ ] Comments, creates, picks: appear in log but marked not-undoable (no undo thunk)
-- [ ] Failed action: error entry auto-expands the log pane
-- [ ] `viewportHeight` shrinks by 4 when log is visible
-- [ ] Timestamps update every 5s while pane is open (relative format)
-- [ ] `u` is removed from standalone unassign (old behavior gone)
-- [ ] All existing tests pass
+- [x] `L` toggles the action log pane; collapsed by default
+- [x] Pane auto-expands when a `status: "error"` entry is pushed
+- [x] Pane shows last 5 entries with `✓`/`✗`/`⋯` prefix, description, and `Xs ago` timestamp
+- [x] `u` undoes the last reversible entry (status change or assign/unassign)
+- [x] `u` with no undoable entry: toast "Nothing to undo"
+- [x] Undo thunk cleared before execution (not after); prevents double-undo
+- [x] Undo of status change: optimistic update + API call + toast `#42 moved back → Todo`
+- [x] Undo of assign: calls `gh issue edit --remove-assignee @me` + optimistic update
+- [x] Undo failure: error toast + `refresh()` to revert optimistic state
+- [x] Comments, creates, picks: appear in log but marked not-undoable (no undo thunk)
+- [x] Failed action: error entry auto-expands the log pane
+- [x] `viewportHeight` shrinks by 4 when log is visible
+- [x] Timestamps update every 5s while pane is open (relative format)
+- [x] `u` is removed from standalone unassign (old behavior gone)
+- [x] All existing tests pass
 
 ---
 
@@ -687,24 +687,24 @@ Steps to reproduce: ...
 - `src/github.ts` — add `editIssueTitleAsync`, `editIssueBodyAsync`, `editIssueAssigneeAsync` (or extend existing pattern)
 
 **Acceptance criteria:**
-- [ ] `e` on a GitHub issue opens `$EDITOR` with structured YAML front matter
-- [ ] `e` on a TickTick task: no-op with toast "Edit not supported for TickTick tasks"
-- [ ] `e` on a section header: no-op
-- [ ] Injected comments show available status options and available labels (fetched from cache if available)
-- [ ] `VISUAL || EDITOR || "vi"` (falsy check, not `??`)
-- [ ] Multi-word editors (`code --wait`) work — editor string split on spaces
-- [ ] Non-zero `spawnSync` exit or signal: treat as cancel (editor crashed)
-- [ ] Zero-changes detection: if all fields unchanged, toast "No changes made", no gh calls
-- [ ] Empty title after save: editor reopens with error at top of preserved content
-- [ ] Invalid status after save: editor reopens with `# ERROR: status "X" not found → valid: ...`
-- [ ] On valid save with changes: each changed field triggers its `gh` call; unchanged fields skipped
-- [ ] Apply strategy: sequential per field, individual try/catch; partial success is OK
-- [ ] `setRawMode(true)` in `finally` (not just happy path)
-- [ ] Temp directory `hog-edit-*`, file `issue-{number}.md`, cleaned in `finally`
-- [ ] Auto-refresh paused before editor launch, resumed in `finally`
-- [ ] Toast summarizes changed fields: `#42: title, status updated`
-- [ ] Failed field: individual error toast, other fields still applied
-- [ ] Action log records the edit (non-undoable)
+- [x] `e` on a GitHub issue opens `$EDITOR` with structured YAML front matter
+- [x] `e` on a TickTick task: no-op with toast "Edit not supported for TickTick tasks"
+- [x] `e` on a section header: no-op
+- [x] Injected comments show available status options and available labels (fetched from cache if available)
+- [x] `VISUAL || EDITOR || "vi"` (falsy check, not `??`)
+- [x] Multi-word editors (`code --wait`) work — editor string split on spaces
+- [x] Non-zero `spawnSync` exit or signal: treat as cancel (editor crashed)
+- [x] Zero-changes detection: if all fields unchanged, toast "No changes made", no gh calls
+- [x] Empty title after save: editor reopens with error at top of preserved content
+- [x] Invalid status after save: editor reopens with `# ERROR: status "X" not found → valid: ...`
+- [x] On valid save with changes: each changed field triggers its `gh` call; unchanged fields skipped
+- [x] Apply strategy: sequential per field, individual try/catch; partial success is OK
+- [x] `setRawMode(true)` in `finally` (not just happy path)
+- [x] Temp directory `hog-edit-*`, file `issue-{number}.md`, cleaned in `finally`
+- [x] Auto-refresh paused before editor launch, resumed in `finally`
+- [x] Toast summarizes changed fields: `#42: title, status updated`
+- [x] Failed field: individual error toast, other fields still applied
+- [x] Action log records the edit (non-undoable)
 
 ---
 
@@ -761,22 +761,22 @@ Print to stdout (not stderr); format matches what `sync run --dry-run` does in t
 - `src/pick.ts` — no changes (reuse `parseIssueRef`)
 
 **Acceptance criteria:**
-- [ ] `hog issue show owner/repo#42` prints the issue title, status, labels, assignee, body
-- [ ] `hog issue show --json owner/repo#42` prints full JSON
-- [ ] `hog issue move owner/repo#42 "In Review"` moves the issue status
-- [ ] `hog issue move` with unconfigured repo: actionable error message + exit 1
-- [ ] `hog issue move` with invalid status name: error listing valid statuses + exit 1
-- [ ] `hog issue assign owner/repo#42` assigns `config.board.assignee`
-- [ ] `hog issue assign --user alice owner/repo#42` assigns a specific user
-- [ ] `hog issue unassign owner/repo#42` removes `config.board.assignee`
-- [ ] `hog issue comment owner/repo#42 "text"` adds a comment
-- [ ] `hog issue edit owner/repo#42 --title "New title"` updates only the title
-- [ ] `hog issue edit` with multiple flags applies all changes in one or more `gh` calls
-- [ ] `hog issue label owner/repo#42 bug` adds the label
-- [ ] `hog issue label --remove owner/repo#42 bug` removes the label
-- [ ] All commands support `--json` flag
-- [ ] All commands support `--dry-run` flag (print intent to stdout, no mutation)
-- [ ] All commands exit 0 on success, exit 1 on error (with actionable message to stderr)
+- [x] `hog issue show owner/repo#42` prints the issue title, status, labels, assignee, body
+- [x] `hog issue show --json owner/repo#42` prints full JSON
+- [x] `hog issue move owner/repo#42 "In Review"` moves the issue status
+- [x] `hog issue move` with unconfigured repo: actionable error message + exit 1
+- [x] `hog issue move` with invalid status name: error listing valid statuses + exit 1
+- [x] `hog issue assign owner/repo#42` assigns `config.board.assignee`
+- [x] `hog issue assign --user alice owner/repo#42` assigns a specific user
+- [x] `hog issue unassign owner/repo#42` removes `config.board.assignee`
+- [x] `hog issue comment owner/repo#42 "text"` adds a comment
+- [x] `hog issue edit owner/repo#42 --title "New title"` updates only the title
+- [x] `hog issue edit` with multiple flags applies all changes in one or more `gh` calls
+- [x] `hog issue label owner/repo#42 bug` adds the label
+- [x] `hog issue label --remove owner/repo#42 bug` removes the label
+- [x] All commands support `--json` flag
+- [x] All commands support `--dry-run` flag (print intent to stdout, no mutation)
+- [x] All commands exit 0 on success, exit 1 on error (with actionable message to stderr)
 
 ---
 
@@ -824,29 +824,29 @@ GitHub is the primary surface. TickTick CLI operations can be added later if dem
 
 ### Functional
 
-- [ ] `t` filters board to my issues; `t` again clears
-- [ ] Hint bar is mode-aware and shows ≤8 relevant shortcuts (not a wall of text)
-- [ ] Comments section in detail panel with lazy fetch on `Tab`/`Enter`
-- [ ] `F` opens fuzzy picker over all in-memory issues using `fzf-for-js`
-- [ ] Fuzzy picker navigation: arrow keys / Ctrl-J/K (not j/k); `Enter` jumps cursor to issue
-- [ ] Action log pane (`L`) shows last 5 mutations with status
-- [ ] `u` undoes last reversible action (status change, assign)
-- [ ] `e` opens `$EDITOR` with YAML front matter; validation and reopen on error
-- [ ] All 7 CLI parity commands work with `--json` and `--dry-run`
+- [x] `t` filters board to my issues; `t` again clears
+- [x] Hint bar is mode-aware and shows ≤8 relevant shortcuts (not a wall of text)
+- [x] Comments section in detail panel with lazy fetch on `Tab`/`Enter`
+- [x] `F` opens fuzzy picker over all in-memory issues using `fzf-for-js`
+- [x] Fuzzy picker navigation: arrow keys / Ctrl-J/K (not j/k); `Enter` jumps cursor to issue
+- [x] Action log pane (`L`) shows last 5 mutations with status
+- [x] `u` undoes last reversible action (status change, assign)
+- [x] `e` opens `$EDITOR` with YAML front matter; validation and reopen on error
+- [x] All 7 CLI parity commands work with `--json` and `--dry-run`
 
 ### Non-Functional
 
-- [ ] Zero extra `gh` calls for fuzzy picker (uses in-memory data)
-- [ ] `fzf` index built in `useMemo` tied to `allIssues` — not rebuilt on each keystroke
-- [ ] Comments fetch is lazy and cached per issue
-- [ ] `VISUAL || EDITOR || "vi"` (falsy check) for editor detection
-- [ ] `setRawMode(true)` in `finally` for all `$EDITOR` flows (including `edit-issue-overlay.tsx`)
-- [ ] `spawnSync` result checked for non-zero exit AND signal
-- [ ] Undo thunk cleared before execution (prevents double-undo)
-- [ ] `u` repurposed from unassign → undo; `help-overlay.tsx` updated
-- [ ] `CHROME_ROWS` and `viewportHeight` account for log pane when visible
-- [ ] 80% coverage threshold maintained across all phases
-- [ ] All new CLI commands exit 0/1 with actionable error messages
+- [x] Zero extra `gh` calls for fuzzy picker (uses in-memory data)
+- [x] `fzf` index built in `useMemo` tied to `allIssues` — not rebuilt on each keystroke
+- [x] Comments fetch is lazy and cached per issue
+- [x] `VISUAL || EDITOR || "vi"` (falsy check) for editor detection
+- [x] `setRawMode(true)` in `finally` for all `$EDITOR` flows (including `edit-issue-overlay.tsx`)
+- [x] `spawnSync` result checked for non-zero exit AND signal
+- [x] Undo thunk cleared before execution (prevents double-undo)
+- [x] `u` repurposed from unassign → undo; `help-overlay.tsx` updated
+- [x] `CHROME_ROWS` and `viewportHeight` account for log pane when visible
+- [x] 80% coverage threshold maintained across all phases
+- [x] All new CLI commands exit 0/1 with actionable error messages
 
 ---
 
