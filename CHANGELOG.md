@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.7.0](https://github.com/ondrej-svec/hog/compare/hog-v1.6.2...hog-v1.7.0) (2026-02-19)
+
+
+### Features
+
+* **board:** phase 1 — my issues toggle, hint bar, comments in detail panel ([7514fa2](https://github.com/ondrej-svec/hog/commit/7514fa251b747055472a05c1e20d00cf56eafa07))
+* **board:** phase 2 — fuzzy issue picker (F key) ([fbc726c](https://github.com/ondrej-svec/hog/commit/fbc726cf1ace89f014e9c75dc3f12a1d99800f54))
+* **board:** phase 3.1 — action log + undo (u key, L toggle) ([e3b1a9c](https://github.com/ondrej-svec/hog/commit/e3b1a9ca16758cc36f17bf075d93b78766a30032))
+* **board:** phase 3.2 — full issue edit via $EDITOR (e key) ([a329199](https://github.com/ondrej-svec/hog/commit/a329199310f9f890827f5e3cef1f714540fdf757))
+* **issue:** phase 4 — CLI parity commands (show/move/assign/unassign/comment/edit/label) ([ce2da17](https://github.com/ondrej-svec/hog/commit/ce2da17751ee5e175bb5fd15ddcc4c89f6656c35))
+
+
+### Bug Fixes
+
+* ensure log directory exists before writing, remove unconfigured codecov badge ([5128de6](https://github.com/ondrej-svec/hog/commit/5128de6359da7ec983a1cd38139d08e59dc7a3ea))
+* resolve all 14 code review TODOs (014-027) ([693e111](https://github.com/ondrej-svec/hog/commit/693e1116bded767419423ad3132e51141075c129))
+
 ## [1.6.2](https://github.com/ondrej-svec/hog/compare/hog-v1.6.1...hog-v1.6.2) (2026-02-19)
 
 
