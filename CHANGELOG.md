@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.2](https://github.com/ondrej-svec/hog/compare/hog-v1.6.1...hog-v1.6.2) (2026-02-19)
+
+
+### Bug Fixes
+
+* **board:** fix cursor teleport to index 0 when collapsing sections (cursor now stays on header) ([cf9e16f](https://github.com/ondrej-svec/hog/commit/cf9e16f))
+
+
+### Code Quality
+
+* extract nav reducer helpers to reduce complexity; fix all biome lint warnings ([cf9e16f](https://github.com/ondrej-svec/hog/commit/cf9e16f))
+
 ## [1.6.1](https://github.com/ondrej-svec/hog/compare/hog-v1.6.0...hog-v1.6.1) (2026-02-18)
 
 
