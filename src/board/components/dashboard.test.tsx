@@ -400,7 +400,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should show focus hint in status bar", async () => {
+  it("should show shortcut hints in hint bar", async () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData());
 
     const instance = render(
@@ -410,7 +410,8 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    expect(frame).toContain("f:focus");
+    expect(frame).toContain("j/k:nav");
+    expect(frame).toContain("?:more");
 
     instance.unmount();
   });

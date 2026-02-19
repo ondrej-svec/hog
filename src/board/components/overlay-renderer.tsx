@@ -1,12 +1,14 @@
-import type { HogConfig } from "../../config.js";
+import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { RepoData } from "../fetch.js";
+import type { ActionLogEntry } from "../hooks/use-action-log.js";
 import type { UIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { BulkActionMenu } from "./bulk-action-menu.js";
 import { CommentInput } from "./comment-input.js";
 import { ConfirmPrompt } from "./confirm-prompt.js";
 import { CreateIssueForm } from "./create-issue-form.js";
+import { EditIssueOverlay } from "./edit-issue-overlay.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { FocusMode } from "./focus-mode.js";
 import { FuzzyPicker } from "./fuzzy-picker.js";
@@ -65,6 +67,11 @@ export interface OverlayRendererProps {
   readonly onLabelConfirm: (addLabels: string[], removeLabels: string[]) => void;
   readonly onLabelError: (msg: string) => void;
   readonly onLlmFallback?: ((msg: string) => void) | undefined;
+  // Edit issue overlay
+  readonly selectedRepoName: string | null;
+  readonly selectedRepoConfig: RepoConfig | null;
+  readonly onToastInfo: (msg: string) => void;
+  readonly onPushEntry?: ((entry: ActionLogEntry) => void) | undefined;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -101,6 +108,10 @@ function OverlayRenderer({
   onLabelConfirm,
   onLabelError,
   onLlmFallback,
+  selectedRepoName,
+  selectedRepoConfig,
+  onToastInfo,
+  onPushEntry,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
@@ -204,6 +215,22 @@ function OverlayRenderer({
           onPauseRefresh={onPauseRefresh}
           onResumeRefresh={onResumeRefresh}
           onLlmFallback={onLlmFallback}
+        />
+      ) : null}
+
+      {/* Edit issue overlay (launches $EDITOR) */}
+      {mode === "overlay:editIssue" && selectedIssue && selectedRepoName ? (
+        <EditIssueOverlay
+          issue={selectedIssue}
+          repoName={selectedRepoName}
+          repoConfig={selectedRepoConfig}
+          statusOptions={selectedRepoStatusOptions}
+          labelCache={labelCache}
+          onDone={onExitOverlay}
+          onPauseRefresh={onPauseRefresh}
+          onResumeRefresh={onResumeRefresh}
+          onToastInfo={onToastInfo}
+          {...(onPushEntry ? { onPushEntry } : {})}
         />
       ) : null}
     </>

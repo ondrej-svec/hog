@@ -17,11 +17,11 @@ import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
-import type { BulkAction } from "./bulk-action-menu.js";
 import { ActionLog } from "./action-log.js";
+import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
-import { HintBar } from "./hint-bar.js";
 import type { FocusEndAction } from "./focus-mode.js";
+import { HintBar } from "./hint-bar.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
@@ -702,14 +702,17 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, [nav.selectedId, repos, tasks]);
 
   // Derive current commentsState (re-computes on tick or selected issue change)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: commentTick is a cache-invalidation signal; it's intentionally in deps without being used in the body
   const currentCommentsState = useMemo((): IssueComment[] | "loading" | "error" | null => {
-    // commentTick is a dependency to trigger re-computation when cache updates
-    void commentTick;
-    if (!selectedItem.issue || !selectedItem.repoName) return null;
-    return (
-      commentCacheRef.current[`${selectedItem.repoName}:${selectedItem.issue.number}`] ?? null
-    );
+    if (!(selectedItem.issue && selectedItem.repoName)) return null;
+    return commentCacheRef.current[`${selectedItem.repoName}:${selectedItem.issue.number}`] ?? null;
   }, [selectedItem.issue, selectedItem.repoName, commentTick]);
+
+  // Repo config for the selected issue's repo (for edit issue overlay)
+  const selectedRepoConfig = useMemo(() => {
+    if (!selectedItem.repoName) return null;
+    return config.repos.find((r) => r.name === selectedItem.repoName) ?? null;
+  }, [selectedItem.repoName, config.repos]);
 
   // Status options for the selected issue's repo (for status picker, single or bulk)
   // Terminal statuses are now included — StatusPicker renders them with a "(Done)" suffix
@@ -961,6 +964,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onLabelConfirm={actions.handleLabelChange}
         onLabelError={(msg) => toast.error(msg)}
         onLlmFallback={(msg) => toast.info(msg)}
+        selectedRepoName={selectedItem.repoName}
+        selectedRepoConfig={selectedRepoConfig}
+        onToastInfo={toast.info}
+        onPushEntry={pushEntry}
       />
 
       {/* Main content: scrollable list + optional detail panel (hidden during full-screen overlays) */}

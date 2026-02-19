@@ -93,13 +93,20 @@ function formatCommentAge(createdAt: string): string {
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: conditional rendering for issue vs task
-function DetailPanel({ issue, task, width, commentsState, fetchComments, issueRepo }: DetailPanelProps) {
+function DetailPanel({
+  issue,
+  task,
+  width,
+  commentsState,
+  fetchComments,
+  issueRepo,
+}: DetailPanelProps) {
   // Trigger lazy fetch when issue changes and panel is visible
   useEffect(() => {
-    if (!issue || !fetchComments || !issueRepo) return;
+    if (!(issue && fetchComments && issueRepo)) return;
     if (commentsState !== null && commentsState !== undefined) return; // already fetched or loading
     fetchComments(issueRepo, issue.number);
-  }, [issue?.number, issueRepo, fetchComments, commentsState]);
+  }, [issue, issueRepo, fetchComments, commentsState]);
   if (!(issue || task)) {
     return (
       <Box
@@ -196,17 +203,15 @@ function DetailPanel({ issue, task, width, commentsState, fetchComments, issueRe
         ) : commentsState && commentsState.length === 0 ? (
           <Text dimColor>No comments yet.</Text>
         ) : commentsState && commentsState.length > 0 ? (
-          <>
-            {commentsState.slice(-5).map((comment, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: stable list
-              <Box key={i} flexDirection="column" marginBottom={1}>
-                <Text color="cyan">
-                  @{comment.author.login} · {formatCommentAge(comment.createdAt)}
-                </Text>
-                <Text wrap="wrap">  {comment.body.split("\n")[0]}</Text>
-              </Box>
-            ))}
-          </>
+          commentsState.slice(-5).map((comment, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable list
+            <Box key={i} flexDirection="column" marginBottom={1}>
+              <Text color="cyan">
+                @{comment.author.login} · {formatCommentAge(comment.createdAt)}
+              </Text>
+              <Text wrap="wrap"> {comment.body.split("\n")[0]}</Text>
+            </Box>
+          ))
         ) : (
           <Text dimColor>fetching comments...</Text>
         )}

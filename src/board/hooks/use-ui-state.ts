@@ -60,6 +60,7 @@ function enterStatusMode(state: UIState): UIState {
   return { ...state, mode: "overlay:status", previousMode };
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: UI state machine with many action types
 function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "ENTER_SEARCH":
