@@ -16,7 +16,6 @@ interface KeyboardActions {
   handleEnterFocus: () => void;
   handlePick: () => void;
   handleAssign: () => void;
-  handleUnassign: () => void;
   handleEnterLabel: () => void;
   handleEnterCreateNl: () => void;
   handleErrorAction: (action: "dismiss" | "retry") => boolean;
@@ -24,6 +23,8 @@ interface KeyboardActions {
   handleToggleMine: () => void;
   handleEnterFuzzyPicker: () => void;
   handleEnterEditIssue: () => void;
+  handleUndo: () => void;
+  handleToggleLog: () => void;
 }
 
 interface UseKeyboardOptions {
@@ -68,7 +69,6 @@ export function useKeyboard({
     handleEnterFocus,
     handlePick,
     handleAssign,
-    handleUnassign,
     handleEnterLabel,
     handleEnterCreateNl,
     handleErrorAction,
@@ -76,6 +76,8 @@ export function useKeyboard({
     handleToggleMine,
     handleEnterFuzzyPicker,
     handleEnterEditIssue,
+    handleUndo,
+    handleToggleLog,
   } = actions;
 
   const handleInput = useCallback(
@@ -192,7 +194,11 @@ export function useKeyboard({
           return;
         }
         if (input === "u") {
-          handleUnassign();
+          handleUndo();
+          return;
+        }
+        if (input === "L") {
+          handleToggleLog();
           return;
         }
         if (input === "c") {
@@ -282,7 +288,6 @@ export function useKeyboard({
       handleOpen,
       handlePick,
       handleAssign,
-      handleUnassign,
       handleEnterLabel,
       handleEnterCreateNl,
       selectedIssue,
@@ -295,6 +300,8 @@ export function useKeyboard({
       handleToggleMine,
       handleEnterFuzzyPicker,
       handleEnterEditIssue,
+      handleUndo,
+      handleToggleLog,
     ],
   );
 

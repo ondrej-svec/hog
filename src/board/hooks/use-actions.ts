@@ -15,6 +15,8 @@ import {
 } from "../../github.js";
 import { pickIssue } from "../../pick.js";
 import type { DashboardData, RepoData } from "../fetch.js";
+import type { ActionLogEntry } from "./use-action-log.js";
+import { nextEntryId } from "./use-action-log.js";
 import type { ToastAPI } from "./use-toast.js";
 
 const execFileAsync = promisify(execFile);
@@ -62,6 +64,7 @@ interface UseActionsOptions {
   mutateData: (fn: (data: DashboardData) => DashboardData) => void;
   refresh: () => void;
   onOverlayDone: () => void;
+  pushEntry?: (entry: ActionLogEntry) => void;
 }
 
 // ── Helpers ──
@@ -148,14 +151,17 @@ export function useActions({
   refresh,
   mutateData,
   onOverlayDone,
+  pushEntry,
 }: UseActionsOptions): UseActionsResult {
   // Use refs so callbacks don't need to depend on frequently-changing values
   const configRef = useRef(config);
   const reposRef = useRef(repos);
   const selectedIdRef = useRef(selectedId);
+  const pushEntryRef = useRef(pushEntry);
   configRef.current = config;
   reposRef.current = repos;
   selectedIdRef.current = selectedId;
+  pushEntryRef.current = pushEntry;
 
   const handlePick = useCallback(() => {
     const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
@@ -202,10 +208,22 @@ export function useActions({
       )
         .then(() => {
           t.resolve(`Comment posted on #${issue.number}`);
+          pushEntryRef.current?.({
+            id: nextEntryId(),
+            description: `comment on #${issue.number}`,
+            status: "success",
+            ago: Date.now(),
+          });
           refresh();
         })
         .catch((err) => {
           t.reject(`Comment failed: ${err instanceof Error ? err.message : String(err)}`);
+          pushEntryRef.current?.({
+            id: nextEntryId(),
+            description: `comment on #${issue.number} failed`,
+            status: "error",
+            ago: Date.now(),
+          });
         })
         .finally(() => {
           onOverlayDone();
@@ -223,6 +241,22 @@ export function useActions({
       }
 
       const { issue, repoName, repoConfig, statusOptions } = ctx;
+
+      // Capture the inverse synchronously before the async mutation (undo thunk)
+      const previousOptionId = statusOptions.find((o) => o.name === issue.projectStatus)?.id;
+      const undoThunk = previousOptionId
+        ? async () => {
+            mutateData((data) =>
+              optimisticSetStatus(data, repoName, issue.number, statusOptions, previousOptionId),
+            );
+            const undoProjectConfig: RepoProjectConfig = {
+              projectNumber: repoConfig.projectNumber,
+              statusFieldId: repoConfig.statusFieldId,
+              optionId: previousOptionId,
+            };
+            await updateProjectItemStatusAsync(repoName, issue.number, undoProjectConfig);
+          }
+        : undefined;
 
       // Optimistic update: move issue to new section immediately
       mutateData((data) =>
@@ -257,12 +291,23 @@ export function useActions({
           } else {
             t.resolve(`#${issue.number} \u2192 ${optionName}`);
           }
+          pushEntryRef.current?.({
+            id: nextEntryId(),
+            description: `#${issue.number} \u2192 ${optionName}`,
+            status: "success",
+            ago: Date.now(),
+            ...(undoThunk ? { undo: undoThunk } : {}),
+          });
           // Do NOT refresh here — GitHub Projects v2 GraphQL is eventually consistent
-          // and a refresh immediately after mutation returns stale data, overwriting
-          // the optimistic update. The auto-refresh interval will sync server state.
         })
         .catch((err) => {
           t.reject(`Status change failed: ${err instanceof Error ? err.message : String(err)}`);
+          pushEntryRef.current?.({
+            id: nextEntryId(),
+            description: `#${issue.number} status change failed`,
+            status: "error",
+            ago: Date.now(),
+          });
           refresh(); // revert optimistic update on failure
         })
         .finally(() => {
@@ -292,10 +337,37 @@ export function useActions({
     assignIssueAsync(repoName, issue.number)
       .then(() => {
         t.resolve(`Assigned #${issue.number} to @${configRef.current.board.assignee}`);
+        pushEntryRef.current?.({
+          id: nextEntryId(),
+          description: `#${issue.number} assigned`,
+          status: "success",
+          ago: Date.now(),
+          undo: async () => {
+            await execFileAsync(
+              "gh",
+              [
+                "issue",
+                "edit",
+                String(issue.number),
+                "--repo",
+                repoName,
+                "--remove-assignee",
+                "@me",
+              ],
+              { encoding: "utf-8", timeout: 30_000 },
+            );
+          },
+        });
         refresh();
       })
       .catch((err) => {
         t.reject(`Assign failed: ${err instanceof Error ? err.message : String(err)}`);
+        pushEntryRef.current?.({
+          id: nextEntryId(),
+          description: `#${issue.number} assign failed`,
+          status: "error",
+          ago: Date.now(),
+        });
       });
   }, [toast, refresh]);
 

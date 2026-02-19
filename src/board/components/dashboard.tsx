@@ -8,6 +8,7 @@ import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../..
 import { fetchIssueCommentsAsync } from "../../github.js";
 import type { Task } from "../../types.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
+import { useActionLog } from "../hooks/use-action-log.js";
 import { useActions } from "../hooks/use-actions.js";
 import { refreshAgeColor, useData } from "../hooks/use-data.js";
 import { useKeyboard } from "../hooks/use-keyboard.js";
@@ -17,6 +18,7 @@ import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
+import { ActionLog } from "./action-log.js";
 import { DetailPanel } from "./detail-panel.js";
 import { HintBar } from "./hint-bar.js";
 import type { FocusEndAction } from "./focus-mode.js";
@@ -414,6 +416,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // Toast notification system (replaces old statusMessage)
   const { toasts, toast, handleErrorAction } = useToast();
 
+  // Action log
+  const [logVisible, setLogVisible] = useState(false);
+  const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
+
+  // Auto-expand log when an error entry is pushed
+  useEffect(() => {
+    const last = logEntries[logEntries.length - 1];
+    if (last?.status === "error") setLogVisible(true);
+  }, [logEntries]);
+
   // Periodic tick to update refresh age display (every 10s)
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -481,6 +493,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     refresh,
     mutateData,
     onOverlayDone: ui.exitOverlay,
+    pushEntry,
   });
 
   // "Pick this issue?" after create — stores the newly created issue info
@@ -631,7 +644,11 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const detailPanelWidth = showDetailPanel ? Math.floor(termSize.cols * 0.35) : 0;
   const overlayBarRows = ui.state.mode === "search" || ui.state.mode === "overlay:comment" ? 1 : 0;
   const toastRows = toasts.length;
-  const viewportHeight = Math.max(5, termSize.rows - CHROME_ROWS - overlayBarRows - toastRows);
+  const logPaneRows = logVisible ? 4 : 0;
+  const viewportHeight = Math.max(
+    5,
+    termSize.rows - CHROME_ROWS - overlayBarRows - toastRows - logPaneRows,
+  );
 
   // Build flat rows
   const flatRows = useMemo(
@@ -850,7 +867,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleEnterFocus,
       handlePick: actions.handlePick,
       handleAssign: actions.handleAssign,
-      handleUnassign: actions.handleUnassign,
       handleEnterLabel: ui.enterLabel,
       handleEnterCreateNl: ui.enterCreateNl,
       handleErrorAction,
@@ -858,6 +874,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleToggleMine,
       handleEnterFuzzyPicker: ui.enterFuzzyPicker,
       handleEnterEditIssue: ui.enterEditIssue,
+      handleUndo: undoLast,
+      handleToggleLog: () => setLogVisible((v) => !v),
     },
     onSearchEscape,
   });
@@ -1004,12 +1022,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} />
 
+      {/* Action log pane */}
+      {logVisible ? <ActionLog entries={logEntries} /> : null}
+
       {/* Status bar */}
       <HintBar
         uiMode={ui.state.mode}
         multiSelectCount={multiSelect.count}
         searchQuery={searchQuery}
         mineOnly={mineOnly}
+        hasUndoable={hasUndoable}
       />
     </Box>
   );
