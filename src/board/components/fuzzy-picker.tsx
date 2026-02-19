@@ -96,7 +96,7 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
     return [...scoreMap.values()].sort((a, b) => b.score - a.score).map((e) => e.item);
   }, [query, fuzzyIndex, allIssues]);
 
-  const VISIBLE = Math.min(process.stdout.rows - 4, 15);
+  const VISIBLE = Math.min((process.stdout.rows ?? 24) - 4, 15);
 
   // Internal keyboard navigation (Arrow keys, Ctrl-J/K, Enter, Escape)
   useInput((input, key) => {
@@ -133,9 +133,11 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
         <Text color="cyan" bold>
           Find issue{" "}
         </Text>
-        <Text color="gray">({totalCount} match{totalCount !== 1 ? "es" : ""}) </Text>
+        <Text color="gray">
+          ({totalCount} match{totalCount !== 1 ? "es" : ""}){" "}
+        </Text>
         <Text color="gray" dimColor>
-          ↑↓/Ctrl-J/K nav  Enter:jump  Esc:close
+          ↑↓/Ctrl-J/K nav Enter:jump Esc:close
         </Text>
       </Box>
       <Box>
@@ -161,7 +163,9 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
       ) : null}
       {visibleResults.map((issue, idx) => {
         const isSelected = scrollOffset + idx === cursor;
-        const labelStr = issue.labels ? ` [${issue.labels.split(" ").slice(0, 2).join("] [")}]` : "";
+        const labelStr = issue.labels
+          ? ` [${issue.labels.split(" ").slice(0, 2).join("] [")}]`
+          : "";
         const assigneeStr = issue.assignee ? ` @${issue.assignee.split(" ")[0]}` : "";
         return (
           <Box key={issue.navId}>
@@ -182,9 +186,7 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
           </Box>
         );
       })}
-      {totalCount === 0 ? (
-        <Text dimColor>No issues match &quot;{query}&quot;</Text>
-      ) : null}
+      {totalCount === 0 ? <Text dimColor>No issues match &quot;{query}&quot;</Text> : null}
       {results.length > scrollOffset + VISIBLE ? (
         <Text color="gray" dimColor>
           ▼ {results.length - scrollOffset - VISIBLE} more below

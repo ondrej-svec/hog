@@ -37,8 +37,16 @@ function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable 
         <Text color="yellow" bold>
           [SEARCH]
         </Text>
-        <Text color="gray"> type to filter  Enter:confirm  Esc:clear</Text>
+        <Text color="gray"> type to filter Enter:confirm Esc:clear</Text>
         {searchQuery ? <Text color="yellow"> "{searchQuery}"</Text> : null}
+      </Box>
+    );
+  }
+
+  if (uiMode === "overlay:fuzzyPicker") {
+    return (
+      <Box>
+        <Text color="gray">↑↓/Ctrl-J/K:nav Enter:jump Esc:close</Text>
       </Box>
     );
   }
@@ -46,7 +54,7 @@ function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable 
   if (uiMode.startsWith("overlay:")) {
     return (
       <Box>
-        <Text color="gray">j/k:nav  Enter:select  Esc:cancel</Text>
+        <Text color="gray">j/k:nav Enter:select Esc:cancel</Text>
       </Box>
     );
   }
@@ -55,13 +63,11 @@ function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable 
   return (
     <Box>
       <Text color="gray">
-        j/k:nav  Enter:open  m:status  c:comment  F:find  t:@me  e:edit  L:log
-        {hasUndoable ? "  u:undo" : ""}  ?:more  q:quit
+        j/k:nav Enter:open m:status c:comment F:find t:@me e:edit L:log
+        {hasUndoable ? "  u:undo" : ""} ?:more q:quit
       </Text>
       {mineOnly ? <Text color="cyan"> filter:@me</Text> : null}
-      {searchQuery ? (
-        <Text color="yellow"> filter:"{searchQuery}"</Text>
-      ) : null}
+      {searchQuery ? <Text color="yellow"> filter:"{searchQuery}"</Text> : null}
     </Box>
   );
 }

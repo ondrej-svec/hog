@@ -24,12 +24,8 @@ interface EditIssueOverlayProps {
   readonly onPauseRefresh?: () => void;
   readonly onResumeRefresh?: () => void;
   readonly onToastInfo: (msg: string) => void;
+  readonly onToastError: (msg: string) => void;
   readonly onPushEntry?: (entry: ActionLogEntry) => void;
-  readonly mutateIssue?: (
-    repoName: string,
-    issueNumber: number,
-    updates: Partial<GitHubIssue>,
-  ) => void;
 }
 
 interface ParsedFrontMatter {
@@ -147,6 +143,7 @@ function EditIssueOverlay({
   onPauseRefresh,
   onResumeRefresh,
   onToastInfo,
+  onToastError,
   onPushEntry,
 }: EditIssueOverlayProps) {
   const [editing, setEditing] = useState(true);
@@ -259,7 +256,7 @@ function EditIssueOverlay({
             );
             changedFields.push("title");
           } catch {
-            onToastInfo(`Failed to update title on #${issue.number}`);
+            onToastError(`Failed to update title on #${issue.number}`);
           }
         }
 
@@ -272,7 +269,7 @@ function EditIssueOverlay({
             );
             changedFields.push("body");
           } catch {
-            onToastInfo(`Failed to update body on #${issue.number}`);
+            onToastError(`Failed to update body on #${issue.number}`);
           }
         }
 
@@ -287,7 +284,7 @@ function EditIssueOverlay({
               });
               changedFields.push("status");
             } catch {
-              onToastInfo(`Failed to update status on #${issue.number}`);
+              onToastError(`Failed to update status on #${issue.number}`);
             }
           }
         }
@@ -303,7 +300,7 @@ function EditIssueOverlay({
             await execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000 });
             changedFields.push("labels");
           } catch {
-            onToastInfo(`Failed to update labels on #${issue.number}`);
+            onToastError(`Failed to update labels on #${issue.number}`);
           }
         }
 
@@ -341,7 +338,7 @@ function EditIssueOverlay({
             }
             changedFields.push("assignee");
           } catch {
-            onToastInfo(`Failed to update assignee on #${issue.number}`);
+            onToastError(`Failed to update assignee on #${issue.number}`);
           }
         }
 
@@ -389,6 +386,7 @@ function EditIssueOverlay({
     labelCache,
     setRawMode,
     onToastInfo,
+    onToastError,
     onPushEntry,
   ]);
 
@@ -401,5 +399,5 @@ function EditIssueOverlay({
   );
 }
 
-export { EditIssueOverlay };
+export { EditIssueOverlay, buildEditorFile, parseFrontMatter };
 export type { EditIssueOverlayProps };

@@ -61,10 +61,10 @@ function ActionLog({ entries }: ActionLogProps) {
             <Box key={entry.id} paddingX={1}>
               <Text color={statusColor(entry.status)}>{statusPrefix(entry.status)} </Text>
               <Text>{entry.description}</Text>
-              <Text dimColor>  {relativeTime(entry.ago)}</Text>
-              {isUndoable ? <Text color="cyan">  [u: undo]</Text> : null}
+              <Text dimColor> {relativeTime(entry.ago)}</Text>
+              {isUndoable ? <Text color="cyan"> [u: undo]</Text> : null}
               {entry.retry && entry.status === "error" ? (
-                <Text color="yellow">  [retry]</Text>
+                <Text color="yellow"> [retry]</Text>
               ) : null}
             </Box>
           );

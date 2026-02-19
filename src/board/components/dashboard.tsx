@@ -967,6 +967,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         selectedRepoName={selectedItem.repoName}
         selectedRepoConfig={selectedRepoConfig}
         onToastInfo={toast.info}
+        onToastError={toast.error}
         onPushEntry={pushEntry}
       />
 

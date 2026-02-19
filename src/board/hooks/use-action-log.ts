@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { appendActionLog } from "../../log-persistence.js";
 import type { ToastAPI } from "./use-toast.js";
 
 // ── Types ──
@@ -27,6 +28,11 @@ export function nextEntryId(): string {
   return String(entryIdCounter);
 }
 
+/** Reset the entry ID counter — call in beforeEach to ensure deterministic IDs in tests. */
+export function resetEntryIdCounter(): void {
+  entryIdCounter = 0;
+}
+
 export function useActionLog(toast: ToastAPI, refresh: () => void): UseActionLogResult {
   const [entries, setEntries] = useState<ActionLogEntry[]>([]);
   // Stable ref so undoLast doesn't depend on entries in its dependency array
@@ -34,7 +40,18 @@ export function useActionLog(toast: ToastAPI, refresh: () => void): UseActionLog
   entriesRef.current = entries;
 
   const pushEntry = useCallback((entry: ActionLogEntry) => {
-    setEntries((prev) => [...prev.slice(-9), entry]); // keep last 10
+    setEntries((prev) => [...prev.slice(-9), entry]); // keep last 10 in memory
+    // Persist to disk (best-effort)
+    try {
+      appendActionLog({
+        id: entry.id,
+        description: entry.description,
+        status: entry.status,
+        timestamp: entry.ago,
+      });
+    } catch {
+      // ignore persistence errors
+    }
   }, []);
 
   const undoLast = useCallback(async () => {

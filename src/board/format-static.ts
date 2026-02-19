@@ -171,6 +171,7 @@ export function renderBoardJson(data: DashboardData, selfLogin: string): Record<
           labels: i.labels.map((l) => l.name),
           updatedAt: i.updatedAt,
           isMine: (i.assignees ?? []).some((a) => a.login === selfLogin),
+          slackThreadUrl: i.slackThreadUrl ?? null,
         })),
       })),
       ticktick: {

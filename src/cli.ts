@@ -6,11 +6,12 @@ if (major < 22) {
   process.exit(1);
 }
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
 import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
 import { TickTickClient } from "./api.js";
-import type { CompletionAction, RepoConfig } from "./config.js";
+import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
   clearLlmAuth,
   findRepo,
@@ -25,6 +26,7 @@ import {
   validateRepoName,
 } from "./config.js";
 import { runInit } from "./init.js";
+import { getActionLog } from "./log-persistence.js";
 import {
   jsonOut,
   printProjects,
@@ -39,6 +41,8 @@ import {
 import { getSyncStatus, runSync } from "./sync.js";
 import type { CreateTaskInput, UpdateTaskInput } from "./types.js";
 import { Priority } from "./types.js";
+
+const execFileAsync = promisify(execFile);
 
 // -- Typed option interfaces for each command --
 
@@ -81,6 +85,28 @@ interface UpdateOptions extends ProjectScopedOptions {
 }
 
 // -- Helpers --
+
+async function resolveRef(
+  ref: string,
+  config: HogConfig,
+): Promise<Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>> {
+  const { parseIssueRef } = await import("./pick.js");
+  try {
+    return parseIssueRef(ref, config);
+  } catch (err) {
+    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
+}
+
+function errorOut(message: string, data?: Record<string, unknown>): never {
+  if (useJson()) {
+    jsonOut({ ok: false, error: message, ...(data ? { data } : {}) });
+  } else {
+    console.error(`Error: ${message}`);
+  }
+  process.exit(1);
+}
 
 const PRIORITY_MAP: Record<string, Priority | undefined> = {
   none: Priority.None,
@@ -734,29 +760,25 @@ config
 
 interface IssueCreateOptions {
   repo?: string;
-  dryRun?: boolean;
-}
-
-interface IssueShowOptions {
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueMoveOptions {
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueAssignOptions {
   user?: string;
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueUnassignOptions {
   user?: string;
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueCommentOptions {
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueEditOptions {
@@ -766,12 +788,12 @@ interface IssueEditOptions {
   removeLabel?: string[];
   assignee?: string;
   removeAssignee?: string;
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 interface IssueLabelOptions {
   remove?: boolean;
-  dryRun?: boolean;
+  dryRun?: true;
 }
 
 const issueCommand = new Command("issue").description("GitHub issue utilities");
@@ -826,8 +848,16 @@ issueCommand
       args.push("--label", label);
     }
 
+    const repoArg = repo;
     try {
-      execFileSync("gh", args, { stdio: "inherit" });
+      if (useJson()) {
+        const output = await execFileAsync("gh", args, { encoding: "utf-8", timeout: 60_000 });
+        const url = output.stdout.trim();
+        const issueNumber = Number.parseInt(url.split("/").pop() ?? "0", 10);
+        jsonOut({ ok: true, data: { url, issueNumber, repo: repoArg } });
+      } else {
+        execFileSync("gh", args, { stdio: "inherit" });
+      }
     } catch (err) {
       console.error(
         `Error: gh issue create failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -839,21 +869,9 @@ issueCommand
 issueCommand
   .command("show <issueRef>")
   .description("Show issue details (format: shortname/number, e.g. myrepo/42)")
-  .option("--dry-run", "Print what would be shown without making any calls")
-  .action(async (issueRef: string, opts: IssueShowOptions) => {
+  .action(async (issueRef: string) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
-    if (opts.dryRun) {
-      console.log(`[dry-run] Would show ${ref.repo.shortName}#${ref.issueNumber}`);
-      return;
-    }
+    const ref = await resolveRef(issueRef, cfg);
     const { fetchIssueAsync } = await import("./github.js");
     const issue = await fetchIssueAsync(ref.repo.name, ref.issueNumber);
     if (useJson()) {
@@ -879,26 +897,19 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (issueRef: string, status: string, opts: IssueMoveOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
     const rc = ref.repo;
     if (!(rc.statusFieldId && rc.projectNumber)) {
-      console.error(`Error: ${rc.name} is not configured with a project board. Run: hog init`);
-      process.exit(1);
+      errorOut(`${rc.name} is not configured with a project board. Run: hog init`, {
+        repo: rc.name,
+      });
     }
     const { fetchProjectStatusOptions, updateProjectItemStatusAsync } = await import("./github.js");
     const options = fetchProjectStatusOptions(rc.name, rc.projectNumber, rc.statusFieldId);
     const target = options.find((o) => o.name.toLowerCase() === status.toLowerCase());
     if (!target) {
       const valid = options.map((o) => o.name).join(", ");
-      console.error(`Error: Invalid status "${status}". Valid: ${valid}`);
-      process.exit(1);
+      errorOut(`Invalid status "${status}". Valid: ${valid}`, { status, validStatuses: valid });
     }
     if (opts.dryRun) {
       console.log(`[dry-run] Would move ${rc.shortName}#${ref.issueNumber} → "${target.name}"`);
@@ -923,14 +934,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (issueRef: string, opts: IssueAssignOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
     const user = opts.user ?? cfg.board.assignee;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
@@ -956,14 +960,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (issueRef: string, opts: IssueUnassignOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
     const user = opts.user ?? cfg.board.assignee;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
@@ -988,14 +985,7 @@ issueCommand
   .option("--dry-run", "Print what would be posted without mutating")
   .action(async (issueRef: string, text: string, opts: IssueCommentOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
     if (opts.dryRun) {
       console.log(`[dry-run] Would comment on ${ref.repo.shortName}#${ref.issueNumber}: "${text}"`);
       return;
@@ -1031,14 +1021,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (issueRef: string, opts: IssueEditOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
 
     const changes: string[] = [];
     if (opts.title) changes.push(`title → "${opts.title}"`);
@@ -1068,11 +1051,11 @@ issueCommand
     if (opts.assignee) ghArgs.push("--add-assignee", opts.assignee);
     if (opts.removeAssignee) ghArgs.push("--remove-assignee", opts.removeAssignee);
 
-    execFileSync("gh", ghArgs, { stdio: "inherit" });
-
     if (useJson()) {
+      await execFileAsync("gh", ghArgs, { encoding: "utf-8", timeout: 30_000 });
       jsonOut({ ok: true, data: { issue: ref.issueNumber, changes } });
     } else {
+      execFileSync("gh", ghArgs, { stdio: "inherit" });
       console.log(`Updated ${ref.repo.shortName}#${ref.issueNumber}: ${changes.join("; ")}`);
     }
   });
@@ -1084,14 +1067,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (issueRef: string, label: string, opts: IssueLabelOptions) => {
     const cfg = loadFullConfig();
-    const { parseIssueRef } = await import("./pick.js");
-    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
-    try {
-      ref = parseIssueRef(issueRef, cfg);
-    } catch (err) {
-      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    }
+    const ref = await resolveRef(issueRef, cfg);
     const verb = opts.remove ? "remove" : "add";
     if (opts.dryRun) {
       console.log(
@@ -1115,7 +1091,60 @@ issueCommand
     }
   });
 
+issueCommand
+  .command("statuses")
+  .description("List available project statuses for a repo")
+  .argument("<repo>", "repo short name (e.g. myrepo)")
+  .action(async (repo: string) => {
+    const config = loadFullConfig();
+    const repoConfig = config.repos.find((r) => r.shortName === repo || r.name === repo);
+    if (!repoConfig) {
+      errorOut(`Repo "${repo}" is not configured`, { repo });
+    }
+    const { fetchProjectStatusOptions } = await import("./github.js");
+    const statuses = fetchProjectStatusOptions(
+      repoConfig.name,
+      repoConfig.projectNumber,
+      repoConfig.statusFieldId,
+    );
+    if (useJson()) {
+      jsonOut({ ok: true, data: { repo, statuses: statuses.map((s) => s.name) } });
+    } else {
+      console.log(`Available statuses for ${repo}: ${statuses.map((s) => s.name).join(", ")}`);
+    }
+  });
+
 program.addCommand(issueCommand);
+
+// -- Log commands --
+
+interface LogShowOptions {
+  limit: string;
+}
+
+const logCommand = program.command("log").description("Action log commands");
+
+logCommand
+  .command("show")
+  .description("Show recent action log entries")
+  .option("--limit <n>", "number of entries to show", "50")
+  .action((opts: LogShowOptions) => {
+    const limit = Number.parseInt(opts.limit, 10) || 50;
+    const entries = getActionLog(limit);
+    if (useJson()) {
+      jsonOut({ ok: true, data: { entries, count: entries.length } });
+    } else {
+      if (entries.length === 0) {
+        console.log("No action log entries.");
+        return;
+      }
+      for (const e of entries) {
+        const prefix = e.status === "success" ? "✓" : e.status === "error" ? "✗" : "…";
+        const ts = new Date(e.timestamp).toLocaleString();
+        console.log(`${prefix} [${ts}] ${e.description}`);
+      }
+    }
+  });
 
 // -- Run --
 

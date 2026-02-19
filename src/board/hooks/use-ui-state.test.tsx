@@ -253,6 +253,112 @@ describe("useUIState hook", () => {
     instance.unmount();
   });
 
+  it("should transition to overlay:fuzzyPicker mode from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterFuzzyPicker();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:fuzzyPicker");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterFuzzyPicker from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterFuzzyPicker();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search"); // blocked
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:editIssue mode from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterEditIssue();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:editIssue");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterEditIssue from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterEditIssue();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search"); // blocked
+
+    instance.unmount();
+  });
+
+  it("should return from overlay:fuzzyPicker to normal on exitOverlay", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterFuzzyPicker();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:fuzzyPicker");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("should return from overlay:editIssue to normal on exitOverlay", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterEditIssue();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:editIssue");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
   it("should return from focus to normal via exitToNormal", async () => {
     const instance = render(React.createElement(UIStateTester));
     await delay(50);

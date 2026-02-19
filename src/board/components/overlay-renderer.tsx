@@ -71,6 +71,7 @@ export interface OverlayRendererProps {
   readonly selectedRepoName: string | null;
   readonly selectedRepoConfig: RepoConfig | null;
   readonly onToastInfo: (msg: string) => void;
+  readonly onToastError: (msg: string) => void;
   readonly onPushEntry?: ((entry: ActionLogEntry) => void) | undefined;
 }
 
@@ -111,6 +112,7 @@ function OverlayRenderer({
   selectedRepoName,
   selectedRepoConfig,
   onToastInfo,
+  onToastError,
   onPushEntry,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
@@ -230,6 +232,7 @@ function OverlayRenderer({
           onPauseRefresh={onPauseRefresh}
           onResumeRefresh={onResumeRefresh}
           onToastInfo={onToastInfo}
+          onToastError={onToastError}
           {...(onPushEntry ? { onPushEntry } : {})}
         />
       ) : null}
