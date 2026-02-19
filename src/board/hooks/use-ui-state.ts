@@ -13,6 +13,8 @@ export type UIMode =
   | "overlay:bulkAction"
   | "overlay:confirmPick"
   | "overlay:help"
+  | "overlay:fuzzyPicker"
+  | "overlay:editIssue"
   | "multiSelect"
   | "focus";
 
@@ -37,6 +39,8 @@ export type UIAction =
   | { type: "ENTER_BULK_ACTION" }
   | { type: "ENTER_CONFIRM_PICK" }
   | { type: "ENTER_FOCUS" }
+  | { type: "ENTER_FUZZY_PICKER" }
+  | { type: "ENTER_EDIT_ISSUE" }
   | { type: "TOGGLE_HELP" }
   | { type: "EXIT_OVERLAY" }
   | { type: "EXIT_TO_NORMAL" }
@@ -97,6 +101,14 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       if (state.mode !== "normal") return state;
       return { ...state, mode: "focus", previousMode: "normal" };
 
+    case "ENTER_FUZZY_PICKER":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:fuzzyPicker", previousMode: "normal" };
+
+    case "ENTER_EDIT_ISSUE":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:editIssue", previousMode: "normal" };
+
     case "TOGGLE_HELP":
       // Help stacks on any mode
       return { ...state, helpVisible: !state.helpVisible };
@@ -154,6 +166,8 @@ export interface UseUIStateResult {
   enterBulkAction: () => void;
   enterConfirmPick: () => void;
   enterFocus: () => void;
+  enterFuzzyPicker: () => void;
+  enterEditIssue: () => void;
   toggleHelp: () => void;
   exitOverlay: () => void;
   exitToNormal: () => void;
@@ -178,6 +192,8 @@ export function useUIState(): UseUIStateResult {
     enterBulkAction: useCallback(() => dispatch({ type: "ENTER_BULK_ACTION" }), []),
     enterConfirmPick: useCallback(() => dispatch({ type: "ENTER_CONFIRM_PICK" }), []),
     enterFocus: useCallback(() => dispatch({ type: "ENTER_FOCUS" }), []),
+    enterFuzzyPicker: useCallback(() => dispatch({ type: "ENTER_FUZZY_PICKER" }), []),
+    enterEditIssue: useCallback(() => dispatch({ type: "ENTER_EDIT_ISSUE" }), []),
     toggleHelp: useCallback(() => dispatch({ type: "TOGGLE_HELP" }), []),
     exitOverlay: useCallback(() => dispatch({ type: "EXIT_OVERLAY" }), []),
     exitToNormal: useCallback(() => dispatch({ type: "EXIT_TO_NORMAL" }), []),

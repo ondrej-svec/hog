@@ -820,6 +820,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     [multiSelect, actions, ui],
   );
 
+  // Fuzzy picker handlers
+  const handleFuzzySelect = useCallback(
+    (navId: string) => {
+      nav.select(navId);
+      ui.exitToNormal();
+    },
+    [nav, ui],
+  );
+
   // Keyboard input — all useInput handlers live in use-keyboard.ts
   const onSearchEscape = useCallback(() => {
     ui.exitOverlay();
@@ -847,6 +856,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleErrorAction,
       toastInfo: toast.info,
       handleToggleMine,
+      handleEnterFuzzyPicker: ui.enterFuzzyPicker,
+      handleEnterEditIssue: ui.enterEditIssue,
     },
     onSearchEscape,
   });
@@ -902,6 +913,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       <OverlayRenderer
         uiState={ui.state}
         config={config}
+        repos={allRepos}
+        onFuzzySelect={handleFuzzySelect}
+        onFuzzyClose={ui.exitToNormal}
         selectedRepoStatusOptions={selectedRepoStatusOptions}
         currentStatus={multiSelect.count > 0 ? undefined : selectedItem.issue?.projectStatus}
         onStatusSelect={multiSelect.count > 0 ? handleBulkStatusSelect : actions.handleStatusChange}

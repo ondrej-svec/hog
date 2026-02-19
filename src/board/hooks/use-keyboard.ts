@@ -22,6 +22,8 @@ interface KeyboardActions {
   handleErrorAction: (action: "dismiss" | "retry") => boolean;
   toastInfo: (msg: string) => void;
   handleToggleMine: () => void;
+  handleEnterFuzzyPicker: () => void;
+  handleEnterEditIssue: () => void;
 }
 
 interface UseKeyboardOptions {
@@ -72,6 +74,8 @@ export function useKeyboard({
     handleErrorAction,
     toastInfo,
     handleToggleMine,
+    handleEnterFuzzyPicker,
+    handleEnterEditIssue,
   } = actions;
 
   const handleInput = useCallback(
@@ -235,6 +239,16 @@ export function useKeyboard({
           handleToggleMine();
           return;
         }
+        if (input === "F") {
+          handleEnterFuzzyPicker();
+          return;
+        }
+        if (input === "e") {
+          if (selectedIssue) {
+            handleEnterEditIssue();
+          }
+          return;
+        }
 
         // Space on an item: toggle selection + enter multiSelect mode
         if (input === " ") {
@@ -279,6 +293,8 @@ export function useKeyboard({
       handleEnterFocus,
       handleErrorAction,
       handleToggleMine,
+      handleEnterFuzzyPicker,
+      handleEnterEditIssue,
     ],
   );
 

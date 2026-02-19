@@ -1,5 +1,6 @@
 import type { HogConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
+import type { RepoData } from "../fetch.js";
 import type { UIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { BulkActionMenu } from "./bulk-action-menu.js";
@@ -8,6 +9,7 @@ import { ConfirmPrompt } from "./confirm-prompt.js";
 import { CreateIssueForm } from "./create-issue-form.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { FocusMode } from "./focus-mode.js";
+import { FuzzyPicker } from "./fuzzy-picker.js";
 import { HelpOverlay } from "./help-overlay.js";
 import { LabelPicker } from "./label-picker.js";
 import { NlCreateOverlay } from "./nl-create-overlay.js";
@@ -17,6 +19,10 @@ import { StatusPicker } from "./status-picker.js";
 export interface OverlayRendererProps {
   readonly uiState: UIState;
   readonly config: HogConfig;
+  readonly repos: RepoData[];
+  // Fuzzy picker
+  readonly onFuzzySelect: (navId: string) => void;
+  readonly onFuzzyClose: () => void;
   // Status picker
   readonly selectedRepoStatusOptions: StatusOption[];
   readonly currentStatus: string | undefined;
@@ -65,6 +71,9 @@ export interface OverlayRendererProps {
 function OverlayRenderer({
   uiState,
   config,
+  repos,
+  onFuzzySelect,
+  onFuzzyClose,
   selectedRepoStatusOptions,
   currentStatus,
   onStatusSelect,
@@ -177,6 +186,11 @@ function OverlayRenderer({
           onPauseRefresh={onPauseRefresh}
           onResumeRefresh={onResumeRefresh}
         />
+      ) : null}
+
+      {/* Fuzzy picker overlay */}
+      {mode === "overlay:fuzzyPicker" ? (
+        <FuzzyPicker repos={repos} onSelect={onFuzzySelect} onClose={onFuzzyClose} />
       ) : null}
 
       {/* NL create overlay */}
