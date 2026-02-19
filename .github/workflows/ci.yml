@@ -18,8 +18,4 @@ jobs:
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm run ci
       - run: npm run test:coverage
-      - uses: codecov/codecov-action@v4
-        with:
-          files: coverage/lcov.info
-          fail_ci_if_error: false
       - run: npm run build

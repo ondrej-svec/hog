@@ -1,6 +1,13 @@
-import { existsSync, readFileSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const LOG_FILE = join(homedir(), ".config", "hog", "action-log.json");
 const MAX_ENTRIES = 1000;
@@ -26,6 +33,7 @@ function readLog(): PersistedLogEntry[] {
 }
 
 function writeLog(entries: PersistedLogEntry[]): void {
+  mkdirSync(dirname(LOG_FILE), { recursive: true });
   writeFileSync(LOG_FILE, JSON.stringify(entries, null, 2), "utf-8");
 }
 
