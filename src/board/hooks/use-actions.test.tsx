@@ -956,5 +956,408 @@ describe("useActions hook", () => {
 
       instance.unmount();
     });
+
+    it("should push non-existent ids to failed list (lines 590-591: ctx has no issue/repoConfig)", async () => {
+      // IDs in the set that don't correspond to any loaded issue
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ number: 42 })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+
+      // gh:owner/repo:999 does not exist in the repos data — it should end up in failed
+      const failed = await actions.handleBulkStatusChange(
+        new Set(["gh:owner/repo:42", "gh:owner/repo:999"]),
+        "opt_1",
+      );
+
+      // 999 not found → pushed to failed
+      expect(failed).toContain("gh:owner/repo:999");
+      // 42 was found and succeeded
+      expect(failed).not.toContain("gh:owner/repo:42");
+
+      instance.unmount();
+    });
+
+    it("should fall back to optionId as name when no status option name is found (line 613)", async () => {
+      // Use an optionId that does not exist in the statusOptions array so the IIFE returns optionId itself
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ number: 42 })],
+          statusOptions: [{ id: "opt_1", name: "In Progress" }],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+
+      // Use an optionId that is not in statusOptions — optionName falls back to optionId
+      const failed = await actions.handleBulkStatusChange(
+        new Set(["gh:owner/repo:42"]),
+        "unknown_option_id",
+      );
+
+      expect(failed).toHaveLength(0);
+      // Toast message should contain the raw optionId as the status name fallback
+      expect(lastToast()?.message).toContain("unknown_option_id");
+
+      instance.unmount();
+    });
+  });
+
+  describe("handlePick", () => {
+    it("should call pickIssue for an unassigned issue", async () => {
+      mockPickIssue.mockResolvedValue({ warning: undefined });
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handlePick();
+      await delay(50);
+
+      expect(mockPickIssue).toHaveBeenCalledWith(
+        expect.objectContaining({ board: expect.any(Object) }),
+        expect.objectContaining({ issueNumber: 42 }),
+      );
+
+      instance.unmount();
+    });
+
+    it("should show info toast when issue is already assigned to self", async () => {
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ assignees: [{ login: "ondrej" }] })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handlePick();
+
+      expect(mockPickIssue).not.toHaveBeenCalled();
+      expect(lastToast()?.type).toBe("info");
+      expect(lastToast()?.message).toContain("Already assigned");
+
+      instance.unmount();
+    });
+
+    it("should show info toast when issue is assigned to someone else", async () => {
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ assignees: [{ login: "other-user" }] })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handlePick();
+
+      expect(mockPickIssue).not.toHaveBeenCalled();
+      expect(lastToast()?.type).toBe("info");
+      expect(lastToast()?.message).toContain("Already assigned");
+
+      instance.unmount();
+    });
+
+    it("should show error toast when pickIssue fails", async () => {
+      mockPickIssue.mockRejectedValue(new Error("TickTick unavailable"));
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handlePick();
+      await delay(50);
+
+      expect(lastToast()?.type).toBe("error");
+      expect(lastToast()?.message).toContain("Pick failed");
+
+      instance.unmount();
+    });
+
+    it("should no-op when no issue is selected", async () => {
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: null,
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handlePick();
+      await delay(50);
+
+      expect(mockPickIssue).not.toHaveBeenCalled();
+
+      instance.unmount();
+    });
+  });
+
+  describe("handleLabelChange", () => {
+    it("should call execFile with add-label args", async () => {
+      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleLabelChange(["bug"], []);
+      await delay(50);
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["--add-label", "bug"]),
+        expect.any(Object),
+      );
+
+      instance.unmount();
+    });
+
+    it("should call execFile with remove-label args", async () => {
+      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleLabelChange([], ["old-label"]);
+      await delay(50);
+
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["--remove-label", "old-label"]),
+        expect.any(Object),
+      );
+
+      instance.unmount();
+    });
+
+    it("should show error toast on failure", async () => {
+      mockExecFile.mockImplementation(() => {
+        throw new Error("label update error");
+      });
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleLabelChange(["bug"], []);
+      await delay(50);
+
+      expect(lastToast()?.type).toBe("error");
+      expect(lastToast()?.message).toContain("Label update failed");
+
+      instance.unmount();
+    });
+
+    it("should no-op when no issue is selected", async () => {
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "tt:task-1",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleLabelChange(["bug"], []);
+      await delay(50);
+
+      expect(mockExecFile).not.toHaveBeenCalled();
+
+      instance.unmount();
+    });
+  });
+
+  describe("handleUnassign — additional edge cases", () => {
+    it("should show 'Not assigned' info when issue has no assignees", async () => {
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ assignees: [] })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleUnassign();
+
+      expect(mockExecFile).not.toHaveBeenCalled();
+      expect(lastToast()?.type).toBe("info");
+      expect(lastToast()?.message).toContain("Not assigned");
+
+      instance.unmount();
+    });
+
+    it("should show error toast when execFile rejects during unassign", async () => {
+      mockExecFile.mockImplementation(() => {
+        throw new Error("network error");
+      });
+
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ assignees: [{ login: "ondrej" }] })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleUnassign();
+      await delay(50);
+
+      expect(lastToast()?.type).toBe("error");
+      expect(lastToast()?.message).toContain("Unassign failed");
+
+      instance.unmount();
+    });
+  });
+
+  describe("handleStatusChange — terminal status with completion action", () => {
+    it("should trigger closeIssue completion action when status is terminal", async () => {
+      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
+
+      const repos = [
+        makeRepoData({
+          statusOptions: [
+            { id: "opt_done", name: "done" },
+            { id: "opt_1", name: "In Progress" },
+          ],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleStatusChange("opt_done");
+      await delay(100);
+
+      // Should have called execFile with gh issue close (the closeIssue completion action)
+      expect(mockExecFile).toHaveBeenCalledWith(
+        "gh",
+        expect.arrayContaining(["issue", "close"]),
+        expect.any(Object),
+      );
+
+      instance.unmount();
+    });
   });
 });

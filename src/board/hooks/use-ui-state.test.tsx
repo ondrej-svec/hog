@@ -400,4 +400,420 @@ describe("useUIState hook", () => {
 
     instance.unmount();
   });
+
+  it("should transition to overlay:status from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterStatus();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:status");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterStatus from non-normal non-bulkAction mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterStatus();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:status from overlay:bulkAction with previousMode=multiSelect", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    // Get into multiSelect → bulkAction path
+    ui.enterMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    ui.enterBulkAction();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:bulkAction");
+
+    ui.enterStatus();
+    await delay(50);
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:status");
+
+    // exitOverlay should return to multiSelect (the previousMode set by bulkAction→status)
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:create from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterCreate();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:create");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterCreate from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterCreate();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:createNl from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterCreateNl();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:createNl");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterCreateNl from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterCreateNl();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:label from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterLabel();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:label");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterLabel from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterLabel();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should transition to multiSelect from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterMultiSelect();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:multiSelect");
+    expect(frame).toContain("canNav:yes");
+    expect(frame).toContain("canAct:no");
+    expect(frame).toContain("isOverlay:no");
+
+    instance.unmount();
+  });
+
+  it("should allow enterMultiSelect when already in multiSelect mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterMultiSelect();
+    await delay(50);
+    ui.enterMultiSelect();
+    await delay(50);
+
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    instance.unmount();
+  });
+
+  it("should block enterMultiSelect from non-normal non-multiSelect mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:bulkAction from multiSelect", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterMultiSelect();
+    await delay(50);
+
+    ui.enterBulkAction();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:overlay:bulkAction");
+    expect(frame).toContain("canNav:no");
+    expect(frame).toContain("isOverlay:yes");
+
+    instance.unmount();
+  });
+
+  it("should block enterBulkAction from non-multiSelect mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterBulkAction();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:confirmPick from any mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    // From normal
+    ui.enterConfirmPick();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:confirmPick");
+
+    instance.unmount();
+  });
+
+  it("should transition to overlay:confirmPick from overlay:create", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    ui.enterCreate();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:create");
+
+    ui.enterConfirmPick();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:confirmPick");
+
+    instance.unmount();
+  });
+
+  it("should clear multiSelect and return to normal via clearMultiSelect", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    ui.clearMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("should do nothing when clearMultiSelect is called from non-multiSelect mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.clearMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should toggle helpVisible on and off", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    // Start: help off
+    expect(instance.lastFrame()!).toContain("help:no");
+
+    // Toggle on
+    ui.toggleHelp();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("help:yes");
+
+    // Toggle off again
+    ui.toggleHelp();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("help:no");
+
+    instance.unmount();
+  });
+
+  it("should toggle help while in multiSelect mode without changing mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    ui.enterMultiSelect();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    ui.toggleHelp();
+    await delay(50);
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:multiSelect");
+    expect(frame).toContain("help:yes");
+
+    ui.exitOverlay();
+    await delay(50);
+    const afterExit = instance.lastFrame()!;
+    expect(afterExit).toContain("mode:multiSelect");
+    expect(afterExit).toContain("help:no");
+
+    instance.unmount();
+  });
+
+  it("should exitOverlay from normal mode returning to previousMode (normal)", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    // exitOverlay when already at normal just stays normal
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("should return from overlay:bulkAction to multiSelect on exitOverlay", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+
+    ui.enterMultiSelect();
+    await delay(50);
+    ui.enterBulkAction();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:bulkAction");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    instance.unmount();
+  });
 });

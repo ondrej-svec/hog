@@ -211,4 +211,68 @@ describe("FuzzyPicker keyboard navigation", () => {
 
     expect(onSelect).toHaveBeenCalledWith("gh:owner/myrepo:2");
   });
+
+  it("moves cursor up with ArrowUp (covers upArrow branch)", async () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const { stdin } = renderFuzzyPicker({
+      repos: makeRepoData(),
+      onSelect,
+      onClose,
+    });
+    await delay(50);
+
+    // Press down first, then up
+    stdin.write("\x1b[B"); // down arrow
+    await delay(50);
+    stdin.write("\x1b[A"); // up arrow
+    await delay(50);
+
+    // After down+up, cursor is back at 0, Enter selects first issue
+    stdin.write("\r");
+    await delay(50);
+
+    expect(onSelect).toHaveBeenCalledWith("gh:owner/myrepo:1");
+  });
+
+  it("ctrl+k at top of list is a no-op (covers key.ctrl && input==='k' branch)", async () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    const { stdin, lastFrame } = renderFuzzyPicker({
+      repos: makeRepoData(),
+      onSelect,
+      onClose,
+    });
+    await delay(50);
+
+    // At cursor=0, ctrl+k runs Math.max(0-1, 0) = 0 (no-op cursor move).
+    // \x0b is ctrl+k; it exercises the upArrow/ctrl+k branch in useInput.
+    // It also inserts 'k' into TextInput query but does not submit.
+    stdin.write("\x0b"); // ctrl+k
+    await delay(50);
+
+    // Neither onSelect nor onClose should have fired (ctrl+k is navigation only)
+    expect(onClose).not.toHaveBeenCalled();
+    // The component should still be rendered with content
+    const frame = lastFrame() ?? "";
+    expect(frame.length).toBeGreaterThan(0);
+  });
+
+  it("Enter on empty results list does not call onSelect (covers if(selected) guard)", async () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+
+    // Render with no repos so results are empty
+    const { stdin } = renderFuzzyPicker({
+      repos: [],
+      onSelect,
+      onClose,
+    });
+    await delay(50);
+
+    stdin.write("\r"); // Enter with no results
+    await delay(50);
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });
