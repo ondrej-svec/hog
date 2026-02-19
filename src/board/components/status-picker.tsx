@@ -17,6 +17,70 @@ function isTerminal(name: string): boolean {
   return TERMINAL_STATUS_RE.test(name);
 }
 
+// ── Input handler extracted to reduce component complexity ──
+
+interface InputState {
+  options: StatusOption[];
+  selectedIdx: number;
+  showTerminalStatuses: boolean;
+  submittedRef: { current: boolean };
+  onSelect: (id: string) => void;
+  onCancel: () => void;
+  onConfirmTerminal: () => void;
+  onNavigate: (fn: (i: number) => number) => void;
+}
+
+function handlePickerInput(
+  input: string,
+  key: { escape: boolean; return: boolean; downArrow: boolean; upArrow: boolean },
+  state: InputState,
+): void {
+  if (key.escape) {
+    state.onCancel();
+    return;
+  }
+  if (key.return) {
+    if (state.submittedRef.current) return;
+    const opt = state.options[state.selectedIdx];
+    if (!opt) return;
+    if (isTerminal(opt.name) && state.showTerminalStatuses) {
+      state.onConfirmTerminal();
+      return;
+    }
+    state.submittedRef.current = true;
+    state.onSelect(opt.id);
+    return;
+  }
+  if (input === "j" || key.downArrow) {
+    state.onNavigate((i) => Math.min(i + 1, state.options.length - 1));
+  }
+  if (input === "k" || key.upArrow) {
+    state.onNavigate((i) => Math.max(i - 1, 0));
+  }
+}
+
+interface ConfirmState {
+  opt: StatusOption | undefined;
+  submittedRef: { current: boolean };
+  onSelect: (id: string) => void;
+  onExitConfirm: () => void;
+}
+
+function handleConfirmInput(input: string, key: { escape: boolean }, state: ConfirmState): void {
+  if (input === "y" || input === "Y") {
+    if (!state.submittedRef.current) {
+      state.submittedRef.current = true;
+      if (state.opt) state.onSelect(state.opt.id);
+    }
+    return;
+  }
+  if (input === "n" || input === "N" || key.escape) {
+    state.onExitConfirm();
+  }
+}
+
+// ── Component ──
+
 function StatusPicker({
   options,
   currentStatus,
@@ -28,47 +92,29 @@ function StatusPicker({
     const idx = options.findIndex((o) => o.name === currentStatus);
     return idx >= 0 ? idx : 0;
   });
-  // Inline confirm for terminal status with closeIssue completion action
   const [confirmingTerminal, setConfirmingTerminal] = useState(false);
-  // Guard against Enter key repeat
   const submittedRef = useRef(false);
 
   useInput((input, key) => {
     if (confirmingTerminal) {
-      if (input === "y" || input === "Y") {
-        if (submittedRef.current) return;
-        submittedRef.current = true;
-        const opt = options[selectedIdx];
-        if (opt) onSelect(opt.id);
-        return;
-      }
-      if (input === "n" || input === "N" || key.escape) {
-        setConfirmingTerminal(false);
-        return;
-      }
+      handleConfirmInput(input, key, {
+        opt: options[selectedIdx],
+        submittedRef,
+        onSelect,
+        onExitConfirm: () => setConfirmingTerminal(false),
+      });
       return;
     }
-
-    if (key.escape) return onCancel();
-    if (key.return) {
-      if (submittedRef.current) return;
-      const opt = options[selectedIdx];
-      if (!opt) return;
-      if (isTerminal(opt.name) && showTerminalStatuses) {
-        // Show inline confirm before executing
-        setConfirmingTerminal(true);
-        return;
-      }
-      submittedRef.current = true;
-      onSelect(opt.id);
-      return;
-    }
-    if (input === "j" || key.downArrow) {
-      setSelectedIdx((i) => Math.min(i + 1, options.length - 1));
-    }
-    if (input === "k" || key.upArrow) {
-      setSelectedIdx((i) => Math.max(i - 1, 0));
-    }
+    handlePickerInput(input, key, {
+      options,
+      selectedIdx,
+      showTerminalStatuses,
+      submittedRef,
+      onSelect,
+      onCancel,
+      onConfirmTerminal: () => setConfirmingTerminal(true),
+      onNavigate: setSelectedIdx,
+    });
   });
 
   if (confirmingTerminal) {

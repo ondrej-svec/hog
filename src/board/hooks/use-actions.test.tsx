@@ -191,6 +191,7 @@ function ActionsTester({
   (globalThis as Record<string, unknown>)["__actions"] = actions;
   (globalThis as Record<string, unknown>)["__toastCalls"] = mockToast.calls;
   (globalThis as Record<string, unknown>)["__refresh"] = refresh;
+  (globalThis as Record<string, unknown>)["__mutateData"] = mutateData;
   (globalThis as Record<string, unknown>)["__onOverlayDone"] = onOverlayDone;
 
   return (
@@ -209,6 +210,14 @@ function getToastCalls(): ToastCall[] {
 function lastToast(): ToastCall | null {
   const calls = getToastCalls();
   return calls[calls.length - 1] ?? null;
+}
+
+function getRefresh(): ReturnType<typeof vi.fn> {
+  return (globalThis as Record<string, unknown>)["__refresh"] as ReturnType<typeof vi.fn>;
+}
+
+function getMutateData(): ReturnType<typeof vi.fn> {
+  return (globalThis as Record<string, unknown>)["__mutateData"] as ReturnType<typeof vi.fn>;
 }
 
 describe("useActions hook", () => {
@@ -436,6 +445,113 @@ describe("useActions hook", () => {
         "__onOverlayDone"
       ] as ReturnType<typeof vi.fn>;
       expect(onOverlayDone).toHaveBeenCalled();
+
+      instance.unmount();
+    });
+
+    it("should apply mutateData immediately (optimistic update before API resolves)", async () => {
+      // Make the API call hang so we can observe state before it completes
+      let resolveApi!: () => void;
+      mockUpdateProjectItemStatusAsync.mockReturnValue(
+        new Promise<void>((r) => {
+          resolveApi = r;
+        }),
+      );
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleStatusChange("opt_1");
+
+      // mutateData should have been called synchronously (before the API resolves)
+      expect(getMutateData()).toHaveBeenCalledTimes(1);
+
+      // Resolve the API call to avoid hanging
+      resolveApi();
+      await delay(50);
+
+      instance.unmount();
+    });
+
+    it("should NOT call refresh on success (avoids overwriting optimistic update with stale data)", async () => {
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleStatusChange("opt_1");
+      await delay(50);
+
+      // On success, refresh must NOT be called — GitHub Projects v2 is eventually consistent
+      // and a refresh overwrites the optimistic update with stale server data.
+      expect(getRefresh()).not.toHaveBeenCalled();
+
+      instance.unmount();
+    });
+
+    it("should call refresh on failure to revert the optimistic update", async () => {
+      mockUpdateProjectItemStatusAsync.mockRejectedValue(new Error("GraphQL error"));
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleStatusChange("opt_1");
+      await delay(50);
+
+      // On failure, refresh reverts the optimistic update to actual server state
+      expect(getRefresh()).toHaveBeenCalledTimes(1);
+      expect(lastToast()?.type).toBe("error");
+      expect(lastToast()?.message).toContain("Status change failed");
+
+      instance.unmount();
+    });
+
+    it("should call onOverlayDone on both success and failure", async () => {
+      // Success case
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos: [makeRepoData()],
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      actions.handleStatusChange("opt_1");
+      await delay(50);
+
+      const onOverlayDone = (globalThis as Record<string, unknown>)[
+        "__onOverlayDone"
+      ] as ReturnType<typeof vi.fn>;
+      expect(onOverlayDone).toHaveBeenCalledTimes(1);
 
       instance.unmount();
     });
@@ -726,6 +842,117 @@ describe("useActions hook", () => {
 
       expect(lastToast()?.message).toContain("Moved 2 issues to In Progress");
       expect(lastToast()?.type).toBe("success");
+
+      instance.unmount();
+    });
+
+    it("should call mutateData optimistically for each issue before API calls", async () => {
+      // Block the API so we can check mutateData before resolution
+      let resolveAll!: () => void;
+      mockUpdateProjectItemStatusAsync.mockReturnValue(
+        new Promise<void>((r) => {
+          resolveAll = r;
+        }),
+      );
+
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ number: 42 }), makeIssue({ number: 43 })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+
+      // Don't await — we need to inspect state while API is pending
+      const inFlight = actions.handleBulkStatusChange(
+        new Set(["gh:owner/repo:42", "gh:owner/repo:43"]),
+        "opt_1",
+      );
+
+      // mutateData should have been called once per issue (synchronously before API calls)
+      expect(getMutateData()).toHaveBeenCalledTimes(2);
+
+      resolveAll();
+      await inFlight;
+      await delay(50);
+
+      instance.unmount();
+    });
+
+    it("should NOT call refresh when all issues succeed", async () => {
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ number: 42 }), makeIssue({ number: 43 })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      await actions.handleBulkStatusChange(
+        new Set(["gh:owner/repo:42", "gh:owner/repo:43"]),
+        "opt_1",
+      );
+
+      // On full success, refresh must NOT be called (same eventual-consistency reason)
+      expect(getRefresh()).not.toHaveBeenCalled();
+
+      instance.unmount();
+    });
+
+    it("should call refresh when some issues fail to revert optimistic updates", async () => {
+      // First call succeeds, second fails
+      mockUpdateProjectItemStatusAsync
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error("fail"));
+
+      const repos = [
+        makeRepoData({
+          issues: [makeIssue({ number: 42 }), makeIssue({ number: 43 })],
+        }),
+      ];
+
+      const instance = render(
+        React.createElement(ActionsTester, {
+          config: makeConfig(),
+          repos,
+          selectedId: "gh:owner/repo:42",
+        }),
+      );
+      await delay(50);
+
+      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
+        typeof useActions
+      >;
+      const failed = await actions.handleBulkStatusChange(
+        new Set(["gh:owner/repo:42", "gh:owner/repo:43"]),
+        "opt_1",
+      );
+
+      expect(failed).toHaveLength(1);
+      // refresh should be called to revert the optimistic updates for failed items
+      expect(getRefresh()).toHaveBeenCalledTimes(1);
+      expect(lastToast()?.type).toBe("error");
 
       instance.unmount();
     });

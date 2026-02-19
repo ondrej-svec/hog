@@ -603,7 +603,6 @@ config
 config
   .command("ai:status")
   .description("Show whether AI-enhanced issue creation is available and which source provides it")
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: sequential if/else for display only
   .action(() => {
     const envOr = process.env["OPENROUTER_API_KEY"];
     const envAnt = process.env["ANTHROPIC_API_KEY"];

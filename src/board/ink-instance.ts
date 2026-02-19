@@ -1,12 +1,12 @@
 import type { Instance } from "ink";
 
-let _instance: Instance | null = null;
+let inkInstance: Instance | null = null;
 
 /** Store the Ink render instance for use in editor integration ($EDITOR launch). */
 export function setInkInstance(instance: Instance): void {
-  _instance = instance;
+  inkInstance = instance;
 }
 
 export function getInkInstance(): Instance | null {
-  return _instance;
+  return inkInstance;
 }

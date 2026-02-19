@@ -92,9 +92,9 @@ function CommentInput({
       }
     } finally {
       onResumeRef.current?.();
-      if (tmpFile) {
+      if (tmpDir) {
         try {
-          rmSync(tmpDir!, { recursive: true, force: true });
+          rmSync(tmpDir, { recursive: true, force: true });
         } catch {
           // ignore cleanup errors
         }

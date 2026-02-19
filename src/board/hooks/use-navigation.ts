@@ -15,6 +15,8 @@ interface NavState {
   selectedSection: SectionId | null;
   sections: SectionId[];
   collapsedSections: Set<SectionId>;
+  /** Full item list, kept in state so reducer can relocate cursor on collapse */
+  allItems: NavItem[];
 }
 
 type NavAction =
@@ -45,6 +47,39 @@ export function findFallback(items: NavItem[], oldSection: SectionId | null): Na
   return items.find((i) => i.type === "header") ?? items[0];
 }
 
+/** When collapsing a section/sub-section, return new cursor if the selected item becomes hidden. */
+function relocateOnToggle(
+  state: NavState,
+  section: SectionId,
+): Pick<NavState, "selectedId" | "selectedSection"> {
+  if (!state.selectedId) return { selectedId: null, selectedSection: null };
+  const selected = state.allItems.find((i) => i.id === state.selectedId);
+  if (!selected) return { selectedId: state.selectedId, selectedSection: state.selectedSection };
+  const insideCollapsedSubSection = selected.subSection === section;
+  const insideCollapsedSection =
+    !insideCollapsedSubSection && selected.section === section && selected.type !== "header";
+  if (insideCollapsedSubSection) {
+    const subHeader = state.allItems.find((i) => i.id === section && i.type === "subHeader");
+    if (subHeader) return { selectedId: subHeader.id, selectedSection: subHeader.section };
+  } else if (insideCollapsedSection) {
+    const header = state.allItems.find((i) => i.section === section && i.type === "header");
+    if (header) return { selectedId: header.id, selectedSection: header.section };
+  }
+  return { selectedId: state.selectedId, selectedSection: state.selectedSection };
+}
+
+/** When collapsing all, return cursor relocated to section header if currently on a non-header item. */
+function relocateOnCollapseAll(state: NavState): Pick<NavState, "selectedId" | "selectedSection"> {
+  if (!state.selectedId) return { selectedId: null, selectedSection: null };
+  const selected = state.allItems.find((i) => i.id === state.selectedId);
+  if (!selected || selected.type === "header") {
+    return { selectedId: state.selectedId, selectedSection: state.selectedSection };
+  }
+  const header = state.allItems.find((i) => i.section === selected.section && i.type === "header");
+  if (header) return { selectedId: header.id, selectedSection: header.section };
+  return { selectedId: state.selectedId, selectedSection: state.selectedSection };
+}
+
 function navReducer(state: NavState, action: NavAction): NavState {
   switch (action.type) {
     case "SET_ITEMS": {
@@ -71,6 +106,7 @@ function navReducer(state: NavState, action: NavAction): NavState {
           selectedSection: selected?.section ?? state.selectedSection,
           sections,
           collapsedSections,
+          allItems: action.items,
         };
       }
 
@@ -81,6 +117,7 @@ function navReducer(state: NavState, action: NavAction): NavState {
         selectedSection: fallback?.section ?? null,
         sections,
         collapsedSections,
+        allItems: action.items,
       };
     }
     case "SELECT": {
@@ -92,15 +129,19 @@ function navReducer(state: NavState, action: NavAction): NavState {
     }
     case "TOGGLE_SECTION": {
       const next = new Set(state.collapsedSections);
-      if (next.has(action.section)) {
-        next.delete(action.section);
-      } else {
+      const isCollapsing = !next.has(action.section);
+      if (isCollapsing) {
         next.add(action.section);
+        const cursor = relocateOnToggle(state, action.section);
+        return { ...state, collapsedSections: next, ...cursor };
       }
+      next.delete(action.section);
       return { ...state, collapsedSections: next };
     }
     case "COLLAPSE_ALL": {
-      return { ...state, collapsedSections: new Set(state.sections) };
+      const next = new Set(state.sections);
+      const cursor = relocateOnCollapseAll(state);
+      return { ...state, collapsedSections: next, ...cursor };
     }
     default:
       return state;
@@ -138,6 +179,7 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     selectedSection: null,
     sections: [],
     collapsedSections: new Set<SectionId>(),
+    allItems: [],
   });
 
   // Sync items into reducer when they change (by reference comparison).
@@ -195,6 +237,8 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
   const toggleSection = useCallback(() => {
     const currentItem = visibleItems[selectedIndex];
     if (!currentItem) return;
+    // Only headers and subHeaders are toggle targets; items have no collapse behaviour
+    if (currentItem.type === "item") return;
     // Sub-headers toggle their own ID (used as sub-section key); headers toggle the section
     const key = currentItem.type === "subHeader" ? currentItem.id : currentItem.section;
     dispatch({ type: "TOGGLE_SECTION", section: key });

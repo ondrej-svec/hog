@@ -50,6 +50,12 @@ const INITIAL_STATE: UIState = {
   previousMode: "normal",
 };
 
+function enterStatusMode(state: UIState): UIState {
+  if (state.mode !== "normal" && state.mode !== "overlay:bulkAction") return state;
+  const previousMode: UIMode = state.mode === "overlay:bulkAction" ? "multiSelect" : "normal";
+  return { ...state, mode: "overlay:status", previousMode };
+}
+
 function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "ENTER_SEARCH":
@@ -61,12 +67,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, mode: "overlay:comment", previousMode: "normal" };
 
     case "ENTER_STATUS":
-      if (state.mode !== "normal" && state.mode !== "overlay:bulkAction") return state;
-      return {
-        ...state,
-        mode: "overlay:status",
-        previousMode: state.mode === "overlay:bulkAction" ? "multiSelect" : "normal",
-      };
+      return enterStatusMode(state);
 
     case "ENTER_CREATE":
       if (state.mode !== "normal") return state;
