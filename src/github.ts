@@ -101,6 +101,66 @@ export async function assignIssueAsync(repo: string, issueNumber: number): Promi
   await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--add-assignee", "@me"]);
 }
 
+export async function assignIssueToAsync(
+  repo: string,
+  issueNumber: number,
+  user: string,
+): Promise<void> {
+  await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--add-assignee", user]);
+}
+
+export async function unassignIssueAsync(
+  repo: string,
+  issueNumber: number,
+  user: string,
+): Promise<void> {
+  await runGhAsync([
+    "issue",
+    "edit",
+    String(issueNumber),
+    "--repo",
+    repo,
+    "--remove-assignee",
+    user,
+  ]);
+}
+
+export async function fetchIssueAsync(repo: string, issueNumber: number): Promise<GitHubIssue> {
+  return runGhJsonAsync<GitHubIssue>([
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repo,
+    "--json",
+    "number,title,url,state,updatedAt,labels,assignees,body,projectStatus",
+  ]);
+}
+
+export async function addCommentAsync(
+  repo: string,
+  issueNumber: number,
+  body: string,
+): Promise<void> {
+  await runGhAsync(["issue", "comment", String(issueNumber), "--repo", repo, "--body", body]);
+}
+
+export async function addLabelAsync(
+  repo: string,
+  issueNumber: number,
+  label: string,
+): Promise<void> {
+  await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--add-label", label]);
+}
+
+export async function removeLabelAsync(
+  repo: string,
+  issueNumber: number,
+  label: string,
+): Promise<void> {
+  await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--remove-label", label]);
+}
+
 export interface IssueComment {
   readonly body: string;
   readonly author: { readonly login: string };

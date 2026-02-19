@@ -737,6 +737,43 @@ interface IssueCreateOptions {
   dryRun?: boolean;
 }
 
+interface IssueShowOptions {
+  dryRun?: boolean;
+}
+
+interface IssueMoveOptions {
+  dryRun?: boolean;
+}
+
+interface IssueAssignOptions {
+  user?: string;
+  dryRun?: boolean;
+}
+
+interface IssueUnassignOptions {
+  user?: string;
+  dryRun?: boolean;
+}
+
+interface IssueCommentOptions {
+  dryRun?: boolean;
+}
+
+interface IssueEditOptions {
+  title?: string;
+  body?: string;
+  label?: string[];
+  removeLabel?: string[];
+  assignee?: string;
+  removeAssignee?: string;
+  dryRun?: boolean;
+}
+
+interface IssueLabelOptions {
+  remove?: boolean;
+  dryRun?: boolean;
+}
+
 const issueCommand = new Command("issue").description("GitHub issue utilities");
 
 issueCommand
@@ -796,6 +833,285 @@ issueCommand
         `Error: gh issue create failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       process.exit(1);
+    }
+  });
+
+issueCommand
+  .command("show <issueRef>")
+  .description("Show issue details (format: shortname/number, e.g. myrepo/42)")
+  .option("--dry-run", "Print what would be shown without making any calls")
+  .action(async (issueRef: string, opts: IssueShowOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(`[dry-run] Would show ${ref.repo.shortName}#${ref.issueNumber}`);
+      return;
+    }
+    const { fetchIssueAsync } = await import("./github.js");
+    const issue = await fetchIssueAsync(ref.repo.name, ref.issueNumber);
+    if (useJson()) {
+      jsonOut({ ok: true, data: issue });
+    } else {
+      console.log(`#${issue.number} ${issue.title}`);
+      if (issue.projectStatus) console.log(`  Status:   ${issue.projectStatus}`);
+      const labels = issue.labels.map((l) => l.name).join(", ");
+      if (labels) console.log(`  Labels:   ${labels}`);
+      const assignees = (issue.assignees ?? []).map((a) => `@${a.login}`).join(", ");
+      if (assignees) console.log(`  Assignee: ${assignees}`);
+      console.log(`  URL:      ${issue.url}`);
+      if (issue.body) {
+        console.log();
+        console.log(issue.body);
+      }
+    }
+  });
+
+issueCommand
+  .command("move <issueRef> <status>")
+  .description("Change project status (e.g. hog issue move myrepo/42 'In Review')")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (issueRef: string, status: string, opts: IssueMoveOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const rc = ref.repo;
+    if (!(rc.statusFieldId && rc.projectNumber)) {
+      console.error(`Error: ${rc.name} is not configured with a project board. Run: hog init`);
+      process.exit(1);
+    }
+    const { fetchProjectStatusOptions, updateProjectItemStatusAsync } = await import("./github.js");
+    const options = fetchProjectStatusOptions(rc.name, rc.projectNumber, rc.statusFieldId);
+    const target = options.find((o) => o.name.toLowerCase() === status.toLowerCase());
+    if (!target) {
+      const valid = options.map((o) => o.name).join(", ");
+      console.error(`Error: Invalid status "${status}". Valid: ${valid}`);
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(`[dry-run] Would move ${rc.shortName}#${ref.issueNumber} → "${target.name}"`);
+      return;
+    }
+    await updateProjectItemStatusAsync(rc.name, ref.issueNumber, {
+      projectNumber: rc.projectNumber,
+      statusFieldId: rc.statusFieldId,
+      optionId: target.id,
+    });
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, status: target.name } });
+    } else {
+      console.log(`Moved ${rc.shortName}#${ref.issueNumber} → ${target.name}`);
+    }
+  });
+
+issueCommand
+  .command("assign <issueRef>")
+  .description("Assign issue to self or a specific user")
+  .option("--user <username>", "GitHub username to assign (default: configured assignee)")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (issueRef: string, opts: IssueAssignOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const user = opts.user ?? cfg.board.assignee;
+    if (!user) {
+      console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(`[dry-run] Would assign ${ref.repo.shortName}#${ref.issueNumber} to @${user}`);
+      return;
+    }
+    const { assignIssueToAsync } = await import("./github.js");
+    await assignIssueToAsync(ref.repo.name, ref.issueNumber, user);
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, assignee: user } });
+    } else {
+      console.log(`Assigned ${ref.repo.shortName}#${ref.issueNumber} to @${user}`);
+    }
+  });
+
+issueCommand
+  .command("unassign <issueRef>")
+  .description("Remove assignee from issue")
+  .option("--user <username>", "GitHub username to remove (default: configured assignee)")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (issueRef: string, opts: IssueUnassignOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const user = opts.user ?? cfg.board.assignee;
+    if (!user) {
+      console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(`[dry-run] Would remove @${user} from ${ref.repo.shortName}#${ref.issueNumber}`);
+      return;
+    }
+    const { unassignIssueAsync } = await import("./github.js");
+    await unassignIssueAsync(ref.repo.name, ref.issueNumber, user);
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, removedAssignee: user } });
+    } else {
+      console.log(`Removed @${user} from ${ref.repo.shortName}#${ref.issueNumber}`);
+    }
+  });
+
+issueCommand
+  .command("comment <issueRef> <text>")
+  .description("Post a comment on an issue")
+  .option("--dry-run", "Print what would be posted without mutating")
+  .action(async (issueRef: string, text: string, opts: IssueCommentOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(`[dry-run] Would comment on ${ref.repo.shortName}#${ref.issueNumber}: "${text}"`);
+      return;
+    }
+    const { addCommentAsync } = await import("./github.js");
+    await addCommentAsync(ref.repo.name, ref.issueNumber, text);
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, comment: text } });
+    } else {
+      console.log(`Commented on ${ref.repo.shortName}#${ref.issueNumber}`);
+    }
+  });
+
+issueCommand
+  .command("edit <issueRef>")
+  .description("Edit issue fields (title, body, labels, assignees)")
+  .option("--title <title>", "New title")
+  .option("--body <body>", "New body")
+  .option(
+    "--label <label>",
+    "Add label (repeatable)",
+    (v, acc: string[]) => [...acc, v],
+    [] as string[],
+  )
+  .option(
+    "--remove-label <label>",
+    "Remove label (repeatable)",
+    (v, acc: string[]) => [...acc, v],
+    [] as string[],
+  )
+  .option("--assignee <user>", "Add assignee")
+  .option("--remove-assignee <user>", "Remove assignee")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (issueRef: string, opts: IssueEditOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+
+    const changes: string[] = [];
+    if (opts.title) changes.push(`title → "${opts.title}"`);
+    if (opts.body !== undefined) changes.push("body updated");
+    if (opts.label?.length) changes.push(`add labels: ${opts.label.join(", ")}`);
+    if (opts.removeLabel?.length) changes.push(`remove labels: ${opts.removeLabel.join(", ")}`);
+    if (opts.assignee) changes.push(`add assignee: @${opts.assignee}`);
+    if (opts.removeAssignee) changes.push(`remove assignee: @${opts.removeAssignee}`);
+
+    if (changes.length === 0) {
+      console.error("Error: no changes specified. Use --title, --body, --label, etc.");
+      process.exit(1);
+    }
+
+    if (opts.dryRun) {
+      console.log(
+        `[dry-run] Would edit ${ref.repo.shortName}#${ref.issueNumber}: ${changes.join("; ")}`,
+      );
+      return;
+    }
+
+    const ghArgs = ["issue", "edit", String(ref.issueNumber), "--repo", ref.repo.name];
+    if (opts.title) ghArgs.push("--title", opts.title);
+    if (opts.body !== undefined) ghArgs.push("--body", opts.body);
+    for (const l of opts.label ?? []) ghArgs.push("--add-label", l);
+    for (const l of opts.removeLabel ?? []) ghArgs.push("--remove-label", l);
+    if (opts.assignee) ghArgs.push("--add-assignee", opts.assignee);
+    if (opts.removeAssignee) ghArgs.push("--remove-assignee", opts.removeAssignee);
+
+    execFileSync("gh", ghArgs, { stdio: "inherit" });
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, changes } });
+    } else {
+      console.log(`Updated ${ref.repo.shortName}#${ref.issueNumber}: ${changes.join("; ")}`);
+    }
+  });
+
+issueCommand
+  .command("label <issueRef> <label>")
+  .description("Add or remove a label on an issue")
+  .option("--remove", "Remove the label instead of adding it")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (issueRef: string, label: string, opts: IssueLabelOptions) => {
+    const cfg = loadFullConfig();
+    const { parseIssueRef } = await import("./pick.js");
+    let ref: Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>;
+    try {
+      ref = parseIssueRef(issueRef, cfg);
+    } catch (err) {
+      console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    const verb = opts.remove ? "remove" : "add";
+    if (opts.dryRun) {
+      console.log(
+        `[dry-run] Would ${verb} label "${label}" on ${ref.repo.shortName}#${ref.issueNumber}`,
+      );
+      return;
+    }
+    if (opts.remove) {
+      const { removeLabelAsync } = await import("./github.js");
+      await removeLabelAsync(ref.repo.name, ref.issueNumber, label);
+    } else {
+      const { addLabelAsync } = await import("./github.js");
+      await addLabelAsync(ref.repo.name, ref.issueNumber, label);
+    }
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issue: ref.issueNumber, label, action: verb } });
+    } else {
+      console.log(
+        `${opts.remove ? "Removed" : "Added"} label "${label}" on ${ref.repo.shortName}#${ref.issueNumber}`,
+      );
     }
   });
 
