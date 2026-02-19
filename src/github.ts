@@ -101,6 +101,28 @@ export async function assignIssueAsync(repo: string, issueNumber: number): Promi
   await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--add-assignee", "@me"]);
 }
 
+export interface IssueComment {
+  readonly body: string;
+  readonly author: { readonly login: string };
+  readonly createdAt: string;
+}
+
+export async function fetchIssueCommentsAsync(
+  repo: string,
+  issueNumber: number,
+): Promise<IssueComment[]> {
+  const result = await runGhJsonAsync<{ comments: IssueComment[] }>([
+    "issue",
+    "view",
+    String(issueNumber),
+    "--repo",
+    repo,
+    "--json",
+    "comments",
+  ]);
+  return result.comments ?? [];
+}
+
 export function fetchProjectFields(
   repo: string,
   issueNumber: number,

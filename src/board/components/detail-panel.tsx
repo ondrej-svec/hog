@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
-import type { GitHubIssue } from "../../github.js";
+import { useEffect } from "react";
+import type { GitHubIssue, IssueComment } from "../../github.js";
 import type { Task } from "../../types.js";
 import { Priority } from "../../types.js";
 
@@ -7,6 +8,9 @@ interface DetailPanelProps {
   readonly issue: GitHubIssue | null;
   readonly task: Task | null;
   readonly width: number;
+  readonly commentsState?: IssueComment[] | "loading" | "error" | null;
+  readonly fetchComments?: (repo: string, issueNumber: number) => void;
+  readonly issueRepo?: string | null;
 }
 
 function truncateLines(text: string, maxLines: number): string {
@@ -77,8 +81,25 @@ function BodySection({
   );
 }
 
+function formatCommentAge(createdAt: string): string {
+  const seconds = Math.floor((Date.now() - new Date(createdAt).getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: conditional rendering for issue vs task
-function DetailPanel({ issue, task, width }: DetailPanelProps) {
+function DetailPanel({ issue, task, width, commentsState, fetchComments, issueRepo }: DetailPanelProps) {
+  // Trigger lazy fetch when issue changes and panel is visible
+  useEffect(() => {
+    if (!issue || !fetchComments || !issueRepo) return;
+    if (commentsState !== null && commentsState !== undefined) return; // already fetched or loading
+    fetchComments(issueRepo, issue.number);
+  }, [issue?.number, issueRepo, fetchComments, commentsState]);
   if (!(issue || task)) {
     return (
       <Box
@@ -163,6 +184,31 @@ function DetailPanel({ issue, task, width }: DetailPanelProps) {
             <Text>{""}</Text>
             <Text color="gray">(no description)</Text>
           </>
+        )}
+
+        {/* Comments section */}
+        <Text>{""}</Text>
+        <Text dimColor>--- Comments ---</Text>
+        {commentsState === "loading" ? (
+          <Text dimColor>fetching comments...</Text>
+        ) : commentsState === "error" ? (
+          <Text color="red">could not load comments</Text>
+        ) : commentsState && commentsState.length === 0 ? (
+          <Text dimColor>No comments yet.</Text>
+        ) : commentsState && commentsState.length > 0 ? (
+          <>
+            {commentsState.slice(-5).map((comment, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable list
+              <Box key={i} flexDirection="column" marginBottom={1}>
+                <Text color="cyan">
+                  @{comment.author.login} · {formatCommentAge(comment.createdAt)}
+                </Text>
+                <Text wrap="wrap">  {comment.body.split("\n")[0]}</Text>
+              </Box>
+            ))}
+          </>
+        ) : (
+          <Text dimColor>fetching comments...</Text>
         )}
 
         <Text>{""}</Text>

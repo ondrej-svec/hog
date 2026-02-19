@@ -21,6 +21,7 @@ interface KeyboardActions {
   handleEnterCreateNl: () => void;
   handleErrorAction: (action: "dismiss" | "retry") => boolean;
   toastInfo: (msg: string) => void;
+  handleToggleMine: () => void;
 }
 
 interface UseKeyboardOptions {
@@ -70,6 +71,7 @@ export function useKeyboard({
     handleEnterCreateNl,
     handleErrorAction,
     toastInfo,
+    handleToggleMine,
   } = actions;
 
   const handleInput = useCallback(
@@ -229,6 +231,10 @@ export function useKeyboard({
           handleEnterCreateNl();
           return;
         }
+        if (input === "t") {
+          handleToggleMine();
+          return;
+        }
 
         // Space on an item: toggle selection + enter multiSelect mode
         if (input === " ") {
@@ -272,6 +278,7 @@ export function useKeyboard({
       multiSelect,
       handleEnterFocus,
       handleErrorAction,
+      handleToggleMine,
     ],
   );
 

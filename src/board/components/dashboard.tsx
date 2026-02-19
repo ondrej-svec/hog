@@ -4,7 +4,8 @@ import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig } from "../../config.js";
-import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
+import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
+import { fetchIssueCommentsAsync } from "../../github.js";
 import type { Task } from "../../types.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActions } from "../hooks/use-actions.js";
@@ -17,6 +18,7 @@ import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
+import { HintBar } from "./hint-bar.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import type { FlatRow } from "./row-renderer.js";
@@ -403,6 +405,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // Search state (managed separately — search query persists across mode changes)
   const [searchQuery, setSearchQuery] = useState("");
 
+  // My-issues filter: toggle between all issues and issues assigned to me
+  const [mineOnly, setMineOnly] = useState(false);
+  const handleToggleMine = useCallback(() => {
+    setMineOnly((prev) => !prev);
+  }, []);
+
   // Toast notification system (replaces old statusMessage)
   const { toasts, toast, handleErrorAction } = useToast();
 
@@ -413,14 +421,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     return () => clearInterval(id);
   }, []);
 
-  // Filter by search query
+  // Filter by search query and/or mineOnly
   const repos = useMemo(() => {
-    if (!searchQuery) return allRepos;
+    let filtered = allRepos;
+    if (mineOnly) {
+      const me = config.board.assignee;
+      filtered = filtered
+        .map((rd) => ({
+          ...rd,
+          issues: rd.issues.filter((i) => (i.assignees ?? []).some((a) => a.login === me)),
+        }))
+        .filter((rd) => rd.issues.length > 0);
+    }
+    if (!searchQuery) return filtered;
     const q = searchQuery.toLowerCase();
-    return allRepos
+    return filtered
       .map((rd) => ({ ...rd, issues: rd.issues.filter((i) => i.title.toLowerCase().includes(q)) }))
       .filter((rd) => rd.issues.length > 0);
-  }, [allRepos, searchQuery]);
+  }, [allRepos, searchQuery, mineOnly, config.board.assignee]);
 
   const tasks = useMemo(() => {
     if (!searchQuery) return allTasks;
@@ -470,6 +488,27 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Session-level label cache to avoid re-fetching on every overlay open
   const labelCacheRef = useRef<Record<string, LabelOption[]>>({});
+
+  // Comment cache: key = "repo:issueNumber" → comments or loading/error state
+  const commentCacheRef = useRef<Record<string, IssueComment[] | "loading" | "error">>({});
+  // Tick counter triggers re-render when cache is updated (ref changes don't re-render on their own)
+  const [commentTick, setCommentTick] = useState(0);
+
+  const handleFetchComments = useCallback((repo: string, issueNumber: number) => {
+    const key = `${repo}:${issueNumber}`;
+    if (commentCacheRef.current[key] !== undefined) return;
+    commentCacheRef.current[key] = "loading";
+    setCommentTick((t) => t + 1);
+    fetchIssueCommentsAsync(repo, issueNumber)
+      .then((comments) => {
+        commentCacheRef.current[key] = comments;
+        setCommentTick((t) => t + 1);
+      })
+      .catch(() => {
+        commentCacheRef.current[key] = "error";
+        setCommentTick((t) => t + 1);
+      });
+  }, []);
 
   const handleCreateIssueWithPrompt = useCallback(
     (repo: string, title: string, body: string, dueDate: string | null, labels?: string[]) => {
@@ -645,6 +684,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     return { issue: null, task: null, repoName: null };
   }, [nav.selectedId, repos, tasks]);
 
+  // Derive current commentsState (re-computes on tick or selected issue change)
+  const currentCommentsState = useMemo((): IssueComment[] | "loading" | "error" | null => {
+    // commentTick is a dependency to trigger re-computation when cache updates
+    void commentTick;
+    if (!selectedItem.issue || !selectedItem.repoName) return null;
+    return (
+      commentCacheRef.current[`${selectedItem.repoName}:${selectedItem.issue.number}`] ?? null
+    );
+  }, [selectedItem.issue, selectedItem.repoName, commentTick]);
+
   // Status options for the selected issue's repo (for status picker, single or bulk)
   // Terminal statuses are now included — StatusPicker renders them with a "(Done)" suffix
   const selectedRepoStatusOptions = useMemo(() => {
@@ -797,6 +846,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleEnterCreateNl: ui.enterCreateNl,
       handleErrorAction,
       toastInfo: toast.info,
+      handleToggleMine,
     },
     onSearchEscape,
   });
@@ -928,6 +978,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
                 issue={selectedItem.issue}
                 task={selectedItem.task}
                 width={detailPanelWidth}
+                issueRepo={selectedItem.repoName}
+                fetchComments={handleFetchComments}
+                commentsState={currentCommentsState}
               />
             </Box>
           ) : null}
@@ -938,30 +991,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       <ToastContainer toasts={toasts} />
 
       {/* Status bar */}
-      <Box>
-        {ui.state.mode === "multiSelect" ? (
-          <>
-            <Text color="cyan" bold>
-              {multiSelect.count} selected
-            </Text>
-            <Text color="gray"> Space:toggle Enter:actions Esc:cancel</Text>
-          </>
-        ) : ui.state.mode === "focus" ? (
-          <Text color="magenta" bold>
-            Focus mode — Esc to exit
-          </Text>
-        ) : (
-          <>
-            <Text color="gray">
-              j/k:nav Tab:section Enter:open Space:select /:search p:pick c:comment m:status
-              a/u:assign s:slack y:copy l:labels n:new I:nlcreate C:collapse f:focus ?:help q:quit
-            </Text>
-            {searchQuery && ui.state.mode !== "search" ? (
-              <Text color="yellow"> filter: &quot;{searchQuery}&quot;</Text>
-            ) : null}
-          </>
-        )}
-      </Box>
+      <HintBar
+        uiMode={ui.state.mode}
+        multiSelectCount={multiSelect.count}
+        searchQuery={searchQuery}
+        mineOnly={mineOnly}
+      />
     </Box>
   );
 }
