@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/ondrej-svec/hog/compare/hog-v1.7.0...hog-v1.7.1) (2026-02-20)
+
+
+### Bug Fixes
+
+* **board:** prevent status reversion and blinking on auto-refresh ([d15fba0](https://github.com/ondrej-svec/hog/commit/d15fba0d80a604da00d69daa3fb0d4fd938eb635))
+
 ## [1.7.0](https://github.com/ondrej-svec/hog/compare/hog-v1.6.2...hog-v1.7.0) (2026-02-19)
 
 
