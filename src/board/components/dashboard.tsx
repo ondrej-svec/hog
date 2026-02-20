@@ -391,6 +391,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     mutateData,
     pauseAutoRefresh,
     resumeAutoRefresh,
+    registerPendingMutation,
+    clearPendingMutation,
   } = useData(config, options, refreshMs);
 
   // Stable empty arrays to avoid new references when data is null
@@ -494,6 +496,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     mutateData,
     onOverlayDone: ui.exitOverlay,
     pushEntry,
+    registerPendingMutation,
+    clearPendingMutation,
   });
 
   // "Pick this issue?" after create — stores the newly created issue info

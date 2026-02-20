@@ -5,6 +5,39 @@ import type { DashboardData, FetchOptions } from "../fetch.js";
 
 export type DataStatus = "loading" | "success" | "error";
 
+/** Fields that can be held as pending optimistic overrides until the server reflects them. */
+export interface PendingMutation {
+  projectStatus?: string;
+  expiresAt: number; // Date.now() + TTL
+}
+
+/** Apply any non-expired pending mutations on top of fresh server data. */
+function applyPendingMutations(
+  data: DashboardData,
+  pending: Map<string, PendingMutation>,
+): DashboardData {
+  const now = Date.now();
+  // Expire stale entries
+  for (const [key, m] of pending) {
+    if (m.expiresAt <= now) pending.delete(key);
+  }
+  if (pending.size === 0) return data;
+
+  return {
+    ...data,
+    repos: data.repos.map((rd) => ({
+      ...rd,
+      issues: rd.issues.map((issue) => {
+        const mutation = pending.get(`${rd.repo.name}:${issue.number}`);
+        if (!mutation || mutation.expiresAt <= now) return issue;
+        return mutation.projectStatus !== undefined
+          ? { ...issue, projectStatus: mutation.projectStatus }
+          : issue;
+      }),
+    })),
+  };
+}
+
 export interface DataState {
   status: DataStatus;
   data: DashboardData | null;
@@ -49,15 +82,23 @@ export function useData(
   options: FetchOptions,
   refreshIntervalMs: number,
 ): DataState & {
-  refresh: () => void;
+  refresh: (silent?: boolean) => void;
   mutateData: (fn: (data: DashboardData) => DashboardData) => void;
   pauseAutoRefresh: () => void;
   resumeAutoRefresh: () => void;
+  registerPendingMutation: (
+    repoName: string,
+    issueNumber: number,
+    fields: Pick<PendingMutation, "projectStatus">,
+    ttlMs?: number,
+  ) => void;
+  clearPendingMutation: (repoName: string, issueNumber: number) => void;
 } {
   const [state, setState] = useState<DataState>(INITIAL_STATE);
   const activeRequestRef = useRef<{ canceled: boolean } | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingMutationsRef = useRef<Map<string, PendingMutation>>(new Map());
 
   // Store config/options in refs so refresh callback is stable
   const configRef = useRef(config);
@@ -65,7 +106,12 @@ export function useData(
   configRef.current = config;
   optionsRef.current = options;
 
-  const refresh = useCallback(() => {
+  /**
+   * Trigger a data refresh.
+   * Pass `silent = true` for background auto-refreshes to avoid showing the
+   * loading spinner (eliminates one re-render per cycle and prevents blinking).
+   */
+  const refresh = useCallback((silent = false) => {
     // Cancel any in-flight request
     if (activeRequestRef.current) {
       activeRequestRef.current.canceled = true;
@@ -75,7 +121,9 @@ export function useData(
     const token = { canceled: false };
     activeRequestRef.current = token;
 
-    setState((prev) => ({ ...prev, isRefreshing: true }));
+    if (!silent) {
+      setState((prev) => ({ ...prev, isRefreshing: true }));
+    }
 
     const worker = new Worker(
       new URL(
@@ -96,11 +144,15 @@ export function useData(
 
       if (msg.type === "success" && msg.data) {
         // Revive Date objects (structured clone preserves them, but defensive)
-        const data = msg.data;
-        data.fetchedAt = new Date(data.fetchedAt);
-        for (const ev of data.activity) {
+        const raw = msg.data;
+        raw.fetchedAt = new Date(raw.fetchedAt);
+        for (const ev of raw.activity) {
           ev.timestamp = new Date(ev.timestamp);
         }
+        // Apply any pending optimistic overrides so a refresh triggered by
+        // an unrelated action (e.g. assign) doesn't revert a status change
+        // that GitHub Projects v2 hasn't propagated yet.
+        const data = applyPendingMutations(raw, pendingMutationsRef.current);
 
         setState({
           status: "success",
@@ -157,7 +209,7 @@ export function useData(
 
     intervalRef.current = setInterval(() => {
       if (!stateRef.current.autoRefreshPaused) {
-        refresh();
+        refresh(true); // silent: skip isRefreshing spinner to avoid blinking
       }
     }, refreshIntervalMs);
 
@@ -194,5 +246,38 @@ export function useData(
     setState((prev) => ({ ...prev, autoRefreshPaused: false }));
   }, []);
 
-  return { ...state, refresh, mutateData, pauseAutoRefresh, resumeAutoRefresh };
+  /**
+   * Register an optimistic override for an issue field.
+   * The override survives refreshes for `ttlMs` ms (default 90 s), giving
+   * GitHub Projects v2 time to propagate the change.
+   */
+  const registerPendingMutation = useCallback(
+    (
+      repoName: string,
+      issueNumber: number,
+      fields: Pick<PendingMutation, "projectStatus">,
+      ttlMs = 90_000,
+    ) => {
+      pendingMutationsRef.current.set(`${repoName}:${issueNumber}`, {
+        ...fields,
+        expiresAt: Date.now() + ttlMs,
+      });
+    },
+    [],
+  );
+
+  /** Remove a pending mutation immediately (call on action failure before refresh). */
+  const clearPendingMutation = useCallback((repoName: string, issueNumber: number) => {
+    pendingMutationsRef.current.delete(`${repoName}:${issueNumber}`);
+  }, []);
+
+  return {
+    ...state,
+    refresh,
+    mutateData,
+    pauseAutoRefresh,
+    resumeAutoRefresh,
+    registerPendingMutation,
+    clearPendingMutation,
+  };
 }

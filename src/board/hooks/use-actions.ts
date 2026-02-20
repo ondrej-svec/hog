@@ -62,9 +62,15 @@ interface UseActionsOptions {
   selectedId: string | null;
   toast: ToastAPI;
   mutateData: (fn: (data: DashboardData) => DashboardData) => void;
-  refresh: () => void;
+  refresh: (silent?: boolean) => void;
   onOverlayDone: () => void;
   pushEntry?: (entry: ActionLogEntry) => void;
+  registerPendingMutation?: (
+    repoName: string,
+    issueNumber: number,
+    fields: { projectStatus?: string },
+  ) => void;
+  clearPendingMutation?: (repoName: string, issueNumber: number) => void;
 }
 
 // ── Helpers ──
@@ -118,6 +124,59 @@ async function triggerCompletionActionAsync(
   }
 }
 
+/** Apply optimistic status updates and register pending mutations for a set of issue IDs. */
+function applyBulkOptimisticStatusUpdates(
+  ids: ReadonlySet<string>,
+  optionId: string,
+  repos: RepoData[],
+  config: HogConfig,
+  mutateData: (fn: (data: DashboardData) => DashboardData) => void,
+  registerPendingMutation:
+    | ((repoName: string, issueNumber: number, fields: { projectStatus?: string }) => void)
+    | undefined,
+): void {
+  for (const id of ids) {
+    const ctx = findIssueContext(repos, id, config);
+    if (!(ctx.issue && ctx.repoName)) continue;
+    const { issue: ctxIssue, repoName: ctxRepo, statusOptions: ctxOpts } = ctx;
+    mutateData((data) => optimisticSetStatus(data, ctxRepo, ctxIssue.number, ctxOpts, optionId));
+    const ctxStatusName = ctxOpts.find((o) => o.id === optionId)?.name;
+    if (ctxStatusName) {
+      registerPendingMutation?.(ctxRepo, ctxIssue.number, { projectStatus: ctxStatusName });
+    }
+  }
+}
+
+/** Find the display name of a status option from any issue in the given id set. */
+function resolveOptionName(
+  repos: RepoData[],
+  ids: ReadonlySet<string>,
+  config: HogConfig,
+  optionId: string,
+): string {
+  for (const id of ids) {
+    const name = findIssueContext(repos, id, config).statusOptions.find(
+      (o) => o.id === optionId,
+    )?.name;
+    if (name) return name;
+  }
+  return optionId;
+}
+
+/** Clear pending mutations for a list of failed issue IDs (format: "gh:repo:number"). */
+function clearFailedMutations(
+  failedIds: string[],
+  clearFn: ((repoName: string, issueNumber: number) => void) | undefined,
+): void {
+  if (!clearFn) return;
+  for (const failedId of failedIds) {
+    const lastColon = failedId.lastIndexOf(":");
+    const failedRepo = failedId.slice(3, lastColon); // strip leading "gh:"
+    const failedIssueNumber = parseInt(failedId.slice(lastColon + 1), 10);
+    clearFn(failedRepo, failedIssueNumber);
+  }
+}
+
 /** Helper: optimistically set projectStatus on an issue in local data */
 function optimisticSetStatus(
   data: DashboardData,
@@ -152,16 +211,22 @@ export function useActions({
   mutateData,
   onOverlayDone,
   pushEntry,
+  registerPendingMutation,
+  clearPendingMutation,
 }: UseActionsOptions): UseActionsResult {
   // Use refs so callbacks don't need to depend on frequently-changing values
   const configRef = useRef(config);
   const reposRef = useRef(repos);
   const selectedIdRef = useRef(selectedId);
   const pushEntryRef = useRef(pushEntry);
+  const registerPendingMutationRef = useRef(registerPendingMutation);
+  const clearPendingMutationRef = useRef(clearPendingMutation);
   configRef.current = config;
   reposRef.current = repos;
   selectedIdRef.current = selectedId;
   pushEntryRef.current = pushEntry;
+  registerPendingMutationRef.current = registerPendingMutation;
+  clearPendingMutationRef.current = clearPendingMutation;
 
   const handlePick = useCallback(() => {
     const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
@@ -262,6 +327,14 @@ export function useActions({
       mutateData((data) =>
         optimisticSetStatus(data, repoName, issue.number, statusOptions, optionId),
       );
+      // Register a pending mutation so subsequent refreshes (e.g. triggered by
+      // assign) don't revert this status change before GitHub propagates it.
+      const statusName = statusOptions.find((o) => o.id === optionId)?.name;
+      if (statusName) {
+        registerPendingMutationRef.current?.(repoName, issue.number, {
+          projectStatus: statusName,
+        });
+      }
 
       const t = toast.loading("Moving...");
       const projectConfig: RepoProjectConfig = {
@@ -308,6 +381,8 @@ export function useActions({
             status: "error",
             ago: Date.now(),
           });
+          // Clear the pending mutation before reverting so the refresh fetches server state
+          clearPendingMutationRef.current?.(repoName, issue.number);
           refresh(); // revert optimistic update on failure
         })
         .finally(() => {
@@ -571,16 +646,15 @@ export function useActions({
 
   const handleBulkStatusChange = useCallback(
     async (ids: ReadonlySet<string>, optionId: string): Promise<string[]> => {
-      // Optimistic update: move all issues to new section immediately
-      for (const id of ids) {
-        const ctx = findIssueContext(reposRef.current, id, configRef.current);
-        if (ctx.issue && ctx.repoName) {
-          const { issue: ctxIssue, repoName: ctxRepo, statusOptions: ctxOpts } = ctx;
-          mutateData((data) =>
-            optimisticSetStatus(data, ctxRepo, ctxIssue.number, ctxOpts, optionId),
-          );
-        }
-      }
+      // Optimistic update: move all issues to new section immediately, register pending mutations
+      applyBulkOptimisticStatusUpdates(
+        ids,
+        optionId,
+        reposRef.current,
+        configRef.current,
+        mutateData,
+        registerPendingMutationRef.current,
+      );
 
       const t = toast.loading(`Moving ${ids.size} issue${ids.size > 1 ? "s" : ""}...`);
       const failed: string[] = [];
@@ -604,20 +678,15 @@ export function useActions({
       }
       const total = ids.size;
       const ok = total - failed.length;
-      const optionName = (() => {
-        for (const id of ids) {
-          const ctx = findIssueContext(reposRef.current, id, configRef.current);
-          const name = ctx.statusOptions.find((o) => o.id === optionId)?.name;
-          if (name) return name;
-        }
-        return optionId;
-      })();
+      const optionName = resolveOptionName(reposRef.current, ids, configRef.current, optionId);
       if (failed.length === 0) {
         t.resolve(`Moved ${total} issue${total > 1 ? "s" : ""} to ${optionName}`);
         // Do not refresh — same eventual-consistency issue as single status change.
-        // Optimistic updates are correct; auto-refresh will sync server state.
+        // Pending mutations will preserve the optimistic state across auto-refreshes.
       } else {
         t.reject(`${ok} moved to ${optionName}, ${failed.length} failed`);
+        // Clear pending mutations for failed issues so the refresh fetches their server state
+        clearFailedMutations(failed, clearPendingMutationRef.current);
         refresh(); // revert optimistic updates for failed items
       }
       return failed;
