@@ -45,13 +45,13 @@ vi.mock("./api.js", () => ({
 }));
 
 const mockFetchAssignedIssues = vi.fn();
-const mockFetchProjectFields = vi.fn();
+const mockFetchProjectEnrichment = vi.fn();
 const mockAddLabel = vi.fn();
 const mockUpdateProjectItemStatus = vi.fn();
 
 vi.mock("./github.js", () => ({
   fetchAssignedIssues: (...args: unknown[]) => mockFetchAssignedIssues(...args),
-  fetchProjectFields: (...args: unknown[]) => mockFetchProjectFields(...args),
+  fetchProjectEnrichment: (...args: unknown[]) => mockFetchProjectEnrichment(...args),
   addLabel: (...args: unknown[]) => mockAddLabel(...args),
   updateProjectItemStatus: (...args: unknown[]) => mockUpdateProjectItemStatus(...args),
 }));
@@ -93,7 +93,7 @@ describe("sync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadSyncState.mockReturnValue(emptyState());
-    mockFetchProjectFields.mockReturnValue({});
+    mockFetchProjectEnrichment.mockReturnValue(new Map());
   });
 
   describe("Phase 1: GitHub -> TickTick", () => {
@@ -203,7 +203,7 @@ describe("sync", () => {
         if (repo === "test-org/backend") return [issue];
         return [];
       });
-      mockFetchProjectFields.mockReturnValue({ targetDate: "2025-02-01" });
+      mockFetchProjectEnrichment.mockReturnValue(new Map([[42, { targetDate: "2025-02-01" }]]));
       mockCreateTask.mockResolvedValue({
         id: "tt-new",
         projectId: "proj-inbox",
@@ -363,11 +363,11 @@ describe("sync", () => {
         if (repo === "test-org/backend") return [issue1, issue2];
         return [];
       });
-      mockFetchProjectFields
+      mockFetchProjectEnrichment
         .mockImplementationOnce(() => {
           throw new Error("GraphQL failed");
         })
-        .mockReturnValueOnce({});
+        .mockReturnValueOnce(new Map());
       mockCreateTask.mockResolvedValue({
         id: "tt-new",
         projectId: "proj-inbox",

@@ -77,13 +77,15 @@ export function refreshAgeColor(lastRefresh: Date | null): "green" | "yellow" | 
   return "red";
 }
 
-export function useData(
-  config: HogConfig,
-  options: FetchOptions,
-  refreshIntervalMs: number,
-): DataState & {
+/** Discriminated union for worker messages */
+type WorkerMessage =
+  | { type: "success"; data: DashboardData }
+  | { type: "error"; error: string };
+
+/** Return type of the useData hook */
+export type UseDataResult = DataState & {
   refresh: (silent?: boolean) => void;
-  mutateData: (fn: (data: DashboardData) => DashboardData) => void;
+  mutateData: (updater: (prev: DashboardData) => DashboardData) => void;
   pauseAutoRefresh: () => void;
   resumeAutoRefresh: () => void;
   registerPendingMutation: (
@@ -93,7 +95,13 @@ export function useData(
     ttlMs?: number,
   ) => void;
   clearPendingMutation: (repoName: string, issueNumber: number) => void;
-} {
+};
+
+export function useData(
+  config: HogConfig,
+  options: FetchOptions,
+  refreshIntervalMs: number,
+): UseDataResult {
   const [state, setState] = useState<DataState>(INITIAL_STATE);
   const activeRequestRef = useRef<{ canceled: boolean } | null>(null);
   const workerRef = useRef<Worker | null>(null);
@@ -136,7 +144,8 @@ export function useData(
     );
     workerRef.current = worker;
 
-    worker.on("message", (msg: { type: string; data?: DashboardData; error?: string }) => {
+    worker.on("message", (rawMsg) => {
+      const msg = rawMsg as WorkerMessage;
       if (token.canceled) {
         worker.terminate();
         return;
@@ -163,13 +172,13 @@ export function useData(
           consecutiveFailures: 0,
           autoRefreshPaused: false,
         });
-      } else {
+      } else if (msg.type === "error") {
         setState((prev) => {
           const failures = prev.consecutiveFailures + 1;
           return {
             ...prev,
             status: prev.data ? "success" : "error",
-            error: msg.error ?? "Unknown error",
+            error: msg.error,
             isRefreshing: false,
             consecutiveFailures: failures,
             autoRefreshPaused: failures >= MAX_REFRESH_FAILURES,

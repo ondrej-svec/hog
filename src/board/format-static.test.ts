@@ -207,6 +207,36 @@ describe("renderBoardJson", () => {
     expect(issues[0]?.["slackThreadUrl"]).toBe(slackUrl);
   });
 
+  it("includes projectStatus field — null when not set", () => {
+    const issue = makeIssue();
+    const data = makeDashboardData({ repos: [makeRepoData({ issues: [issue] })] });
+    const result = renderBoardJson(data, "alice");
+    const d = getBoardJsonData(result);
+    const repos = d["repos"] as Record<string, unknown>[];
+    const issues = repos[0]?.["issues"] as Record<string, unknown>[];
+    expect(issues[0]?.["projectStatus"]).toBeNull();
+  });
+
+  it("includes projectStatus field — value when set", () => {
+    const issue = makeIssue({ projectStatus: "In Progress" });
+    const data = makeDashboardData({ repos: [makeRepoData({ issues: [issue] })] });
+    const result = renderBoardJson(data, "alice");
+    const d = getBoardJsonData(result);
+    const repos = d["repos"] as Record<string, unknown>[];
+    const issues = repos[0]?.["issues"] as Record<string, unknown>[];
+    expect(issues[0]?.["projectStatus"]).toBe("In Progress");
+  });
+
+  it("includes targetDate field — null when not set", () => {
+    const issue = makeIssue();
+    const data = makeDashboardData({ repos: [makeRepoData({ issues: [issue] })] });
+    const result = renderBoardJson(data, "alice");
+    const d = getBoardJsonData(result);
+    const repos = d["repos"] as Record<string, unknown>[];
+    const issues = repos[0]?.["issues"] as Record<string, unknown>[];
+    expect(issues[0]?.["targetDate"]).toBeNull();
+  });
+
   it("includes ticktick section with tasks", () => {
     const task = makeTask({ id: "t1", title: "My task", priority: Priority.High });
     const data = makeDashboardData({ ticktick: [task] });
@@ -236,6 +266,31 @@ describe("renderBoardJson", () => {
     const result = renderBoardJson(data, "alice");
     const d = getBoardJsonData(result);
     expect(d["fetchedAt"]).toBe("2026-02-19T08:30:00.000Z");
+  });
+
+  it("includes activity array in data", () => {
+    const data = makeDashboardData({ activity: [] });
+    const result = renderBoardJson(data, "alice");
+    const d = getBoardJsonData(result);
+    expect(Array.isArray(d["activity"])).toBe(true);
+  });
+
+  it("includes activity events when present", () => {
+    const event = {
+      type: "comment" as const,
+      repoShortName: "my-repo",
+      issueNumber: 42,
+      actor: "alice",
+      summary: "commented on #42",
+      timestamp: new Date("2026-02-19T10:00:00Z"),
+    };
+    const data = makeDashboardData({ activity: [event] });
+    const result = renderBoardJson(data, "alice");
+    const d = getBoardJsonData(result);
+    const activity = d["activity"] as Record<string, unknown>[];
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.["actor"]).toBe("alice");
+    expect(activity[0]?.["issueNumber"]).toBe(42);
   });
 
   it("includes task dueDate and tags", () => {

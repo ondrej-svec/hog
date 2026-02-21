@@ -1,26 +1,42 @@
 import { createServer } from "node:http";
+import { randomBytes } from "node:crypto";
 
 const AUTH_URL = "https://ticktick.com/oauth/authorize";
 const TOKEN_URL = "https://ticktick.com/oauth/token";
 const REDIRECT_URI = "http://localhost:8080";
 const SCOPE = "tasks:write tasks:read";
 
-export function getAuthorizationUrl(clientId: string): string {
+export interface AuthorizationUrlResult {
+  url: string;
+  state: string;
+}
+
+export function getAuthorizationUrl(clientId: string): AuthorizationUrlResult {
+  const oauthState = randomBytes(16).toString("hex");
   const params = new URLSearchParams({
     scope: SCOPE,
     client_id: clientId,
-    state: "hog",
+    state: oauthState,
     redirect_uri: REDIRECT_URI,
     response_type: "code",
   });
-  return `${AUTH_URL}?${params}`;
+  return { url: `${AUTH_URL}?${params}`, state: oauthState };
 }
 
-export async function waitForAuthCode(): Promise<string> {
+export async function waitForAuthCode(expectedState: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "", REDIRECT_URI);
       const code = url.searchParams.get("code");
+      const returnedState = url.searchParams.get("state");
+
+      if (returnedState !== expectedState) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("Invalid OAuth state");
+        server.close();
+        reject(new Error("OAuth state mismatch"));
+        return;
+      }
 
       if (code) {
         res.writeHead(200, { "Content-Type": "text/html" });

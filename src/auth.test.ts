@@ -10,51 +10,59 @@ beforeEach(() => {
 
 describe("getAuthorizationUrl", () => {
   it("returns a URL starting with the TickTick authorize endpoint", () => {
-    const url = getAuthorizationUrl("my-client-id");
+    const { url } = getAuthorizationUrl("my-client-id");
     expect(url).toMatch(/^https:\/\/ticktick\.com\/oauth\/authorize/);
   });
 
   it("includes the client_id in the query string", () => {
-    const url = getAuthorizationUrl("test-client-id");
+    const { url } = getAuthorizationUrl("test-client-id");
     expect(url).toContain("client_id=test-client-id");
   });
 
   it("includes the required scope", () => {
-    const url = getAuthorizationUrl("cid");
+    const { url } = getAuthorizationUrl("cid");
     expect(url).toContain("scope=tasks%3Awrite+tasks%3Aread");
   });
 
   it("includes response_type=code", () => {
-    const url = getAuthorizationUrl("cid");
+    const { url } = getAuthorizationUrl("cid");
     expect(url).toContain("response_type=code");
   });
 
-  it("includes state=hog", () => {
-    const url = getAuthorizationUrl("cid");
-    expect(url).toContain("state=hog");
+  it("includes a non-empty state parameter", () => {
+    const { url, state } = getAuthorizationUrl("cid");
+    expect(state).toBeTruthy();
+    expect(state.length).toBeGreaterThan(0);
+    expect(url).toContain(`state=${state}`);
   });
 
   it("includes the redirect_uri pointing to localhost:8080", () => {
-    const url = getAuthorizationUrl("cid");
+    const { url } = getAuthorizationUrl("cid");
     expect(url).toContain("redirect_uri=");
     expect(url).toContain("localhost%3A8080");
   });
 
   it("produces a valid URL", () => {
-    const url = getAuthorizationUrl("some-client");
+    const { url } = getAuthorizationUrl("some-client");
     expect(() => new URL(url)).not.toThrow();
   });
 
   it("encodes special characters in the client id", () => {
-    const url = getAuthorizationUrl("client id with spaces");
+    const { url } = getAuthorizationUrl("client id with spaces");
     const parsed = new URL(url);
     expect(parsed.searchParams.get("client_id")).toBe("client id with spaces");
   });
 
   it("different client IDs produce different URLs", () => {
-    const urlA = getAuthorizationUrl("client-a");
-    const urlB = getAuthorizationUrl("client-b");
+    const { url: urlA } = getAuthorizationUrl("client-a");
+    const { url: urlB } = getAuthorizationUrl("client-b");
     expect(urlA).not.toBe(urlB);
+  });
+
+  it("each call generates a different state value", () => {
+    const { state: stateA } = getAuthorizationUrl("cid");
+    const { state: stateB } = getAuthorizationUrl("cid");
+    expect(stateA).not.toBe(stateB);
   });
 });
 
