@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/ondrej-svec/hog/compare/hog-v1.8.1...hog-v1.9.0) (2026-02-21)
+
+
+### Features
+
+* **board:** replace section collapse with lazygit-style tab bar ([6680114](https://github.com/ondrej-svec/hog/commit/6680114a181ec607bbb1b27972a3f52c6c4f2441))
+
 ## [1.8.1](https://github.com/ondrej-svec/hog/compare/hog-v1.8.0...hog-v1.8.1) (2026-02-21)
 
 
