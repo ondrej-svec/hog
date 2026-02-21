@@ -241,11 +241,17 @@ export async function extractIssueFields(
     return heuristic;
   }
 
+  // After parsing LLM response, validate labels against known valid labels
+  const safeLabels =
+    options.validLabels && options.validLabels.length > 0
+      ? llmResult.labels.filter((l) => (options.validLabels ?? []).includes(l))
+      : llmResult.labels;
+
   // Merge: heuristic wins on explicit tokens; LLM fills in title cleanup
   const merged: ParsedIssue = {
     ...llmResult,
     // Heuristic explicit tokens always win
-    labels: heuristic.labels.length > 0 ? heuristic.labels : llmResult.labels,
+    labels: heuristic.labels.length > 0 ? heuristic.labels : safeLabels,
     assignee: heuristic.assignee ?? llmResult.assignee,
     dueDate: heuristic.dueDate ?? llmResult.due_date,
     // LLM title is used only if heuristic left explicit tokens

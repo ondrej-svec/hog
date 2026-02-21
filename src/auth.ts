@@ -1,5 +1,5 @@
-import { createServer } from "node:http";
 import { randomBytes } from "node:crypto";
+import { createServer } from "node:http";
 
 const AUTH_URL = "https://ticktick.com/oauth/authorize";
 const TOKEN_URL = "https://ticktick.com/oauth/token";

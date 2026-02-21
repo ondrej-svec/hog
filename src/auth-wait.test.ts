@@ -85,16 +85,19 @@ afterEach(() => {
 });
 
 describe("waitForAuthCode", () => {
-  it("resolves with the auth code when request has ?code= query param", async () => {
+  it("resolves with the auth code when request has ?code= query param and matching state", async () => {
     const { waitForAuthCode } = await import("./auth.js");
 
-    const codePromise = waitForAuthCode();
+    const expectedState = "test-state-abc123";
+    const codePromise = waitForAuthCode(expectedState);
 
     // Let the server 'listen' callback fire (setImmediate in FakeServer.listen)
     await new Promise<void>((r) => setImmediate(r));
 
     const server = currentFakeServer!;
-    const fakeRes = server.simulateRequest("/?code=hello-auth-code") as unknown as FakeRes;
+    const fakeRes = server.simulateRequest(
+      `/?code=hello-auth-code&state=${expectedState}`,
+    ) as unknown as FakeRes;
 
     // The handler resolves codePromise synchronously, so we can await it now
     const code = await codePromise;
@@ -108,7 +111,8 @@ describe("waitForAuthCode", () => {
   it("rejects with 'No authorization code received' when request has no code", async () => {
     const { waitForAuthCode } = await import("./auth.js");
 
-    const codePromise = waitForAuthCode();
+    const expectedState = "test-state-abc123";
+    const codePromise = waitForAuthCode(expectedState);
 
     // Attach rejection handler immediately so it's never unhandled
     const rejection = expect(codePromise).rejects.toThrow("No authorization code received");
@@ -117,12 +121,35 @@ describe("waitForAuthCode", () => {
     await new Promise<void>((r) => setImmediate(r));
 
     const server = currentFakeServer!;
-    const fakeRes = server.simulateRequest("/") as unknown as FakeRes;
+    const fakeRes = server.simulateRequest(`/?state=${expectedState}`) as unknown as FakeRes;
 
     await rejection;
 
     expect(fakeRes.statusCode).toBe(400);
     expect(fakeRes.body).toBe("Missing authorization code");
+    expect(server.closed).toBe(true);
+  });
+
+  it("rejects with 'OAuth state mismatch' when the returned state does not match", async () => {
+    const { waitForAuthCode } = await import("./auth.js");
+
+    const codePromise = waitForAuthCode("expected-state");
+
+    // Attach rejection handler immediately so it's never unhandled
+    const rejection = expect(codePromise).rejects.toThrow("OAuth state mismatch");
+
+    // Let the server 'listen' callback fire
+    await new Promise<void>((r) => setImmediate(r));
+
+    const server = currentFakeServer!;
+    const fakeRes = server.simulateRequest(
+      "/?code=some-code&state=wrong-state",
+    ) as unknown as FakeRes;
+
+    await rejection;
+
+    expect(fakeRes.statusCode).toBe(400);
+    expect(fakeRes.body).toBe("Invalid OAuth state");
     expect(server.closed).toBe(true);
   });
 
@@ -140,7 +167,7 @@ describe("waitForAuthCode", () => {
       return this;
     };
 
-    const codePromise = waitForAuthCode();
+    const codePromise = waitForAuthCode("any-state");
 
     // Restore the prototype before awaiting so later tests are unaffected
     FakeServer.prototype.listen = origListen;
