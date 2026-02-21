@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.2](https://github.com/ondrej-svec/hog/compare/hog-v1.7.1...hog-v1.7.2) (2026-02-21)
+
+
+### Bug Fixes
+
+* **board:** fix stale allItems causing cursor desync after collapse ([5a1ef8d](https://github.com/ondrej-svec/hog/commit/5a1ef8d0e0624a067d3920485135601625ff768d))
+
 ## [1.7.1](https://github.com/ondrej-svec/hog/compare/hog-v1.7.0...hog-v1.7.1) (2026-02-20)
 
 
