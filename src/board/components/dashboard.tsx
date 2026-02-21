@@ -631,12 +631,22 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     } else if (selectedRowIdx >= scrollRef.current + viewportHeight) {
       scrollRef.current = selectedRowIdx - viewportHeight + 1;
     }
-    // Pull scroll back one row when the selected item is at the very top of the viewport
-    // and the row directly above it is a status-group subHeader — keeps the header visible
+    // When the selected item lands at the very top of the viewport, search backward
+    // for the nearest subHeader (group label) and pull scroll back to include it,
+    // provided it fits within the same viewport. This keeps group headers visible
+    // when navigating up across status-group boundaries.
     if (scrollRef.current > 0 && scrollRef.current === selectedRowIdx) {
-      const rowAbove = flatRows[scrollRef.current - 1];
-      if (rowAbove?.type === "subHeader") {
-        scrollRef.current -= 1;
+      let subIdx = -1;
+      for (let i = selectedRowIdx - 1; i >= 0; i--) {
+        const row = flatRows[i];
+        if (!row || row.type === "sectionHeader") break;
+        if (row.type === "subHeader") {
+          subIdx = i;
+          break;
+        }
+      }
+      if (subIdx >= 0 && selectedRowIdx - subIdx < viewportHeight) {
+        scrollRef.current = subIdx;
       }
     }
   }
