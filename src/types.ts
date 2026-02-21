@@ -9,14 +9,6 @@ export interface FetchError {
   readonly message: string;
 }
 
-// ── GitHub Comment ──
-
-export interface IssueComment {
-  readonly body: string;
-  readonly author: { readonly login: string };
-  readonly createdAt: string;
-}
-
 // ── Board Data Types ──
 
 export interface BoardIssue {

@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import type { GitHubIssue } from "../../github.js";
 import type { Task } from "../../types.js";
+import { timeAgo } from "../constants.js";
 import type { ActivityEvent } from "../fetch.js";
 import { IssueRow } from "./issue-row.js";
 import { TaskRow } from "./task-row.js";
@@ -105,12 +106,4 @@ export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: Row
     case "gap":
       return <Text>{""}</Text>;
   }
-}
-
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 10) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ago`;
 }

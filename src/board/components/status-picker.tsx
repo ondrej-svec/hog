@@ -1,6 +1,7 @@
 import { Box, Text, useInput } from "ink";
 import { useRef, useState } from "react";
 import type { StatusOption } from "../../github.js";
+import { TERMINAL_STATUS_RE } from "../constants.js";
 
 interface StatusPickerProps {
   readonly options: StatusOption[];
@@ -10,8 +11,6 @@ interface StatusPickerProps {
   /** When true, terminal statuses appear with a "(Done)" suffix and require inline confirm */
   readonly showTerminalStatuses?: boolean;
 }
-
-const TERMINAL_STATUS_RE = /^(done|shipped|won't|wont|closed|complete|completed)$/i;
 
 function isTerminal(name: string): boolean {
   return TERMINAL_STATUS_RE.test(name);

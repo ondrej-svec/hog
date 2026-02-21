@@ -1,4 +1,5 @@
 import { TickTickClient } from "./api.js";
+import { formatError } from "./board/constants.js";
 import type { HogConfig, RepoConfig } from "./config.js";
 import { loadFullConfig, requireAuth } from "./config.js";
 import type { GitHubIssue, ProjectEnrichment } from "./github.js";
@@ -33,10 +34,6 @@ interface SyncOptions {
 
 function emptySyncResult(): SyncResult {
   return { created: [], updated: [], completed: [], ghUpdated: [], errors: [] };
-}
-
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 function repoShortName(repo: string): string {

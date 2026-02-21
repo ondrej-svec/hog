@@ -4,17 +4,17 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export interface GitHubIssue {
-  number: number;
-  title: string;
-  url: string;
-  state: string;
-  updatedAt: string;
-  labels: { name: string }[];
-  assignees?: { login: string }[];
-  targetDate?: string;
-  body?: string;
-  projectStatus?: string;
-  slackThreadUrl?: string;
+  readonly number: number;
+  readonly title: string;
+  readonly url: string;
+  readonly state: string;
+  readonly updatedAt: string;
+  readonly labels: { name: string }[];
+  readonly assignees?: { login: string }[];
+  readonly targetDate?: string;
+  readonly body?: string;
+  readonly projectStatus?: string;
+  readonly slackThreadUrl?: string;
 }
 
 export interface ProjectFieldValues {
@@ -216,6 +216,7 @@ export function fetchProjectFields(
   `;
 
   const [owner, repoName] = repo.split("/");
+  if (!(owner && repoName)) return {};
 
   try {
     const result = runGhJson<GraphQLResult>([
@@ -269,6 +270,7 @@ export function fetchProjectEnrichment(
   projectNumber: number,
 ): Map<number, ProjectEnrichment> {
   const [owner] = repo.split("/");
+  if (!owner) return new Map();
 
   const query = `
     query($owner: String!, $projectNumber: Int!) {
@@ -362,6 +364,7 @@ export function fetchProjectStatusOptions(
   _statusFieldId: string,
 ): StatusOption[] {
   const [owner] = repo.split("/");
+  if (!owner) return [];
 
   const query = `
     query($owner: String!, $projectNumber: Int!) {
@@ -427,12 +430,51 @@ export async function fetchRepoLabelsAsync(repo: string): Promise<LabelOption[]>
   }
 }
 
+/** Cache for GitHub Projects node IDs — these are immutable per project number. */
+const projectNodeIdCache = new Map<string, string>();
+
+/** Clears the project node ID cache. Intended for use in tests only. */
+export function clearProjectNodeIdCache(): void {
+  projectNodeIdCache.clear();
+}
+
+async function getProjectNodeId(owner: string, projectNumber: number): Promise<string | null> {
+  const key = `${owner}/${String(projectNumber)}`;
+  const cached = projectNodeIdCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const projectQuery = `
+    query($owner: String!) {
+      organization(login: $owner) {
+        projectV2(number: ${projectNumber}) {
+          id
+        }
+      }
+    }
+  `;
+
+  const projectResult = await runGhJsonAsync<GraphQLProjectResult>([
+    "api",
+    "graphql",
+    "-f",
+    `query=${projectQuery}`,
+    "-F",
+    `owner=${owner}`,
+  ]);
+
+  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  if (!projectId) return null;
+  projectNodeIdCache.set(key, projectId);
+  return projectId;
+}
+
 export function updateProjectItemStatus(
   repo: string,
   issueNumber: number,
   projectConfig: RepoProjectConfig,
 ): void {
   const [owner, repoName] = repo.split("/");
+  if (!(owner && repoName)) return;
 
   // First get the project item ID
   const findItemQuery = `
@@ -533,6 +575,7 @@ export async function updateProjectItemStatusAsync(
   projectConfig: RepoProjectConfig,
 ): Promise<void> {
   const [owner, repoName] = repo.split("/");
+  if (!(owner && repoName)) return;
 
   const findItemQuery = `
     query($owner: String!, $repo: String!, $issueNumber: Int!) {
@@ -568,26 +611,7 @@ export async function updateProjectItemStatusAsync(
 
   if (!projectItem?.id) return;
 
-  const projectQuery = `
-    query($owner: String!) {
-      organization(login: $owner) {
-        projectV2(number: ${projectNumber}) {
-          id
-        }
-      }
-    }
-  `;
-
-  const projectResult = await runGhJsonAsync<GraphQLProjectResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${projectQuery}`,
-    "-F",
-    `owner=${owner}`,
-  ]);
-
-  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  const projectId = await getProjectNodeId(owner, projectNumber);
   if (!projectId) return;
 
   const statusFieldId = projectConfig.statusFieldId;
@@ -640,6 +664,7 @@ export async function updateProjectItemDateAsync(
   dueDate: string,
 ): Promise<void> {
   const [owner, repoName] = repo.split("/");
+  if (!(owner && repoName)) return;
 
   const findItemQuery = `
     query($owner: String!, $repo: String!, $issueNumber: Int!) {
@@ -674,26 +699,7 @@ export async function updateProjectItemDateAsync(
 
   if (!projectItem?.id) return;
 
-  const projectQuery = `
-    query($owner: String!) {
-      organization(login: $owner) {
-        projectV2(number: ${projectConfig.projectNumber}) {
-          id
-        }
-      }
-    }
-  `;
-
-  const projectResult = await runGhJsonAsync<GraphQLProjectResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${projectQuery}`,
-    "-F",
-    `owner=${owner}`,
-  ]);
-
-  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  const projectId = await getProjectNodeId(owner, projectConfig.projectNumber);
   if (!projectId) return;
 
   const mutation = `

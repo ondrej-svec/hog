@@ -193,9 +193,7 @@ task
     if (opts.allDay) input.isAllDay = true;
 
     const created = await api.createTask(input);
-    printSuccess(`Created: ${created.title}`, {
-      task: created as unknown as Record<string, unknown>,
-    });
+    printSuccess(`Created: ${created.title}`, { task: created });
   });
 
 task
@@ -268,9 +266,7 @@ task
     if (opts.tags) input.tags = opts.tags.split(",").map((t) => t.trim());
 
     const updated = await api.updateTask(input);
-    printSuccess(`Updated: ${updated.title}`, {
-      task: updated as unknown as Record<string, unknown>,
-    });
+    printSuccess(`Updated: ${updated.title}`, { task: updated });
   });
 
 task

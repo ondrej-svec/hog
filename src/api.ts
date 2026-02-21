@@ -9,7 +9,7 @@ export class TickTickClient {
     this.token = token;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T | null> {
     const url = `${BASE_URL}${path}`;
 
     const init: RequestInit = {
@@ -32,20 +32,25 @@ export class TickTickClient {
     }
 
     const text = await res.text();
-    if (!text) return undefined as T;
+    if (!text) return null;
     return JSON.parse(text) as T;
   }
 
   async listProjects(): Promise<Project[]> {
-    return this.request<Project[]>("GET", "/project");
+    return (await this.request<Project[]>("GET", "/project")) ?? [];
   }
 
   async getProject(projectId: string): Promise<Project> {
-    return this.request<Project>("GET", `/project/${projectId}`);
+    const result = await this.request<Project>("GET", `/project/${projectId}`);
+    if (!result) throw new Error(`TickTick API returned empty response for project ${projectId}`);
+    return result;
   }
 
   async getProjectData(projectId: string): Promise<ProjectData> {
-    return this.request<ProjectData>("GET", `/project/${projectId}/data`);
+    const result = await this.request<ProjectData>("GET", `/project/${projectId}/data`);
+    if (!result)
+      throw new Error(`TickTick API returned empty response for project data ${projectId}`);
+    return result;
   }
 
   async listTasks(projectId: string): Promise<Task[]> {
@@ -54,15 +59,21 @@ export class TickTickClient {
   }
 
   async getTask(projectId: string, taskId: string): Promise<Task> {
-    return this.request<Task>("GET", `/project/${projectId}/task/${taskId}`);
+    const result = await this.request<Task>("GET", `/project/${projectId}/task/${taskId}`);
+    if (!result) throw new Error(`TickTick API returned empty response for task ${taskId}`);
+    return result;
   }
 
   async createTask(input: CreateTaskInput): Promise<Task> {
-    return this.request<Task>("POST", "/task", input);
+    const result = await this.request<Task>("POST", "/task", input);
+    if (!result) throw new Error("TickTick API returned empty response for createTask");
+    return result;
   }
 
   async updateTask(input: UpdateTaskInput): Promise<Task> {
-    return this.request<Task>("POST", `/task/${input.id}`, input);
+    const result = await this.request<Task>("POST", `/task/${input.id}`, input);
+    if (!result) throw new Error(`TickTick API returned empty response for updateTask ${input.id}`);
+    return result;
   }
 
   async completeTask(projectId: string, taskId: string): Promise<void> {

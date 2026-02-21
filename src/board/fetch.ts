@@ -6,6 +6,7 @@ import type { GitHubIssue, StatusOption } from "../github.js";
 import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
 import type { Task } from "../types.js";
 import { TaskStatus } from "../types.js";
+import { formatError } from "./constants.js";
 
 export interface RepoData {
   repo: RepoConfig;
@@ -43,10 +44,6 @@ export function extractSlackUrl(body: string | undefined): string | undefined {
   if (!body) return undefined;
   const match = body.match(SLACK_URL_RE);
   return match?.[0];
-}
-
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** Fetch recent activity events for a repo (last 24h, max 30 events) */
@@ -156,14 +153,20 @@ export async function fetchDashboard(
       const issues = fetchRepoIssues(repo.name, fetchOpts);
 
       // Enrich issues with target dates + statuses from GitHub Projects (batched)
+      let enrichedIssues = issues;
       let statusOptions: StatusOption[] = [];
       try {
         const enrichMap = fetchProjectEnrichment(repo.name, repo.projectNumber);
-        for (const issue of issues) {
+        enrichedIssues = issues.map((issue): GitHubIssue => {
           const e = enrichMap.get(issue.number);
-          if (e?.targetDate) issue.targetDate = e.targetDate;
-          if (e?.projectStatus) issue.projectStatus = e.projectStatus;
-        }
+          const slackUrl = extractSlackUrl(issue.body ?? "");
+          return {
+            ...issue,
+            ...(e?.targetDate !== undefined ? { targetDate: e.targetDate } : {}),
+            ...(e?.projectStatus !== undefined ? { projectStatus: e.projectStatus } : {}),
+            ...(slackUrl ? { slackThreadUrl: slackUrl } : {}),
+          };
+        });
         statusOptions = fetchProjectStatusOptions(
           repo.name,
           repo.projectNumber,
@@ -171,15 +174,14 @@ export async function fetchDashboard(
         );
       } catch {
         // Non-critical: silently skip if project fields fail
+        // Compute Slack thread URLs from original issue bodies
+        enrichedIssues = issues.map((issue): GitHubIssue => {
+          const slackUrl = extractSlackUrl(issue.body ?? "");
+          return slackUrl ? { ...issue, slackThreadUrl: slackUrl } : issue;
+        });
       }
 
-      // Compute Slack thread URLs from issue bodies
-      for (const issue of issues) {
-        const slackUrl = extractSlackUrl(issue.body);
-        if (slackUrl) issue.slackThreadUrl = slackUrl;
-      }
-
-      return { repo, issues, statusOptions, error: null };
+      return { repo, issues: enrichedIssues, statusOptions, error: null };
     } catch (err) {
       return { repo, issues: [], statusOptions: [], error: formatError(err) };
     }

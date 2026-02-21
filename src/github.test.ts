@@ -16,6 +16,7 @@ import {
   assignIssue,
   assignIssueAsync,
   assignIssueToAsync,
+  clearProjectNodeIdCache,
   fetchAssignedIssues,
   fetchIssueAsync,
   fetchIssueCommentsAsync,
@@ -709,6 +710,10 @@ describe("updateProjectItemStatusAsync", () => {
     optionId: "opt-in-progress",
   };
 
+  beforeEach(() => {
+    clearProjectNodeIdCache();
+  });
+
   it("resolves after performing all three async gh calls", async () => {
     let callCount = 0;
     mockExecFile.mockImplementation(
@@ -856,6 +861,10 @@ describe("updateProjectItemDateAsync", () => {
     projectNumber: 10,
     dueDateFieldId: "PVTF_due_date",
   };
+
+  beforeEach(() => {
+    clearProjectNodeIdCache();
+  });
 
   function makeFindItemResponse(projectNumber: number, itemId: string) {
     return JSON.stringify({

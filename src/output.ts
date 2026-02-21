@@ -96,7 +96,7 @@ export function printProjects(projects: Project[]): void {
   }
 }
 
-export function printSuccess(message: string, data?: Record<string, unknown>): void {
+export function printSuccess(message: string, data?: Record<string, unknown> | object): void {
   if (useJson()) {
     jsonOut({ ok: true, message, ...data });
     return;
