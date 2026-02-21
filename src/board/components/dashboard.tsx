@@ -7,6 +7,7 @@ import type { HogConfig } from "../../config.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
 import type { Task } from "../../types.js";
+import { isHeaderId, isTerminalStatus, timeAgo } from "../constants.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
 import { useActions } from "../hooks/use-actions.js";
@@ -36,12 +37,6 @@ interface DashboardProps {
 }
 
 // ── Helpers ──
-
-const TERMINAL_STATUS_RE = /^(done|shipped|won't|wont|closed|complete|completed)$/i;
-
-function isTerminalStatus(status: string): boolean {
-  return TERMINAL_STATUS_RE.test(status);
-}
 
 interface StatusGroup {
   label: string;
@@ -326,14 +321,6 @@ function buildFlatRows(
   return rows;
 }
 
-function timeAgo(date: Date): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (seconds < 10) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes}m ago`;
-}
-
 function openInBrowser(url: string): void {
   if (!(url.startsWith("https://") || url.startsWith("http://"))) return;
   try {
@@ -341,16 +328,6 @@ function openInBrowser(url: string): void {
   } catch {
     // Silently ignore
   }
-}
-
-function findSelectedUrl(repos: RepoData[], selectedId: string | null): string | null {
-  if (!selectedId?.startsWith("gh:")) return null;
-  for (const rd of repos) {
-    for (const issue of rd.issues) {
-      if (`gh:${rd.repo.name}:${issue.number}` === selectedId) return issue.url;
-    }
-  }
-  return null;
 }
 
 function findSelectedIssueWithRepo(
@@ -367,8 +344,16 @@ function findSelectedIssueWithRepo(
   return null;
 }
 
-function isHeaderId(id: string | null): boolean {
-  return id != null && (id.startsWith("header:") || id.startsWith("sub:"));
+// ── RefreshAge ──
+
+function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 10_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!lastRefresh) return null;
+  return <Text color={refreshAgeColor(lastRefresh)}>Updated {timeAgo(lastRefresh)}</Text>;
 }
 
 // ── Dashboard ──
@@ -429,12 +414,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     if (last?.status === "error") setLogVisible(true);
   }, [logEntries]);
 
-  // Periodic tick to update refresh age display (every 10s)
-  const [, setTick] = useState(0);
+  // After data loads, surface TickTick errors
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 10_000);
-    return () => clearInterval(id);
-  }, []);
+    if (data?.ticktickError) {
+      toast.error(`TickTick sync failed: ${data.ticktickError}`);
+    }
+  }, [data?.ticktickError, toast.error]);
 
   // Filter by search query and/or mineOnly
   const repos = useMemo(() => {
@@ -663,7 +648,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Scroll offset - tracks viewport position
   const scrollRef = useRef(0);
-  const selectedRowIdx = flatRows.findIndex((r) => r.navId === nav.selectedId);
+  const selectedRowIdx = useMemo(
+    () => flatRows.findIndex((r) => r.navId === nav.selectedId),
+    [flatRows, nav.selectedId],
+  );
 
   // Adjust scroll to keep selected item visible
   if (selectedRowIdx >= 0) {
@@ -731,8 +719,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Input handlers
   const handleOpen = useCallback(() => {
-    const url = findSelectedUrl(repos, nav.selectedId);
-    if (url) openInBrowser(url);
+    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+    if (found) openInBrowser(found.issue.url);
   }, [repos, nav.selectedId]);
 
   const handleSlack = useCallback(() => {
@@ -922,12 +910,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
             <Spinner label="" />
             <Text color="cyan"> Refreshing...</Text>
           </>
-        ) : lastRefresh ? (
+        ) : (
           <>
-            <Text color={refreshAgeColor(lastRefresh)}>Updated {timeAgo(lastRefresh)}</Text>
+            <RefreshAge lastRefresh={lastRefresh} />
             {consecutiveFailures > 0 ? <Text color="red"> (!)</Text> : null}
           </>
-        ) : null}
+        )}
         {autoRefreshPaused ? (
           <Text color="yellow"> Auto-refresh paused — press r to retry</Text>
         ) : null}

@@ -299,67 +299,6 @@ describe("useActions hook", () => {
     });
   });
 
-  describe("handleUnassign", () => {
-    it("should call execFile for self-assigned issue", async () => {
-      const repos = [
-        makeRepoData({
-          issues: [makeIssue({ assignees: [{ login: "ondrej" }] })],
-        }),
-      ];
-
-      const instance = render(
-        React.createElement(ActionsTester, {
-          config: makeConfig(),
-          repos,
-          selectedId: "gh:owner/repo:42",
-        }),
-      );
-      await delay(50);
-
-      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
-        typeof useActions
-      >;
-      actions.handleUnassign();
-      await delay(50);
-
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        ["issue", "edit", "42", "--repo", "owner/repo", "--remove-assignee", "@me"],
-        expect.any(Object),
-      );
-
-      instance.unmount();
-    });
-
-    it("should show feedback when assigned to someone else", async () => {
-      const repos = [
-        makeRepoData({
-          issues: [makeIssue({ assignees: [{ login: "other-user" }] })],
-        }),
-      ];
-
-      const instance = render(
-        React.createElement(ActionsTester, {
-          config: makeConfig(),
-          repos,
-          selectedId: "gh:owner/repo:42",
-        }),
-      );
-      await delay(50);
-
-      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
-        typeof useActions
-      >;
-      actions.handleUnassign();
-
-      expect(mockExecFile).not.toHaveBeenCalled();
-      expect(lastToast()?.message).toContain("can only unassign self");
-      expect(lastToast()?.type).toBe("info");
-
-      instance.unmount();
-    });
-  });
-
   describe("handleComment", () => {
     it("should call execFile with comment args", async () => {
       const instance = render(
@@ -1255,68 +1194,6 @@ describe("useActions hook", () => {
       await delay(50);
 
       expect(mockExecFile).not.toHaveBeenCalled();
-
-      instance.unmount();
-    });
-  });
-
-  describe("handleUnassign — additional edge cases", () => {
-    it("should show 'Not assigned' info when issue has no assignees", async () => {
-      const repos = [
-        makeRepoData({
-          issues: [makeIssue({ assignees: [] })],
-        }),
-      ];
-
-      const instance = render(
-        React.createElement(ActionsTester, {
-          config: makeConfig(),
-          repos,
-          selectedId: "gh:owner/repo:42",
-        }),
-      );
-      await delay(50);
-
-      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
-        typeof useActions
-      >;
-      actions.handleUnassign();
-
-      expect(mockExecFile).not.toHaveBeenCalled();
-      expect(lastToast()?.type).toBe("info");
-      expect(lastToast()?.message).toContain("Not assigned");
-
-      instance.unmount();
-    });
-
-    it("should show error toast when execFile rejects during unassign", async () => {
-      mockExecFile.mockImplementation(() => {
-        throw new Error("network error");
-      });
-
-      const repos = [
-        makeRepoData({
-          issues: [makeIssue({ assignees: [{ login: "ondrej" }] })],
-        }),
-      ];
-
-      const instance = render(
-        React.createElement(ActionsTester, {
-          config: makeConfig(),
-          repos,
-          selectedId: "gh:owner/repo:42",
-        }),
-      );
-      await delay(50);
-
-      const actions = (globalThis as Record<string, unknown>)["__actions"] as ReturnType<
-        typeof useActions
-      >;
-      actions.handleUnassign();
-      await delay(50);
-
-      expect(lastToast()?.type).toBe("error");
-      expect(lastToast()?.message).toContain("Unassign failed");
 
       instance.unmount();
     });

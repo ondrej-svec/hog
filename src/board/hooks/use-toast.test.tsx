@@ -196,42 +196,18 @@ describe("useToast hook", () => {
     });
   });
 
-  describe("dismiss", () => {
-    it("should dismiss a specific toast by id", async () => {
-      const instance = render(React.createElement(ToastTester));
+  it("should auto-dismiss success toast after ~3s", async () => {
+    const instance = render(React.createElement(ToastTester));
 
-      getToast().toast.error("Error 1");
-      await delay(10);
-      getToast().toast.error("Error 2");
-      await delay(10);
+    getToast().toast.success("Auto-dismissed success");
+    await delay(10);
+    expect(getToast().toasts).toHaveLength(1);
 
-      const id = getToast().toasts[0]!.id;
-      getToast().dismiss(id);
-      await delay(10);
+    await delay(3200);
+    expect(getToast().toasts).toHaveLength(0);
 
-      expect(getToast().toasts).toHaveLength(1);
-      expect(getToast().toasts[0]!.message).toBe("Error 2");
-
-      instance.unmount();
-    });
-
-    it("should dismiss all toasts", async () => {
-      const instance = render(React.createElement(ToastTester));
-
-      getToast().toast.info("One");
-      await delay(10);
-      getToast().toast.error("Two");
-      await delay(10);
-      getToast().toast.loading("Three");
-      await delay(10);
-
-      getToast().dismissAll();
-      await delay(10);
-      expect(getToast().toasts).toHaveLength(0);
-
-      instance.unmount();
-    });
-  });
+    instance.unmount();
+  }, 10_000);
 
   describe("handleErrorAction", () => {
     it("should dismiss oldest error toast on 'dismiss' action", async () => {

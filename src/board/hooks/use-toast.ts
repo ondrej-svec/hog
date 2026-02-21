@@ -18,8 +18,6 @@ export interface ToastAPI {
 export interface UseToastResult {
   toasts: Toast[];
   toast: ToastAPI;
-  dismiss: (id: string) => void;
-  dismissAll: () => void;
   /** Dismiss oldest error toast, or call its retry. Returns true if handled. */
   handleErrorAction: (action: "dismiss" | "retry") => boolean;
 }
@@ -124,21 +122,6 @@ export function useToast(): UseToastResult {
     ),
   };
 
-  const dismiss = useCallback(
-    (id: string) => {
-      removeToast(id);
-    },
-    [removeToast],
-  );
-
-  const dismissAll = useCallback(() => {
-    for (const timer of timersRef.current.values()) {
-      clearTimeout(timer);
-    }
-    timersRef.current.clear();
-    setToasts([]);
-  }, []);
-
   const handleErrorAction = useCallback(
     (action: "dismiss" | "retry"): boolean => {
       const errorToast = toasts.find((t) => t.type === "error");
@@ -158,5 +141,5 @@ export function useToast(): UseToastResult {
     [toasts, removeToast],
   );
 
-  return { toasts, toast, dismiss, dismissAll, handleErrorAction };
+  return { toasts, toast, handleErrorAction };
 }

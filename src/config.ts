@@ -68,10 +68,6 @@ export type BoardConfig = z.infer<typeof BOARD_CONFIG_SCHEMA>;
 export type ProfileConfig = z.infer<typeof PROFILE_SCHEMA>;
 export type HogConfig = z.infer<typeof HOG_CONFIG_SCHEMA>;
 
-// ── Legacy Repo Defaults (for migration) ──
-
-const LEGACY_REPOS: RepoConfig[] = [];
-
 // ── Config Migration ──
 
 function migrateConfig(raw: Record<string, unknown>): HogConfig {
@@ -82,7 +78,7 @@ function migrateConfig(raw: Record<string, unknown>): HogConfig {
     raw = {
       ...raw,
       version: 2,
-      repos: LEGACY_REPOS,
+      repos: [],
       board: {
         refreshInterval: 60,
         backlogLimit: 20,

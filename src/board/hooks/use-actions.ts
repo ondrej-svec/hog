@@ -14,14 +14,13 @@ import {
   updateProjectItemStatusAsync,
 } from "../../github.js";
 import { pickIssue } from "../../pick.js";
+import { TERMINAL_STATUS_RE } from "../constants.js";
 import type { DashboardData, RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "./use-action-log.js";
 import { nextEntryId } from "./use-action-log.js";
 import type { ToastAPI } from "./use-toast.js";
 
 const execFileAsync = promisify(execFile);
-
-const TERMINAL_STATUS_RE = /^(done|shipped|won't|wont|closed|complete|completed)$/i;
 
 // ── Types ──
 
@@ -41,7 +40,6 @@ export interface UseActionsResult {
   handleComment: (body: string) => void;
   handleStatusChange: (optionId: string) => void;
   handleAssign: () => void;
-  handleUnassign: () => void;
   handleLabelChange: (addLabels: string[], removeLabels: string[]) => void;
   handleCreateIssue: (
     repo: string,
@@ -280,6 +278,7 @@ export function useActions({
             ago: Date.now(),
           });
           refresh();
+          onOverlayDone();
         })
         .catch((err) => {
           t.reject(`Comment failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -289,9 +288,6 @@ export function useActions({
             status: "error",
             ago: Date.now(),
           });
-        })
-        .finally(() => {
-          onOverlayDone();
         });
     },
     [toast, refresh, onOverlayDone],
@@ -443,39 +439,6 @@ export function useActions({
           status: "error",
           ago: Date.now(),
         });
-      });
-  }, [toast, refresh]);
-
-  const handleUnassign = useCallback(() => {
-    const ctx = findIssueContext(reposRef.current, selectedIdRef.current, configRef.current);
-    if (!(ctx.issue && ctx.repoName)) return;
-
-    const { issue, repoName } = ctx;
-    const assignees = issue.assignees ?? [];
-    const selfAssigned = assignees.some((a) => a.login === configRef.current.board.assignee);
-
-    if (!selfAssigned) {
-      const firstAssignee = assignees[0];
-      if (firstAssignee) {
-        toast.info(`Assigned to @${firstAssignee.login} \u2014 can only unassign self`);
-      } else {
-        toast.info("Not assigned");
-      }
-      return;
-    }
-
-    const t = toast.loading("Unassigning...");
-    execFileAsync(
-      "gh",
-      ["issue", "edit", String(issue.number), "--repo", repoName, "--remove-assignee", "@me"],
-      { encoding: "utf-8", timeout: 30_000 },
-    )
-      .then(() => {
-        t.resolve(`Unassigned #${issue.number} from @${configRef.current.board.assignee}`);
-        refresh();
-      })
-      .catch((err) => {
-        t.reject(`Unassign failed: ${err instanceof Error ? err.message : String(err)}`);
       });
   }, [toast, refresh]);
 
@@ -699,7 +662,6 @@ export function useActions({
     handleComment,
     handleStatusChange,
     handleAssign,
-    handleUnassign,
     handleLabelChange,
     handleCreateIssue,
     handleBulkAssign,
