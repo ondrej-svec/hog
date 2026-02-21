@@ -30,7 +30,7 @@ export function loadSyncState(): SyncState {
 }
 
 export function saveSyncState(state: SyncState): void {
-  writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+  writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
 }
 
 export function findMapping(

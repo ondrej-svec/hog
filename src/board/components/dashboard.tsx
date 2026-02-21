@@ -335,6 +335,7 @@ function timeAgo(date: Date): string {
 }
 
 function openInBrowser(url: string): void {
+  if (!url.startsWith("https://") && !url.startsWith("http://")) return;
   try {
     execFileSync("open", [url], { stdio: "ignore" });
   } catch {

@@ -237,7 +237,7 @@ export function getConfig(): ConfigData {
 export function saveConfig(data: ConfigData): void {
   ensureDir();
   const existing = getConfig();
-  writeFileSync(CONFIG_FILE, `${JSON.stringify({ ...existing, ...data }, null, 2)}\n`);
+  writeFileSync(CONFIG_FILE, `${JSON.stringify({ ...existing, ...data }, null, 2)}\n`, { mode: 0o600 });
 }
 
 export function requireAuth(): AuthData {
