@@ -119,8 +119,7 @@ const PRIORITY_MAP: Record<string, Priority | undefined> = {
 function parsePriority(value: string): Priority {
   const p = PRIORITY_MAP[value.toLowerCase()];
   if (p === undefined) {
-    console.error(`Invalid priority: ${value}. Use: none, low, medium, high`);
-    process.exit(1);
+    errorOut(`Invalid priority: "${value}". Valid values: none, low, medium, high`);
   }
   return p;
 }
@@ -908,7 +907,20 @@ issueCommand
       errorOut(`Invalid status "${status}". Valid: ${valid}`, { status, validStatuses: valid });
     }
     if (opts.dryRun) {
-      console.log(`[dry-run] Would move ${rc.shortName}#${ref.issueNumber} → "${target.name}"`);
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: {
+            action: "move",
+            issue: ref.issueNumber,
+            repo: rc.shortName,
+            status: target.name,
+          },
+        });
+      } else {
+        console.log(`[dry-run] Would move ${rc.shortName}#${ref.issueNumber} → "${target.name}"`);
+      }
       return;
     }
     await updateProjectItemStatusAsync(rc.name, ref.issueNumber, {
@@ -937,7 +949,15 @@ issueCommand
       process.exit(1);
     }
     if (opts.dryRun) {
-      console.log(`[dry-run] Would assign ${ref.repo.shortName}#${ref.issueNumber} to @${user}`);
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: { action: "assign", issue: ref.issueNumber, repo: ref.repo.shortName, user },
+        });
+      } else {
+        console.log(`[dry-run] Would assign ${ref.repo.shortName}#${ref.issueNumber} to @${user}`);
+      }
       return;
     }
     const { assignIssueToAsync } = await import("./github.js");
@@ -963,7 +983,17 @@ issueCommand
       process.exit(1);
     }
     if (opts.dryRun) {
-      console.log(`[dry-run] Would remove @${user} from ${ref.repo.shortName}#${ref.issueNumber}`);
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: { action: "unassign", issue: ref.issueNumber, repo: ref.repo.shortName, user },
+        });
+      } else {
+        console.log(
+          `[dry-run] Would remove @${user} from ${ref.repo.shortName}#${ref.issueNumber}`,
+        );
+      }
       return;
     }
     const { unassignIssueAsync } = await import("./github.js");
@@ -983,7 +1013,17 @@ issueCommand
     const cfg = loadFullConfig();
     const ref = await resolveRef(issueRef, cfg);
     if (opts.dryRun) {
-      console.log(`[dry-run] Would comment on ${ref.repo.shortName}#${ref.issueNumber}: "${text}"`);
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: { action: "comment", issue: ref.issueNumber, repo: ref.repo.shortName, text },
+        });
+      } else {
+        console.log(
+          `[dry-run] Would comment on ${ref.repo.shortName}#${ref.issueNumber}: "${text}"`,
+        );
+      }
       return;
     }
     const { addCommentAsync } = await import("./github.js");
@@ -1033,9 +1073,17 @@ issueCommand
     }
 
     if (opts.dryRun) {
-      console.log(
-        `[dry-run] Would edit ${ref.repo.shortName}#${ref.issueNumber}: ${changes.join("; ")}`,
-      );
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: { action: "edit", issue: ref.issueNumber, repo: ref.repo.shortName, changes },
+        });
+      } else {
+        console.log(
+          `[dry-run] Would edit ${ref.repo.shortName}#${ref.issueNumber}: ${changes.join("; ")}`,
+        );
+      }
       return;
     }
 
@@ -1066,9 +1114,22 @@ issueCommand
     const ref = await resolveRef(issueRef, cfg);
     const verb = opts.remove ? "remove" : "add";
     if (opts.dryRun) {
-      console.log(
-        `[dry-run] Would ${verb} label "${label}" on ${ref.repo.shortName}#${ref.issueNumber}`,
-      );
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: {
+            action: `${verb}Label`,
+            issue: ref.issueNumber,
+            repo: ref.repo.shortName,
+            label,
+          },
+        });
+      } else {
+        console.log(
+          `[dry-run] Would ${verb} label "${label}" on ${ref.repo.shortName}#${ref.issueNumber}`,
+        );
+      }
       return;
     }
     if (opts.remove) {
@@ -1108,6 +1169,183 @@ issueCommand
     } else {
       console.log(`Available statuses for ${repo}: ${statuses.map((s) => s.name).join(", ")}`);
     }
+  });
+
+// -- Bulk issue commands --
+
+type BulkResult = { ref: string; success: true } | { ref: string; success: false; error: string };
+
+async function moveSingleIssue(r: string, status: string, cfg: HogConfig): Promise<BulkResult> {
+  try {
+    const ref = await resolveRef(r, cfg);
+    const rc = ref.repo;
+    if (!(rc.statusFieldId && rc.projectNumber)) {
+      throw new Error(`${rc.name} is not configured with a project board. Run: hog init`);
+    }
+    const { fetchProjectStatusOptions, updateProjectItemStatusAsync } = await import("./github.js");
+    const options = fetchProjectStatusOptions(rc.name, rc.projectNumber, rc.statusFieldId);
+    const target = options.find((o) => o.name.toLowerCase() === status.toLowerCase());
+    if (!target) {
+      const valid = options.map((o) => o.name).join(", ");
+      throw new Error(`Invalid status "${status}". Valid: ${valid}`);
+    }
+    await updateProjectItemStatusAsync(rc.name, ref.issueNumber, {
+      projectNumber: rc.projectNumber,
+      statusFieldId: rc.statusFieldId,
+      optionId: target.id,
+    });
+    return { ref: r, success: true };
+  } catch (err) {
+    return { ref: r, success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+function outputBulkResults(results: BulkResult[]): void {
+  const allOk = results.every((r) => r.success);
+  if (useJson()) {
+    jsonOut({ ok: allOk, results });
+  } else {
+    for (const r of results) {
+      if (!r.success) {
+        console.error(
+          `Failed ${r.ref}: ${(r as { ref: string; success: false; error: string }).error}`,
+        );
+      }
+    }
+  }
+}
+
+interface IssueBulkAssignOptions {
+  user?: string;
+  dryRun?: true;
+}
+
+interface IssueBulkUnassignOptions {
+  user?: string;
+  dryRun?: true;
+}
+
+interface IssueBulkMoveOptions {
+  dryRun?: true;
+}
+
+issueCommand
+  .command("bulk-assign <refs...>")
+  .description(
+    "Assign multiple issues to self or a specific user (e.g., hog issue bulk-assign myrepo/42 myrepo/43)",
+  )
+  .option("--user <username>", "GitHub username to assign (default: configured assignee)")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (refs: string[], opts: IssueBulkAssignOptions) => {
+    const cfg = loadFullConfig();
+    const user = opts.user ?? cfg.board.assignee;
+    if (!user) {
+      errorOut("no user specified. Use --user or configure board.assignee in hog init");
+    }
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({ ok: true, dryRun: true, would: { action: "bulk-assign", refs, user } });
+      } else {
+        for (const r of refs) {
+          console.log(`[dry-run] Would assign ${r} to @${user}`);
+        }
+      }
+      return;
+    }
+
+    const { assignIssueToAsync } = await import("./github.js");
+    const results: BulkResult[] = [];
+    for (const r of refs) {
+      try {
+        const ref = await resolveRef(r, cfg);
+        await assignIssueToAsync(ref.repo.name, ref.issueNumber, user);
+        results.push({ ref: r, success: true });
+        if (!useJson()) console.log(`Assigned ${r} to @${user}`);
+      } catch (err) {
+        results.push({
+          ref: r,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    outputBulkResults(results);
+  });
+
+issueCommand
+  .command("bulk-unassign <refs...>")
+  .description(
+    "Remove assignee from multiple issues (e.g., hog issue bulk-unassign myrepo/42 myrepo/43)",
+  )
+  .option("--user <username>", "GitHub username to remove (default: configured assignee)")
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (refs: string[], opts: IssueBulkUnassignOptions) => {
+    const cfg = loadFullConfig();
+    const user = opts.user ?? cfg.board.assignee;
+    if (!user) {
+      errorOut("no user specified. Use --user or configure board.assignee in hog init");
+    }
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({ ok: true, dryRun: true, would: { action: "bulk-unassign", refs, user } });
+      } else {
+        for (const r of refs) {
+          console.log(`[dry-run] Would remove @${user} from ${r}`);
+        }
+      }
+      return;
+    }
+
+    const { unassignIssueAsync } = await import("./github.js");
+    const results: BulkResult[] = [];
+    for (const r of refs) {
+      try {
+        const ref = await resolveRef(r, cfg);
+        await unassignIssueAsync(ref.repo.name, ref.issueNumber, user);
+        results.push({ ref: r, success: true });
+        if (!useJson()) console.log(`Removed @${user} from ${r}`);
+      } catch (err) {
+        results.push({
+          ref: r,
+          success: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    outputBulkResults(results);
+  });
+
+issueCommand
+  .command("bulk-move <status> <refs...>")
+  .description(
+    "Move multiple issues to a project status (e.g., hog issue bulk-move 'In Review' myrepo/42 myrepo/43)",
+  )
+  .option("--dry-run", "Print what would change without mutating")
+  .action(async (status: string, refs: string[], opts: IssueBulkMoveOptions) => {
+    const cfg = loadFullConfig();
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({ ok: true, dryRun: true, would: { action: "bulk-move", refs, status } });
+      } else {
+        for (const r of refs) {
+          console.log(`[dry-run] Would move ${r} → "${status}"`);
+        }
+      }
+      return;
+    }
+
+    const results: BulkResult[] = await Promise.all(
+      refs.map((r) => moveSingleIssue(r, status, cfg)),
+    );
+    if (!useJson()) {
+      for (const r of results) {
+        if (r.success) console.log(`Moved ${r.ref} → ${status}`);
+      }
+    }
+    outputBulkResults(results);
   });
 
 program.addCommand(issueCommand);
