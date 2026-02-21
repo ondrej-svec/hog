@@ -685,6 +685,119 @@ describe("cursor tracking after items change sections", () => {
     instance.unmount();
   });
 
+  it("collapseAll then expand section restores sub-sections into visibleItems", async () => {
+    // Regression scenario reported by user:
+    // "collapse all and open one of the boards, I dont see any statuses"
+    const instance = render(
+      React.createElement(NavActionTester, { initialItems: makeSubSectionItems() }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Initially cursor is on header:repo (first item)
+    expect(instance.lastFrame()!).toContain("selected:header:repo");
+
+    // collapseAll — collapses all sections
+    getNav().collapseAll();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:header:repo");
+    expect(getNav().isCollapsed("repo")).toBe(true);
+
+    // Expand repo section (Enter/Space on header:repo)
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(getNav().isCollapsed("repo")).toBe(false);
+    // Sub-sections must NOT be individually collapsed after expand
+    expect(getNav().isCollapsed("sub:repo:In Progress")).toBe(false);
+    expect(getNav().isCollapsed("sub:repo:Backlog")).toBe(false);
+
+    // moveDown from header:repo must land on the FIRST sub-header (not skip to an issue)
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    instance.unmount();
+  });
+
+  it("sub-header is reachable via moveDown navigation (not skipped)", async () => {
+    // Regression scenario: user navigates through issues and "at some point
+    // the status element shows" — meaning sub-headers must be in visibleItems
+    // and reachable by j/k navigation from the very start.
+    const instance = render(
+      React.createElement(NavActionTester, { initialItems: makeSubSectionItems() }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Start at header:repo (index 0). One moveDown should land on the sub-header.
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    // Another moveDown → first issue inside In Progress
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:gh:repo:1");
+
+    // Another moveDown → Backlog sub-header (not another issue)
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:Backlog");
+
+    instance.unmount();
+  });
+
+  it("collapsing a sub-section keeps sub-header navigable and hides its issues", async () => {
+    // Regression scenario: "when I collapse it, it does not seem to work properly"
+    const instance = render(
+      React.createElement(NavActionTester, { initialItems: makeSubSectionItems() }),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Navigate to the In Progress sub-header
+    getNav().select("sub:repo:In Progress");
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    // Collapse it
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Sub-header must still be selected (not teleported away)
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    // Sub-section must now be collapsed
+    expect(getNav().isCollapsed("sub:repo:In Progress")).toBe(true);
+
+    // moveDown from collapsed sub-header must skip its hidden issues
+    // and land directly on the Backlog sub-header
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:Backlog");
+
+    // Expanding In Progress again: issues must reappear
+    getNav().select("sub:repo:In Progress");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(getNav().isCollapsed("sub:repo:In Progress")).toBe(false);
+
+    // moveDown now hits the issue inside In Progress
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:gh:repo:1");
+
+    instance.unmount();
+  });
+
   it("should stay on selected item when sections order changes but item id is unchanged", async () => {
     const instance = render(React.createElement(NavActionTester, { initialItems: makeNavItems() }));
     await new Promise((r) => setTimeout(r, 50));

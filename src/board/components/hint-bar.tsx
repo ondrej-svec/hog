@@ -7,9 +7,17 @@ interface HintBarProps {
   readonly searchQuery: string;
   readonly mineOnly: boolean;
   readonly hasUndoable?: boolean;
+  readonly onHeader?: boolean;
 }
 
-function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable }: HintBarProps) {
+function HintBar({
+  uiMode,
+  multiSelectCount,
+  searchQuery,
+  mineOnly,
+  hasUndoable,
+  onHeader,
+}: HintBarProps) {
   if (uiMode === "multiSelect") {
     return (
       <Box>
@@ -60,6 +68,17 @@ function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable 
   }
 
   // Normal mode — show the most relevant shortcuts
+  if (onHeader) {
+    return (
+      <Box>
+        <Text color="gray">
+          j/k:nav Enter/Space:expand-collapse Tab:next-section C:collapse-all ?:more q:quit
+        </Text>
+        {mineOnly ? <Text color="cyan"> filter:@me</Text> : null}
+        {searchQuery ? <Text color="yellow"> filter:"{searchQuery}"</Text> : null}
+      </Box>
+    );
+  }
   return (
     <Box>
       <Text color="gray">

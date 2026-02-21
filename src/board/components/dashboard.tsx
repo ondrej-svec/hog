@@ -1044,6 +1044,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         searchQuery={searchQuery}
         mineOnly={mineOnly}
         hasUndoable={hasUndoable}
+        onHeader={isHeaderId(nav.selectedId)}
       />
     </Box>
   );
