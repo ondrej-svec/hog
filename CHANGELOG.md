@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/ondrej-svec/hog/compare/hog-v1.9.0...hog-v1.9.1) (2026-02-21)
+
+
+### Bug Fixes
+
+* **board:** fix status group header visibility and layout shenanigans ([fc27a9b](https://github.com/ondrej-svec/hog/commit/fc27a9bdcf98d284c8bc1ce945b61586596c4679))
+
 ## [1.9.0](https://github.com/ondrej-svec/hog/compare/hog-v1.8.1...hog-v1.9.0) (2026-02-21)
 
 
