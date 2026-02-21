@@ -3,7 +3,7 @@ import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
-import type { HogConfig } from "../../config.js";
+import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
 import type { Task } from "../../types.js";
@@ -41,6 +41,25 @@ interface DashboardProps {
 interface StatusGroup {
   label: string;
   statuses: string[];
+}
+
+interface BoardGroup {
+  label: string;
+  subId: string; // `sub:${repo.name}:${label}` — globally unique
+  issues: GitHubIssue[];
+}
+
+interface BoardSection {
+  repo: RepoConfig;
+  sectionId: string; // repo.name — globally unique
+  groups: BoardGroup[];
+  error: string | null;
+}
+
+interface BoardTree {
+  activity: ActivityEvent[];
+  sections: BoardSection[];
+  tasks: Task[];
 }
 
 /**
@@ -106,151 +125,137 @@ function groupByStatus(issues: GitHubIssue[]): Map<string, GitHubIssue[]> {
   return groups;
 }
 
-/** Collect issues for a status group (may span multiple statuses). */
-function collectGroupIssues(
-  statusGroup: StatusGroup,
-  byStatus: Map<string, GitHubIssue[]>,
-): GitHubIssue[] {
-  const issues: GitHubIssue[] = [];
-  for (const status of statusGroup.statuses) {
-    const list = byStatus.get(status);
-    if (list) issues.push(...list);
-  }
-  issues.sort((a, b) => issuePriorityRank(a) - issuePriorityRank(b));
-  return issues;
-}
+/** Build the unified board tree — single source of truth for all nav/row builders. */
+function buildBoardTree(repos: RepoData[], tasks: Task[], activity: ActivityEvent[]): BoardTree {
+  const sections = repos.map((rd): BoardSection => {
+    const sectionId = rd.repo.name;
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: TUI navigation tree builder
-function buildNavItems(repos: RepoData[], tasks: Task[], activityCount: number): NavItem[] {
-  const items: NavItem[] = [];
-  if (activityCount > 0) {
-    items.push({ id: "header:activity", section: "activity", type: "header" });
-  }
-  for (const rd of repos) {
-    items.push({ id: `header:${rd.repo.shortName}`, section: rd.repo.shortName, type: "header" });
+    if (rd.error) {
+      return { repo: rd.repo, sectionId, groups: [], error: rd.error };
+    }
+
     const statusGroupDefs = resolveStatusGroups(rd.statusOptions, rd.repo.statusGroups);
     const byStatus = groupByStatus(rd.issues);
-    const coveredStatuses = new Set<string>();
+    const coveredKeys = new Set<string>(); // normalized (lowercase-trim) covered keys
+    const groups: BoardGroup[] = [];
 
     for (const sg of statusGroupDefs) {
-      const groupIssues = collectGroupIssues(sg, byStatus);
-      if (groupIssues.length === 0) continue;
-      const subId = `sub:${rd.repo.shortName}:${sg.label}`;
-      items.push({ id: subId, section: rd.repo.shortName, type: "subHeader" });
-      for (const issue of groupIssues) {
-        items.push({
-          id: `gh:${rd.repo.name}:${issue.number}`,
-          section: rd.repo.shortName,
-          type: "item",
-          subSection: subId,
-        });
-      }
-      for (const s of sg.statuses) coveredStatuses.add(s);
-    }
-    // Any issues in statuses not covered by groups (non-terminal) go at the end
-    for (const [status, issues] of byStatus) {
-      if (!(coveredStatuses.has(status) || isTerminalStatus(status)) && issues.length > 0) {
-        const subId = `sub:${rd.repo.shortName}:${status}`;
-        items.push({ id: subId, section: rd.repo.shortName, type: "subHeader" });
-        for (const issue of issues) {
-          items.push({
-            id: `gh:${rd.repo.name}:${issue.number}`,
-            section: rd.repo.shortName,
-            type: "item",
-            subSection: subId,
-          });
+      const issues: GitHubIssue[] = [];
+      for (const [status, statusIssues] of byStatus) {
+        if (sg.statuses.some((s) => s.toLowerCase().trim() === status.toLowerCase().trim())) {
+          issues.push(...statusIssues);
         }
+      }
+      if (issues.length === 0) continue;
+      issues.sort((a, b) => issuePriorityRank(a) - issuePriorityRank(b));
+      groups.push({ label: sg.label, subId: `sub:${sectionId}:${sg.label}`, issues });
+      for (const s of sg.statuses) coveredKeys.add(s.toLowerCase().trim());
+    }
+
+    // Overflow: uncovered non-terminal statuses
+    for (const [status, statusIssues] of byStatus) {
+      if (!(coveredKeys.has(status.toLowerCase().trim()) || isTerminalStatus(status))) {
+        groups.push({ label: status, subId: `sub:${sectionId}:${status}`, issues: statusIssues });
+      }
+    }
+
+    return { repo: rd.repo, sectionId, groups, error: null };
+  });
+
+  return { activity, sections, tasks };
+}
+
+function buildNavItems(tree: BoardTree): NavItem[] {
+  const items: NavItem[] = [];
+  if (tree.activity.length > 0)
+    items.push({ id: "header:activity", section: "activity", type: "header" });
+
+  for (const { repo, sectionId, groups } of tree.sections) {
+    items.push({ id: `header:${sectionId}`, section: sectionId, type: "header" });
+    for (const group of groups) {
+      items.push({ id: group.subId, section: sectionId, type: "subHeader" });
+      for (const issue of group.issues) {
+        items.push({
+          id: `gh:${repo.name}:${issue.number}`,
+          section: sectionId,
+          type: "item",
+          subSection: group.subId,
+        });
       }
     }
   }
-  if (tasks.length > 0) {
+
+  if (tree.tasks.length > 0) {
     items.push({ id: "header:ticktick", section: "ticktick", type: "header" });
-    for (const task of tasks) {
+    for (const task of tree.tasks)
       items.push({ id: `tt:${task.id}`, section: "ticktick", type: "item" });
-    }
   }
   return items;
 }
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flattens nested data into rows
-function buildFlatRows(
-  repos: RepoData[],
-  tasks: Task[],
-  activity: ActivityEvent[],
-  isCollapsed: (section: string) => boolean,
-): FlatRow[] {
+function buildFlatRows(tree: BoardTree, isCollapsed: (section: string) => boolean): FlatRow[] {
   const rows: FlatRow[] = [];
 
   // Activity section (collapsed by default)
-  if (activity.length > 0) {
+  if (tree.activity.length > 0) {
     const collapsed = isCollapsed("activity");
     rows.push({
       type: "sectionHeader",
       key: "header:activity",
       navId: "header:activity",
       label: "Recent Activity (24h)",
-      count: activity.length,
+      count: tree.activity.length,
       countLabel: "events",
       isCollapsed: collapsed,
     });
     if (!collapsed) {
-      for (const [i, event] of activity.entries()) {
+      for (const [i, event] of tree.activity.entries()) {
         rows.push({ type: "activity", key: `act:${i}`, navId: null, event });
       }
     }
   }
 
-  for (const rd of repos) {
-    const { repo, issues, error: repoError } = rd;
-    const collapsed = isCollapsed(repo.shortName);
-
+  for (const { repo, sectionId, groups, error } of tree.sections) {
+    const collapsed = isCollapsed(sectionId); // uses repo.name
+    const totalIssues = groups.reduce((s, g) => s + g.issues.length, 0);
     rows.push({
       type: "sectionHeader",
-      key: `header:${repo.shortName}`,
-      navId: `header:${repo.shortName}`,
-      label: repo.shortName,
-      count: issues.length,
+      key: `header:${sectionId}`,
+      navId: `header:${sectionId}`,
+      label: repo.shortName, // display label still shows shortName
+      count: totalIssues,
       countLabel: "issues",
       isCollapsed: collapsed,
     });
 
     if (!collapsed) {
-      if (repoError) {
-        rows.push({ type: "error", key: `error:${repo.shortName}`, navId: null, text: repoError });
-      } else if (issues.length === 0) {
+      if (error) {
+        rows.push({ type: "error", key: `error:${sectionId}`, navId: null, text: error });
+      } else if (groups.length === 0) {
         rows.push({
           type: "subHeader",
-          key: `empty:${repo.shortName}`,
+          key: `empty:${sectionId}`,
           navId: null,
           text: "No open issues",
         });
       } else {
-        const statusGroupDefs = resolveStatusGroups(rd.statusOptions, rd.repo.statusGroups);
-        const byStatus = groupByStatus(issues);
-        const coveredStatuses = new Set<string>();
         let isFirstGroup = true;
-
-        for (const sg of statusGroupDefs) {
-          const groupIssues = collectGroupIssues(sg, byStatus);
-          if (groupIssues.length === 0) continue;
-
-          if (!isFirstGroup) {
-            rows.push({ type: "gap", key: `gap:${repo.shortName}:${sg.label}`, navId: null });
-          }
+        for (const group of groups) {
+          if (!isFirstGroup)
+            rows.push({ type: "gap", key: `gap:${sectionId}:${group.label}`, navId: null });
           isFirstGroup = false;
-
-          const subId = `sub:${repo.shortName}:${sg.label}`;
-          const subCollapsed = isCollapsed(subId);
+          const subCollapsed = isCollapsed(group.subId);
           rows.push({
             type: "subHeader",
-            key: subId,
-            navId: subId,
-            text: sg.label,
-            count: groupIssues.length,
+            key: group.subId,
+            navId: group.subId,
+            text: group.label,
+            count: group.issues.length,
             isCollapsed: subCollapsed,
           });
           if (!subCollapsed) {
-            for (const issue of groupIssues) {
+            for (const issue of group.issues) {
               rows.push({
                 type: "issue",
                 key: `gh:${repo.name}:${issue.number}`,
@@ -260,61 +265,25 @@ function buildFlatRows(
               });
             }
           }
-          for (const s of sg.statuses) coveredStatuses.add(s);
-        }
-
-        // Any statuses not covered by groups (non-terminal) go at the end
-        for (const [status, groupIssues] of byStatus) {
-          if (
-            !(coveredStatuses.has(status) || isTerminalStatus(status)) &&
-            groupIssues.length > 0
-          ) {
-            if (!isFirstGroup) {
-              rows.push({ type: "gap", key: `gap:${repo.shortName}:${status}`, navId: null });
-            }
-            isFirstGroup = false;
-            const subId = `sub:${repo.shortName}:${status}`;
-            const subCollapsed = isCollapsed(subId);
-            rows.push({
-              type: "subHeader",
-              key: subId,
-              navId: subId,
-              text: status,
-              count: groupIssues.length,
-              isCollapsed: subCollapsed,
-            });
-            if (!subCollapsed) {
-              for (const issue of groupIssues) {
-                rows.push({
-                  type: "issue",
-                  key: `gh:${repo.name}:${issue.number}`,
-                  navId: `gh:${repo.name}:${issue.number}`,
-                  issue,
-                  repoName: repo.name,
-                });
-              }
-            }
-          }
         }
       }
     }
   }
 
-  if (tasks.length > 0) {
+  if (tree.tasks.length > 0) {
     const collapsed = isCollapsed("ticktick");
     rows.push({
       type: "sectionHeader",
       key: "header:ticktick",
       navId: "header:ticktick",
       label: "Personal (TickTick)",
-      count: tasks.length,
+      count: tree.tasks.length,
       countLabel: "tasks",
       isCollapsed: collapsed,
     });
     if (!collapsed) {
-      for (const task of tasks) {
+      for (const task of tree.tasks)
         rows.push({ type: "task", key: `tt:${task.id}`, navId: `tt:${task.id}`, task });
-      }
     }
   }
 
@@ -446,11 +415,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     return allTasks.filter((t) => t.title.toLowerCase().includes(q));
   }, [allTasks, searchQuery]);
 
-  // Navigation
-  const navItems = useMemo(
-    () => buildNavItems(repos, tasks, allActivity.length),
-    [repos, tasks, allActivity.length],
+  // Single source of truth — computed once
+  const boardTree = useMemo(
+    () => buildBoardTree(repos, tasks, allActivity),
+    [repos, tasks, allActivity],
   );
+
+  // Navigation
+  const navItems = useMemo(() => buildNavItems(boardTree), [boardTree]);
   const nav = useNavigation(navItems);
 
   // Multi-select: resolve nav ID → repo name for same-repo constraint
@@ -642,8 +614,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Build flat rows
   const flatRows = useMemo(
-    () => buildFlatRows(repos, tasks, allActivity, nav.isCollapsed),
-    [repos, tasks, allActivity, nav.isCollapsed],
+    () => buildFlatRows(boardTree, nav.isCollapsed),
+    [boardTree, nav.isCollapsed],
   );
 
   // Scroll offset - tracks viewport position

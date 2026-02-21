@@ -86,10 +86,18 @@ function navReducer(state: NavState, action: NavAction): NavState {
       const sections = [...new Set(action.items.map((i) => i.section))];
       const isFirstLoad = state.sections.length === 0;
       // On first load: expand all sections except Activity (collapse it by default)
-      // On refresh: preserve collapsed state
-      const collapsedSections = isFirstLoad
-        ? new Set(sections.filter((s) => s === "activity"))
-        : state.collapsedSections;
+      // On refresh: preserve collapsed state, pruning orphan keys that no longer exist
+      let collapsedSections: Set<SectionId>;
+      if (isFirstLoad) {
+        collapsedSections = new Set(sections.filter((s) => s === "activity"));
+      } else {
+        // Prune orphan keys — only keep IDs that still exist in the new tree
+        const validIds = new Set<SectionId>([
+          ...sections,
+          ...action.items.filter((i) => i.type === "subHeader").map((i) => i.id),
+        ]);
+        collapsedSections = new Set([...state.collapsedSections].filter((id) => validIds.has(id)));
+      }
       const selectionValid =
         state.selectedId != null && action.items.some((i) => i.id === state.selectedId);
 

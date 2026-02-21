@@ -821,3 +821,137 @@ describe("cursor tracking after items change sections", () => {
     instance.unmount();
   });
 });
+
+// ── Orphan key pruning ──
+
+describe("orphan key pruning", () => {
+  it("removes a collapsed sub-section key when that sub-section disappears from items", async () => {
+    const initialItems: NavItem[] = [
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:In Progress", section: "repo", type: "subHeader" },
+      { id: "gh:repo:1", section: "repo", type: "item", subSection: "sub:repo:In Progress" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:2", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Collapse "In Progress"
+    getNav().select("sub:repo:In Progress");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(getNav().isCollapsed("sub:repo:In Progress")).toBe(true);
+
+    // Simulate refresh where "In Progress" group disappears (all issues closed)
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+    setItems([
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:2", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Stale "In Progress" key must have been pruned
+    expect(getNav().isCollapsed("sub:repo:In Progress")).toBe(false);
+
+    instance.unmount();
+  });
+
+  it("removes a collapsed top-level section key when that section disappears", async () => {
+    const initialItems: NavItem[] = [
+      { id: "header:repo1", section: "repo1", type: "header" },
+      { id: "gh:repo1:1", section: "repo1", type: "item" },
+      { id: "header:repo2", section: "repo2", type: "header" },
+      { id: "gh:repo2:1", section: "repo2", type: "item" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Collapse repo2
+    getNav().select("header:repo2");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(getNav().isCollapsed("repo2")).toBe(true);
+
+    // Simulate refresh where repo2 is gone (e.g. removed from config)
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+    setItems([
+      { id: "header:repo1", section: "repo1", type: "header" },
+      { id: "gh:repo1:1", section: "repo1", type: "item" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Stale repo2 key must have been pruned
+    expect(getNav().isCollapsed("repo2")).toBe(false);
+
+    instance.unmount();
+  });
+
+  it("preserves valid collapsed keys across a refresh", async () => {
+    const initialItems: NavItem[] = [
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:In Progress", section: "repo", type: "subHeader" },
+      { id: "gh:repo:1", section: "repo", type: "item", subSection: "sub:repo:In Progress" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:2", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Collapse "Backlog"
+    getNav().select("sub:repo:Backlog");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(getNav().isCollapsed("sub:repo:Backlog")).toBe(true);
+
+    // Simulate refresh — same structure, new issue added
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+    setItems([
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:In Progress", section: "repo", type: "subHeader" },
+      { id: "gh:repo:1", section: "repo", type: "item", subSection: "sub:repo:In Progress" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:2", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+      { id: "gh:repo:3", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // "Backlog" must still be collapsed — not spuriously pruned
+    expect(getNav().isCollapsed("sub:repo:Backlog")).toBe(true);
+
+    instance.unmount();
+  });
+
+  it("activity stays pre-collapsed on first load even with pruning logic", async () => {
+    const items: NavItem[] = [
+      { id: "header:activity", section: "activity", type: "header" },
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "gh:repo:1", section: "repo", type: "item" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Activity must be collapsed by default on first load
+    expect(getNav().isCollapsed("activity")).toBe(true);
+    // Repo must be expanded
+    expect(getNav().isCollapsed("repo")).toBe(false);
+
+    instance.unmount();
+  });
+});
