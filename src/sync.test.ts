@@ -356,28 +356,24 @@ describe("sync", () => {
   });
 
   describe("error isolation", () => {
-    it("continues syncing other issues when one fails", async () => {
+    it("continues syncing all issues when enrichment fetch fails (fallback to empty map)", async () => {
       const issue1 = makeIssue({ number: 1, title: "First" });
       const issue2 = makeIssue({ number: 2, title: "Second" });
       mockFetchAssignedIssues.mockImplementation((repo: string) => {
         if (repo === "test-org/backend") return [issue1, issue2];
         return [];
       });
-      mockFetchProjectEnrichment
-        .mockImplementationOnce(() => {
-          throw new Error("GraphQL failed");
-        })
-        .mockReturnValueOnce(new Map());
-      mockCreateTask.mockResolvedValue({
-        id: "tt-new",
-        projectId: "proj-inbox",
-        title: "[backend#2] Second",
+      mockFetchProjectEnrichment.mockImplementation(() => {
+        throw new Error("GraphQL failed");
       });
+      mockCreateTask
+        .mockResolvedValueOnce({ id: "tt-1", projectId: "proj-inbox", title: "First" })
+        .mockResolvedValueOnce({ id: "tt-2", projectId: "proj-inbox", title: "Second" });
 
       const result = await runSync();
 
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("test-org/backend#1");
+      expect(result.errors).toHaveLength(0);
+      expect(result.created).toContain("test-org/backend#1");
       expect(result.created).toContain("test-org/backend#2");
     });
   });

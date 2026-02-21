@@ -1,11 +1,11 @@
 import { TickTickClient } from "./api.js";
 import type { HogConfig, RepoConfig } from "./config.js";
 import { loadFullConfig, requireAuth } from "./config.js";
-import type { GitHubIssue } from "./github.js";
+import type { GitHubIssue, ProjectEnrichment } from "./github.js";
 import {
   addLabel,
   fetchAssignedIssues,
-  fetchProjectFields,
+  fetchProjectEnrichment,
   updateProjectItemStatus,
 } from "./github.js";
 import type { SyncMapping, SyncState } from "./sync-state.js";
@@ -124,10 +124,17 @@ async function syncGitHubToTickTick(
       continue;
     }
 
+    let enrichMap: Map<number, ProjectEnrichment>;
+    try {
+      enrichMap = fetchProjectEnrichment(repoConfig.name, repoConfig.projectNumber);
+    } catch {
+      enrichMap = new Map();
+    }
+
     for (const issue of issues) {
       const key = `${repoConfig.name}#${issue.number}`;
       openIssueKeys.add(key);
-      await syncSingleIssue(state, api, result, dryRun, repoConfig, issue, key);
+      await syncSingleIssue(state, api, result, dryRun, repoConfig, issue, key, enrichMap);
     }
   }
 
@@ -142,17 +149,18 @@ async function syncSingleIssue(
   repoConfig: RepoConfig,
   issue: GitHubIssue,
   key: string,
+  enrichMap: Map<number, ProjectEnrichment>,
 ): Promise<void> {
   try {
     const existing = findMapping(state, repoConfig.name, issue.number);
 
     if (existing && existing.githubUpdatedAt === issue.updatedAt) return;
 
-    const projectFields = fetchProjectFields(
-      repoConfig.name,
-      issue.number,
-      repoConfig.projectNumber,
-    );
+    const enrichment = enrichMap.get(issue.number);
+    const projectFields: { targetDate?: string; status?: string } = {
+      ...(enrichment?.targetDate !== undefined && { targetDate: enrichment.targetDate }),
+      ...(enrichment?.projectStatus !== undefined && { status: enrichment.projectStatus }),
+    };
 
     if (!existing) {
       await createTickTickTask(
