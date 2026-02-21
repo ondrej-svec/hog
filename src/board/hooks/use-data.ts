@@ -78,9 +78,7 @@ export function refreshAgeColor(lastRefresh: Date | null): "green" | "yellow" | 
 }
 
 /** Discriminated union for worker messages */
-type WorkerMessage =
-  | { type: "success"; data: DashboardData }
-  | { type: "error"; error: string };
+type WorkerMessage = { type: "success"; data: DashboardData } | { type: "error"; error: string };
 
 /** Return type of the useData hook */
 export type UseDataResult = DataState & {
