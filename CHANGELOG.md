@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.8.0](https://github.com/ondrej-svec/hog/compare/hog-v1.7.2...hog-v1.8.0) (2026-02-21)
+
+
+### Features
+
+* **cli:** add bulk-assign/unassign/move commands and fix --dry-run --json ([bbf49a3](https://github.com/ondrej-svec/hog/commit/bbf49a3b641686e02ac8088f81c6ba7bbc203ab0))
+
+
+### Bug Fixes
+
+* **auth:** use random OAuth state; fix(ai): validate LLM labels against repo labels ([a1b0b68](https://github.com/ondrej-svec/hog/commit/a1b0b6840c0d418bf2f1a891d7a1a20881c726e2))
+* **board:** add projectStatus, targetDate and activity to board --json output ([5164652](https://github.com/ondrej-svec/hog/commit/51646524495bd85f96d3cebe411f5b503288036d))
+* **board:** show context-sensitive hints when cursor is on a header ([37d5c25](https://github.com/ondrej-svec/hog/commit/37d5c25ce3a071dc5eb1c606b9ec36dbde1db3ed))
+* **security:** add 0o600 file permissions and URL scheme validation ([e335e75](https://github.com/ondrej-svec/hog/commit/e335e75fc74d00f127a97b7d0a219e2feb10acee))
+
+
+### Performance Improvements
+
+* **sync:** use batched fetchProjectEnrichment instead of per-issue fetchProjectFields ([2d8ed4b](https://github.com/ondrej-svec/hog/commit/2d8ed4b1d10aff90dc79358c140f1fce2f7c6a04))
+
 ## [1.7.2](https://github.com/ondrej-svec/hog/compare/hog-v1.7.1...hog-v1.7.2) (2026-02-21)
 
 
