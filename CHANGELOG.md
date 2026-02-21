@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.2](https://github.com/ondrej-svec/hog/compare/hog-v1.9.1...hog-v1.9.2) (2026-02-21)
+
+
+### Bug Fixes
+
+* **board:** keep status group header visible when navigating up ([138decd](https://github.com/ondrej-svec/hog/commit/138decd1dab469c514097e710c933e78104b67cc))
+
 ## [1.9.1](https://github.com/ondrej-svec/hog/compare/hog-v1.9.0...hog-v1.9.1) (2026-02-21)
 
 
