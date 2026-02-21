@@ -1,5 +1,3 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { useCallback, useRef } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import type {
@@ -9,7 +7,13 @@ import type {
   StatusOption,
 } from "../../github.js";
 import {
+  addCommentAsync,
+  addLabelAsync,
   assignIssueAsync,
+  closeIssueAsync,
+  createIssueAsync,
+  unassignIssueAsync,
+  updateLabelsAsync,
   updateProjectItemDateAsync,
   updateProjectItemStatusAsync,
 } from "../../github.js";
@@ -19,8 +23,6 @@ import type { DashboardData, RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "./use-action-log.js";
 import { nextEntryId } from "./use-action-log.js";
 import type { ToastAPI } from "./use-toast.js";
-
-const execFileAsync = promisify(execFile);
 
 // ── Types ──
 
@@ -103,17 +105,10 @@ async function triggerCompletionActionAsync(
 ): Promise<void> {
   switch (action.type) {
     case "closeIssue":
-      await execFileAsync("gh", ["issue", "close", String(issueNumber), "--repo", repoName], {
-        encoding: "utf-8",
-        timeout: 30_000,
-      });
+      await closeIssueAsync(repoName, issueNumber);
       break;
     case "addLabel":
-      await execFileAsync(
-        "gh",
-        ["issue", "edit", String(issueNumber), "--repo", repoName, "--add-label", action.label],
-        { encoding: "utf-8", timeout: 30_000 },
-      );
+      await addLabelAsync(repoName, issueNumber, action.label);
       break;
     case "updateProjectStatus":
       // This would require additional project config (optionId for the target status).
@@ -264,11 +259,7 @@ export function useActions({
 
       const { issue, repoName } = ctx;
       const t = toast.loading("Commenting...");
-      execFileAsync(
-        "gh",
-        ["issue", "comment", String(issue.number), "--repo", repoName, "--body", body],
-        { encoding: "utf-8", timeout: 30_000 },
-      )
+      addCommentAsync(repoName, issue.number, body)
         .then(() => {
           t.resolve(`Comment posted on #${issue.number}`);
           pushEntryRef.current?.({
@@ -414,19 +405,7 @@ export function useActions({
           status: "success",
           ago: Date.now(),
           undo: async () => {
-            await execFileAsync(
-              "gh",
-              [
-                "issue",
-                "edit",
-                String(issue.number),
-                "--repo",
-                repoName,
-                "--remove-assignee",
-                "@me",
-              ],
-              { encoding: "utf-8", timeout: 30_000 },
-            );
+            await unassignIssueAsync(repoName, issue.number, "@me");
           },
         });
         refresh();
@@ -459,16 +438,9 @@ export function useActions({
         effectiveBody = body ? `${body}\n\n${dueLine}` : dueLine;
       }
 
-      const args = ["issue", "create", "--repo", repo, "--title", title, "--body", effectiveBody];
-      if (labels && labels.length > 0) {
-        for (const label of labels) {
-          args.push("--label", label);
-        }
-      }
       const t = toast.loading("Creating...");
       try {
-        const { stdout } = await execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000 });
-        const output = stdout.trim();
+        const output = await createIssueAsync(repo, title, effectiveBody, labels);
 
         // gh issue create returns the URL of the new issue
         const match = output.match(/\/(\d+)$/);
@@ -505,12 +477,8 @@ export function useActions({
       if (!(ctx.issue && ctx.repoName)) return;
       const { issue, repoName } = ctx;
 
-      const args = ["issue", "edit", String(issue.number), "--repo", repoName];
-      for (const label of addLabels) args.push("--add-label", label);
-      for (const label of removeLabels) args.push("--remove-label", label);
-
       const t = toast.loading("Updating labels...");
-      execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000 })
+      updateLabelsAsync(repoName, issue.number, addLabels, removeLabels)
         .then(() => {
           t.resolve(`Labels updated on #${issue.number}`);
           refresh();
@@ -577,19 +545,7 @@ export function useActions({
         if (!assignees.some((a) => a.login === configRef.current.board.assignee)) continue; // not self-assigned, skip
 
         try {
-          await execFileAsync(
-            "gh",
-            [
-              "issue",
-              "edit",
-              String(ctx.issue.number),
-              "--repo",
-              ctx.repoName,
-              "--remove-assignee",
-              "@me",
-            ],
-            { encoding: "utf-8", timeout: 30_000 },
-          );
+          await unassignIssueAsync(ctx.repoName, ctx.issue.number, "@me");
         } catch {
           failed.push(id);
         }

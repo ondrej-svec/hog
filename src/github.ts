@@ -137,6 +137,41 @@ export async function fetchIssueAsync(repo: string, issueNumber: number): Promis
   ]);
 }
 
+export async function closeIssueAsync(repo: string, issueNumber: number): Promise<void> {
+  await runGhAsync(["issue", "close", String(issueNumber), "--repo", repo]);
+}
+
+export async function createIssueAsync(
+  repo: string,
+  title: string,
+  body: string,
+  labels?: string[],
+): Promise<string> {
+  const args = ["issue", "create", "--repo", repo, "--title", title, "--body", body];
+  if (labels && labels.length > 0) {
+    for (const label of labels) {
+      args.push("--label", label);
+    }
+  }
+  return runGhAsync(args);
+}
+
+export async function editIssueTitleAsync(
+  repo: string,
+  issueNumber: number,
+  title: string,
+): Promise<void> {
+  await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--title", title]);
+}
+
+export async function editIssueBodyAsync(
+  repo: string,
+  issueNumber: number,
+  body: string,
+): Promise<void> {
+  await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--body", body]);
+}
+
 export async function addCommentAsync(
   repo: string,
   issueNumber: number,
@@ -159,6 +194,18 @@ export async function removeLabelAsync(
   label: string,
 ): Promise<void> {
   await runGhAsync(["issue", "edit", String(issueNumber), "--repo", repo, "--remove-label", label]);
+}
+
+export async function updateLabelsAsync(
+  repo: string,
+  issueNumber: number,
+  addLabels: string[],
+  removeLabels: string[],
+): Promise<void> {
+  const args = ["issue", "edit", String(issueNumber), "--repo", repo];
+  for (const label of addLabels) args.push("--add-label", label);
+  for (const label of removeLabels) args.push("--remove-label", label);
+  await runGhAsync(args);
 }
 
 export interface IssueComment {

@@ -10,36 +10,27 @@ import type { ToastAPI } from "./use-toast.js";
 // Mock dependencies
 const mockAssignIssueAsync = vi.fn().mockResolvedValue(undefined);
 const mockUpdateProjectItemStatusAsync = vi.fn().mockResolvedValue(undefined);
+const mockAddCommentAsync = vi.fn().mockResolvedValue(undefined);
+const mockAddLabelAsync = vi.fn().mockResolvedValue(undefined);
+const mockCloseIssueAsync = vi.fn().mockResolvedValue(undefined);
+const mockCreateIssueAsync = vi.fn().mockResolvedValue("");
+const mockUnassignIssueAsync = vi.fn().mockResolvedValue(undefined);
+const mockUpdateLabelsAsync = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../github.js", () => ({
   assignIssueAsync: (...args: unknown[]) => mockAssignIssueAsync(...args),
   updateProjectItemStatusAsync: (...args: unknown[]) => mockUpdateProjectItemStatusAsync(...args),
+  addCommentAsync: (...args: unknown[]) => mockAddCommentAsync(...args),
+  addLabelAsync: (...args: unknown[]) => mockAddLabelAsync(...args),
+  closeIssueAsync: (...args: unknown[]) => mockCloseIssueAsync(...args),
+  createIssueAsync: (...args: unknown[]) => mockCreateIssueAsync(...args),
+  unassignIssueAsync: (...args: unknown[]) => mockUnassignIssueAsync(...args),
+  updateLabelsAsync: (...args: unknown[]) => mockUpdateLabelsAsync(...args),
+  updateProjectItemDateAsync: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockPickIssue = vi.fn();
 vi.mock("../../pick.js", () => ({
   pickIssue: (...args: unknown[]) => mockPickIssue(...args),
-}));
-
-// Mock execFile (callback-based, used via promisify)
-const mockExecFile = vi.fn();
-vi.mock("node:child_process", () => ({
-  execFile: (...args: unknown[]) => mockExecFile(...args),
-}));
-
-vi.mock("node:util", () => ({
-  promisify:
-    () =>
-    (...args: unknown[]) => {
-      // Return a promise that resolves/rejects based on mockExecFile behavior
-      return new Promise((resolve, reject) => {
-        try {
-          const result = mockExecFile(...args);
-          resolve(result ?? { stdout: "", stderr: "" });
-        } catch (err) {
-          reject(err);
-        }
-      });
-    },
 }));
 
 import { findIssueContext, useActions } from "./use-actions.js";
@@ -224,8 +215,13 @@ describe("useActions hook", () => {
   beforeEach(() => {
     mockAssignIssueAsync.mockReset().mockResolvedValue(undefined);
     mockUpdateProjectItemStatusAsync.mockReset().mockResolvedValue(undefined);
+    mockAddCommentAsync.mockReset().mockResolvedValue(undefined);
+    mockAddLabelAsync.mockReset().mockResolvedValue(undefined);
+    mockCloseIssueAsync.mockReset().mockResolvedValue(undefined);
+    mockCreateIssueAsync.mockReset().mockResolvedValue("");
+    mockUnassignIssueAsync.mockReset().mockResolvedValue(undefined);
+    mockUpdateLabelsAsync.mockReset().mockResolvedValue(undefined);
     mockPickIssue.mockReset();
-    mockExecFile.mockReset().mockReturnValue({ stdout: "", stderr: "" });
   });
 
   describe("handleAssign", () => {
@@ -300,7 +296,7 @@ describe("useActions hook", () => {
   });
 
   describe("handleComment", () => {
-    it("should call execFile with comment args", async () => {
+    it("should call addCommentAsync with comment args", async () => {
       const instance = render(
         React.createElement(ActionsTester, {
           config: makeConfig(),
@@ -316,11 +312,7 @@ describe("useActions hook", () => {
       actions.handleComment("LGTM!");
       await delay(50);
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        ["issue", "comment", "42", "--repo", "owner/repo", "--body", "LGTM!"],
-        expect.any(Object),
-      );
+      expect(mockAddCommentAsync).toHaveBeenCalledWith("owner/repo", 42, "LGTM!");
 
       const onOverlayDone = (globalThis as Record<string, unknown>)[
         "__onOverlayDone"
@@ -331,9 +323,7 @@ describe("useActions hook", () => {
     });
 
     it("should show error on failure", async () => {
-      mockExecFile.mockImplementation(() => {
-        throw new Error("Permission denied");
-      });
+      mockAddCommentAsync.mockRejectedValue(new Error("Permission denied"));
 
       const instance = render(
         React.createElement(ActionsTester, {
@@ -497,11 +487,8 @@ describe("useActions hook", () => {
   });
 
   describe("handleCreateIssue", () => {
-    it("should call execFile with title and repo", async () => {
-      mockExecFile.mockReturnValue({
-        stdout: "https://github.com/owner/repo/issues/99\n",
-        stderr: "",
-      });
+    it("should call createIssueAsync with title and repo", async () => {
+      mockCreateIssueAsync.mockResolvedValue("https://github.com/owner/repo/issues/99");
 
       const instance = render(
         React.createElement(ActionsTester, {
@@ -517,10 +504,11 @@ describe("useActions hook", () => {
       >;
       await actions.handleCreateIssue("owner/repo", "New bug report", "");
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        ["issue", "create", "--repo", "owner/repo", "--title", "New bug report", "--body", ""],
-        expect.any(Object),
+      expect(mockCreateIssueAsync).toHaveBeenCalledWith(
+        "owner/repo",
+        "New bug report",
+        "",
+        undefined,
       );
 
       expect(lastToast()?.message).toContain("Created repo#99");
@@ -530,10 +518,7 @@ describe("useActions hook", () => {
     });
 
     it("should append due date to body when no dueDateFieldId configured", async () => {
-      mockExecFile.mockReturnValue({
-        stdout: "https://github.com/owner/repo/issues/101\n",
-        stderr: "",
-      });
+      mockCreateIssueAsync.mockResolvedValue("https://github.com/owner/repo/issues/101");
 
       const instance = render(
         React.createElement(ActionsTester, {
@@ -549,29 +534,18 @@ describe("useActions hook", () => {
       >;
       await actions.handleCreateIssue("owner/repo", "Fix login", "Some details", "2026-03-01");
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        [
-          "issue",
-          "create",
-          "--repo",
-          "owner/repo",
-          "--title",
-          "Fix login",
-          "--body",
-          "Some details\n\nDue: 2026-03-01",
-        ],
-        expect.any(Object),
+      expect(mockCreateIssueAsync).toHaveBeenCalledWith(
+        "owner/repo",
+        "Fix login",
+        "Some details\n\nDue: 2026-03-01",
+        undefined,
       );
 
       instance.unmount();
     });
 
     it("should pass labels when provided", async () => {
-      mockExecFile.mockReturnValue({
-        stdout: "https://github.com/owner/repo/issues/100\n",
-        stderr: "",
-      });
+      mockCreateIssueAsync.mockResolvedValue("https://github.com/owner/repo/issues/100");
 
       const instance = render(
         React.createElement(ActionsTester, {
@@ -587,24 +561,10 @@ describe("useActions hook", () => {
       >;
       await actions.handleCreateIssue("owner/repo", "Bug", "", null, ["bug", "high-priority"]);
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        [
-          "issue",
-          "create",
-          "--repo",
-          "owner/repo",
-          "--title",
-          "Bug",
-          "--body",
-          "",
-          "--label",
-          "bug",
-          "--label",
-          "high-priority",
-        ],
-        expect.any(Object),
-      );
+      expect(mockCreateIssueAsync).toHaveBeenCalledWith("owner/repo", "Bug", "", [
+        "bug",
+        "high-priority",
+      ]);
 
       instance.unmount();
     });
@@ -745,7 +705,9 @@ describe("useActions hook", () => {
       );
 
       expect(failed).toHaveLength(0);
-      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      expect(mockUnassignIssueAsync).toHaveBeenCalledTimes(2);
+      expect(mockUnassignIssueAsync).toHaveBeenCalledWith("owner/repo", 42, "@me");
+      expect(mockUnassignIssueAsync).toHaveBeenCalledWith("owner/repo", 43, "@me");
 
       instance.unmount();
     });
@@ -1097,9 +1059,7 @@ describe("useActions hook", () => {
   });
 
   describe("handleLabelChange", () => {
-    it("should call execFile with add-label args", async () => {
-      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
-
+    it("should call updateLabelsAsync with add-label args", async () => {
       const instance = render(
         React.createElement(ActionsTester, {
           config: makeConfig(),
@@ -1115,18 +1075,12 @@ describe("useActions hook", () => {
       actions.handleLabelChange(["bug"], []);
       await delay(50);
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        expect.arrayContaining(["--add-label", "bug"]),
-        expect.any(Object),
-      );
+      expect(mockUpdateLabelsAsync).toHaveBeenCalledWith("owner/repo", 42, ["bug"], []);
 
       instance.unmount();
     });
 
-    it("should call execFile with remove-label args", async () => {
-      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
-
+    it("should call updateLabelsAsync with remove-label args", async () => {
       const instance = render(
         React.createElement(ActionsTester, {
           config: makeConfig(),
@@ -1142,19 +1096,13 @@ describe("useActions hook", () => {
       actions.handleLabelChange([], ["old-label"]);
       await delay(50);
 
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        expect.arrayContaining(["--remove-label", "old-label"]),
-        expect.any(Object),
-      );
+      expect(mockUpdateLabelsAsync).toHaveBeenCalledWith("owner/repo", 42, [], ["old-label"]);
 
       instance.unmount();
     });
 
     it("should show error toast on failure", async () => {
-      mockExecFile.mockImplementation(() => {
-        throw new Error("label update error");
-      });
+      mockUpdateLabelsAsync.mockRejectedValue(new Error("label update error"));
 
       const instance = render(
         React.createElement(ActionsTester, {
@@ -1193,7 +1141,7 @@ describe("useActions hook", () => {
       actions.handleLabelChange(["bug"], []);
       await delay(50);
 
-      expect(mockExecFile).not.toHaveBeenCalled();
+      expect(mockUpdateLabelsAsync).not.toHaveBeenCalled();
 
       instance.unmount();
     });
@@ -1201,8 +1149,6 @@ describe("useActions hook", () => {
 
   describe("handleStatusChange — terminal status with completion action", () => {
     it("should trigger closeIssue completion action when status is terminal", async () => {
-      mockExecFile.mockReturnValue({ stdout: "", stderr: "" });
-
       const repos = [
         makeRepoData({
           statusOptions: [
@@ -1227,12 +1173,8 @@ describe("useActions hook", () => {
       actions.handleStatusChange("opt_done");
       await delay(100);
 
-      // Should have called execFile with gh issue close (the closeIssue completion action)
-      expect(mockExecFile).toHaveBeenCalledWith(
-        "gh",
-        expect.arrayContaining(["issue", "close"]),
-        expect.any(Object),
-      );
+      // Should have called closeIssueAsync (the closeIssue completion action)
+      expect(mockCloseIssueAsync).toHaveBeenCalledWith("owner/repo", 42);
 
       instance.unmount();
     });

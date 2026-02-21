@@ -1,18 +1,23 @@
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { Box, Text, useStdin } from "ink";
 import { useEffect, useRef, useState } from "react";
 import type { RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
-import { fetchRepoLabelsAsync, updateProjectItemStatusAsync } from "../../github.js";
+import {
+  assignIssueToAsync,
+  editIssueBodyAsync,
+  editIssueTitleAsync,
+  fetchRepoLabelsAsync,
+  unassignIssueAsync,
+  updateLabelsAsync,
+  updateProjectItemStatusAsync,
+} from "../../github.js";
 import type { ActionLogEntry } from "../hooks/use-action-log.js";
 import { nextEntryId } from "../hooks/use-action-log.js";
 import { getInkInstance } from "../ink-instance.js";
-
-const execFileAsync = promisify(execFile);
 
 interface EditIssueOverlayProps {
   readonly issue: GitHubIssue;
@@ -249,11 +254,7 @@ function EditIssueOverlay({
 
         if (parsed.title !== issue.title) {
           try {
-            await execFileAsync(
-              "gh",
-              ["issue", "edit", String(issue.number), "--repo", repoName, "--title", parsed.title],
-              { encoding: "utf-8", timeout: 30_000 },
-            );
+            await editIssueTitleAsync(repoName, issue.number, parsed.title);
             changedFields.push("title");
           } catch {
             onToastError(`Failed to update title on #${issue.number}`);
@@ -262,11 +263,7 @@ function EditIssueOverlay({
 
         if (parsed.body !== (issue.body ?? "").trim()) {
           try {
-            await execFileAsync(
-              "gh",
-              ["issue", "edit", String(issue.number), "--repo", repoName, "--body", parsed.body],
-              { encoding: "utf-8", timeout: 30_000 },
-            );
+            await editIssueBodyAsync(repoName, issue.number, parsed.body);
             changedFields.push("body");
           } catch {
             onToastError(`Failed to update body on #${issue.number}`);
@@ -293,11 +290,8 @@ function EditIssueOverlay({
         const addLabels = parsed.labels.filter((l) => !origLabels.includes(l));
         const removeLabels = origLabels.filter((l) => !parsed.labels.includes(l));
         if (addLabels.length > 0 || removeLabels.length > 0) {
-          const args = ["issue", "edit", String(issue.number), "--repo", repoName];
-          for (const l of addLabels) args.push("--add-label", l);
-          for (const l of removeLabels) args.push("--remove-label", l);
           try {
-            await execFileAsync("gh", args, { encoding: "utf-8", timeout: 30_000 });
+            await updateLabelsAsync(repoName, issue.number, addLabels, removeLabels);
             changedFields.push("labels");
           } catch {
             onToastError(`Failed to update labels on #${issue.number}`);
@@ -307,34 +301,10 @@ function EditIssueOverlay({
         if (parsed.assignee !== origAssignee) {
           try {
             if (parsed.assignee) {
-              await execFileAsync(
-                "gh",
-                [
-                  "issue",
-                  "edit",
-                  String(issue.number),
-                  "--repo",
-                  repoName,
-                  "--add-assignee",
-                  parsed.assignee,
-                ],
-                { encoding: "utf-8", timeout: 30_000 },
-              );
+              await assignIssueToAsync(repoName, issue.number, parsed.assignee);
             }
             if (origAssignee) {
-              await execFileAsync(
-                "gh",
-                [
-                  "issue",
-                  "edit",
-                  String(issue.number),
-                  "--repo",
-                  repoName,
-                  "--remove-assignee",
-                  origAssignee,
-                ],
-                { encoding: "utf-8", timeout: 30_000 },
-              );
+              await unassignIssueAsync(repoName, issue.number, origAssignee);
             }
             changedFields.push("assignee");
           } catch {
