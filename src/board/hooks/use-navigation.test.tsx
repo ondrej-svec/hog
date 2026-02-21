@@ -563,6 +563,128 @@ describe("cursor tracking after items change sections", () => {
     instance.unmount();
   });
 
+  it("should relocate cursor to subHeader when its sub-section is collapsed after a status change", async () => {
+    // Regression: state.allItems was not updated by the bail-out, so relocateOnToggle
+    // used stale item positions and failed to move the cursor when the user collapsed
+    // the sub-section that the issue had moved into.
+    const initialItems: NavItem[] = [
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:42", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    getNav().select("gh:repo:42");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Simulate optimistic status update: issue moves Backlog → In Progress
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+    setItems([
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:In Progress", section: "repo", type: "subHeader" },
+      { id: "gh:repo:42", section: "repo", type: "item", subSection: "sub:repo:In Progress" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Navigate to the In Progress sub-header and collapse it
+    getNav().select("sub:repo:In Progress");
+    await new Promise((r) => setTimeout(r, 50));
+
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Cursor must still be on the sub-header (not hidden or jumped to index 0)
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    instance.unmount();
+  });
+
+  it("should relocate cursor to subHeader when cursor is on issue that is in collapsed sub-section after status change", async () => {
+    // Regression: if cursor is on the issue when its sub-section is collapsed,
+    // relocateOnToggle must correctly detect the issue's NEW sub-section.
+    const initialItems: NavItem[] = [
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+      { id: "gh:repo:42", section: "repo", type: "item", subSection: "sub:repo:Backlog" },
+    ];
+
+    const instance = render(React.createElement(NavActionTester, { initialItems }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    getNav().select("gh:repo:42");
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Simulate status change: issue moves Backlog → In Progress
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+    setItems([
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "sub:repo:In Progress", section: "repo", type: "subHeader" },
+      { id: "gh:repo:42", section: "repo", type: "item", subSection: "sub:repo:In Progress" },
+      { id: "sub:repo:Backlog", section: "repo", type: "subHeader" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Cursor is still on gh:repo:42 (which is now in In Progress)
+    expect(instance.lastFrame()!).toContain("selected:gh:repo:42");
+
+    // Navigate to In Progress sub-header and collapse it
+    getNav().select("sub:repo:In Progress");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Issue is now hidden; cursor should be on the sub-header, not ghost-pointing at #42
+    expect(instance.lastFrame()!).toContain("selected:sub:repo:In Progress");
+
+    instance.unmount();
+  });
+
+  it("should correctly navigate to a new issue that arrived after first load", async () => {
+    // Regression: new issues added by refresh were not in state.allItems,
+    // so collapsing after navigating to a new issue would leave cursor stranded.
+    const instance = render(React.createElement(NavActionTester, { initialItems: makeNavItems() }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const setItems = (globalThis as Record<string, unknown>)["__testSetItems"] as (
+      items: NavItem[],
+    ) => void;
+
+    // Simulate refresh adding a new issue #999 to the repo section
+    setItems([
+      { id: "header:repo", section: "repo", type: "header" },
+      { id: "gh:owner/repo:1", section: "repo", type: "item" },
+      { id: "gh:owner/repo:2", section: "repo", type: "item" },
+      { id: "gh:owner/repo:999", section: "repo", type: "item" },
+      { id: "header:ticktick", section: "ticktick", type: "header" },
+      { id: "tt:task-1", section: "ticktick", type: "item" },
+    ]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Navigate to the newly-arrived issue
+    getNav().select("gh:owner/repo:999");
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(instance.lastFrame()!).toContain("selected:gh:owner/repo:999");
+
+    // Collapse the repo section from its header — cursor should move to header
+    getNav().select("header:repo");
+    await new Promise((r) => setTimeout(r, 50));
+    getNav().toggleSection();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Cursor should be on the header, not stuck on the now-hidden #999
+    expect(instance.lastFrame()!).toContain("selected:header:repo");
+
+    instance.unmount();
+  });
+
   it("should stay on selected item when sections order changes but item id is unchanged", async () => {
     const instance = render(React.createElement(NavActionTester, { initialItems: makeNavItems() }));
     await new Promise((r) => setTimeout(r, 50));

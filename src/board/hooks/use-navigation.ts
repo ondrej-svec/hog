@@ -93,9 +93,12 @@ function navReducer(state: NavState, action: NavAction): NavState {
       const selectionValid =
         state.selectedId != null && action.items.some((i) => i.id === state.selectedId);
 
-      // Bail out if nothing meaningful changed (same sections, valid selection)
+      // Bail out if nothing meaningful changed (same sections, valid selection).
+      // Still update allItems so relocateOnToggle/relocateOnCollapseAll use
+      // current item positions — e.g. when an issue moves sub-sections after a
+      // status change or new issues arrive from a background refresh.
       if (!isFirstLoad && selectionValid && arraysEqual(sections, state.sections)) {
-        return state;
+        return state.allItems === action.items ? state : { ...state, allItems: action.items };
       }
 
       if (selectionValid) {
