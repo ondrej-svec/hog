@@ -1,7 +1,6 @@
 import { useInput } from "ink";
 import { useCallback } from "react";
 import type { GitHubIssue } from "../../github.js";
-import { isHeaderId } from "../constants.js";
 import type { UseMultiSelectResult } from "./use-multi-select.js";
 import type { UseNavigationResult } from "./use-navigation.js";
 import type { UseUIStateResult } from "./use-ui-state.js";
@@ -30,21 +29,18 @@ interface KeyboardActions {
 
 interface UseKeyboardOptions {
   ui: UseUIStateResult;
-  nav: Pick<
-    UseNavigationResult,
-    | "moveUp"
-    | "moveDown"
-    | "prevSection"
-    | "nextSection"
-    | "toggleSection"
-    | "collapseAll"
-    | "selectedId"
-  >;
+  nav: Pick<UseNavigationResult, "moveUp" | "moveDown" | "selectedId">;
   multiSelect: Pick<UseMultiSelectResult, "count" | "toggle" | "clear">;
   selectedIssue: GitHubIssue | null;
   selectedRepoStatusOptionsLength: number;
   actions: KeyboardActions;
   onSearchEscape: () => void;
+  tabNav: {
+    next: () => void;
+    prev: () => void;
+    jumpTo: (idx: number) => void;
+    count: number;
+  };
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -56,6 +52,7 @@ export function useKeyboard({
   selectedRepoStatusOptionsLength,
   actions,
   onSearchEscape,
+  tabNav,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -117,12 +114,12 @@ export function useKeyboard({
           return;
         }
         if (key.tab) {
-          // Section jump clears selection (per spec: "changing repo section")
+          // Tab switch clears selection (per spec: "changing tab")
           if (ui.state.mode === "multiSelect") {
             multiSelect.clear();
             ui.clearMultiSelect();
           }
-          key.shift ? nav.prevSection() : nav.nextSection();
+          key.shift ? tabNav.prev() : tabNav.next();
           return;
         }
       }
@@ -132,7 +129,7 @@ export function useKeyboard({
         // Space toggles selection on current item
         if (input === " ") {
           const id = nav.selectedId;
-          if (id && !isHeaderId(id)) {
+          if (id) {
             multiSelect.toggle(id);
           }
           return;
@@ -160,6 +157,13 @@ export function useKeyboard({
 
       // Actions (only in normal mode)
       if (ui.canAct) {
+        // Digit 1-9: jump directly to a tab
+        const digit = parseInt(input, 10);
+        if (!Number.isNaN(digit) && digit >= 1 && digit <= tabNav.count) {
+          tabNav.jumpTo(digit - 1);
+          return;
+        }
+
         if (input === "/") {
           multiSelect.clear();
           ui.enterSearch();
@@ -223,10 +227,6 @@ export function useKeyboard({
           handleEnterFocus();
           return;
         }
-        if (input === "C") {
-          nav.collapseAll();
-          return;
-        }
         if (input === "l") {
           if (selectedIssue) {
             multiSelect.clear();
@@ -256,20 +256,14 @@ export function useKeyboard({
         // Space on an item: toggle selection + enter multiSelect mode
         if (input === " ") {
           const id = nav.selectedId;
-          if (id && !isHeaderId(id)) {
+          if (id) {
             multiSelect.toggle(id);
             ui.enterMultiSelect();
-          } else if (isHeaderId(nav.selectedId)) {
-            nav.toggleSection();
           }
           return;
         }
 
         if (key.return) {
-          if (isHeaderId(nav.selectedId)) {
-            nav.toggleSection();
-            return;
-          }
           handleOpen();
           return;
         }
@@ -278,6 +272,7 @@ export function useKeyboard({
     [
       ui,
       nav,
+      tabNav,
       exit,
       refresh,
       handleSlack,

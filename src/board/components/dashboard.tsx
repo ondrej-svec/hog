@@ -26,6 +26,7 @@ import { HintBar } from "./hint-bar.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
+import { TabBar } from "./tab-bar.js";
 import { ToastContainer } from "./toast-container.js";
 
 // ── Types ──
@@ -165,128 +166,92 @@ function buildBoardTree(repos: RepoData[], tasks: Task[], activity: ActivityEven
   return { activity, sections, tasks };
 }
 
-function buildNavItems(tree: BoardTree): NavItem[] {
-  const items: NavItem[] = [];
-  if (tree.activity.length > 0)
-    items.push({ id: "header:activity", section: "activity", type: "header" });
+// ── Tab navigation ──
 
-  for (const { repo, sectionId, groups } of tree.sections) {
-    items.push({ id: `header:${sectionId}`, section: sectionId, type: "header" });
-    for (const group of groups) {
-      items.push({ id: group.subId, section: sectionId, type: "subHeader" });
-      for (const issue of group.issues) {
-        items.push({
-          id: `gh:${repo.name}:${issue.number}`,
-          section: sectionId,
-          type: "item",
-          subSection: group.subId,
-        });
-      }
-    }
-  }
-
-  if (tree.tasks.length > 0) {
-    items.push({ id: "header:ticktick", section: "ticktick", type: "header" });
-    for (const task of tree.tasks)
-      items.push({ id: `tt:${task.id}`, section: "ticktick", type: "item" });
-  }
-  return items;
+interface Tab {
+  id: string; // repo.name | "activity" | "ticktick"
+  label: string; // repo.shortName | "Activity" | "Tasks"
+  count: number; // issue/task/event count
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flattens nested data into rows
-function buildFlatRows(tree: BoardTree, isCollapsed: (section: string) => boolean): FlatRow[] {
+function buildTabs(tree: BoardTree): Tab[] {
+  const tabs: Tab[] = tree.sections.map(({ repo, groups }) => ({
+    id: repo.name,
+    label: repo.shortName,
+    count: groups.reduce((s, g) => s + g.issues.length, 0),
+  }));
+  if (tree.activity.length > 0)
+    tabs.push({ id: "activity", label: "Activity", count: tree.activity.length });
+  if (tree.tasks.length > 0)
+    tabs.push({ id: "ticktick", label: "Tasks", count: tree.tasks.length });
+  return tabs;
+}
+
+function buildNavItemsForTab(tabId: string, tree: BoardTree): NavItem[] {
+  if (tabId === "activity") return [];
+  if (tabId === "ticktick")
+    return tree.tasks.map((task) => ({
+      id: `tt:${task.id}`,
+      section: tabId,
+      type: "item" as const,
+    }));
+  const section = tree.sections.find((s) => s.sectionId === tabId);
+  if (!section) return [];
+  return section.groups.flatMap((group) =>
+    group.issues.map((issue) => ({
+      id: `gh:${section.repo.name}:${issue.number}`,
+      section: tabId,
+      type: "item" as const,
+    })),
+  );
+}
+
+function buildFlatRowsForTab(tabId: string, tree: BoardTree): FlatRow[] {
+  if (tabId === "activity")
+    return tree.activity.map((event, i) => ({
+      type: "activity" as const,
+      key: `act:${i}`,
+      navId: null,
+      event,
+    }));
+  if (tabId === "ticktick")
+    return tree.tasks.map((task) => ({
+      type: "task" as const,
+      key: `tt:${task.id}`,
+      navId: `tt:${task.id}`,
+      task,
+    }));
+  const section = tree.sections.find((s) => s.sectionId === tabId);
+  if (!section) return [];
+  if (section.error)
+    return [{ type: "error" as const, key: `error:${tabId}`, navId: null, text: section.error }];
+  if (section.groups.length === 0)
+    return [
+      { type: "subHeader" as const, key: `empty:${tabId}`, navId: null, text: "No open issues" },
+    ];
   const rows: FlatRow[] = [];
-
-  // Activity section (collapsed by default)
-  if (tree.activity.length > 0) {
-    const collapsed = isCollapsed("activity");
+  let isFirst = true;
+  for (const group of section.groups) {
+    if (!isFirst)
+      rows.push({ type: "gap" as const, key: `gap:${tabId}:${group.label}`, navId: null });
+    isFirst = false;
     rows.push({
-      type: "sectionHeader",
-      key: "header:activity",
-      navId: "header:activity",
-      label: "Recent Activity (24h)",
-      count: tree.activity.length,
-      countLabel: "events",
-      isCollapsed: collapsed,
+      type: "subHeader" as const,
+      key: group.subId,
+      navId: null,
+      text: group.label,
+      count: group.issues.length,
+      isCollapsed: false,
     });
-    if (!collapsed) {
-      for (const [i, event] of tree.activity.entries()) {
-        rows.push({ type: "activity", key: `act:${i}`, navId: null, event });
-      }
-    }
+    for (const issue of group.issues)
+      rows.push({
+        type: "issue" as const,
+        key: `gh:${section.repo.name}:${issue.number}`,
+        navId: `gh:${section.repo.name}:${issue.number}`,
+        issue,
+        repoName: section.repo.name,
+      });
   }
-
-  for (const { repo, sectionId, groups, error } of tree.sections) {
-    const collapsed = isCollapsed(sectionId); // uses repo.name
-    const totalIssues = groups.reduce((s, g) => s + g.issues.length, 0);
-    rows.push({
-      type: "sectionHeader",
-      key: `header:${sectionId}`,
-      navId: `header:${sectionId}`,
-      label: repo.shortName, // display label still shows shortName
-      count: totalIssues,
-      countLabel: "issues",
-      isCollapsed: collapsed,
-    });
-
-    if (!collapsed) {
-      if (error) {
-        rows.push({ type: "error", key: `error:${sectionId}`, navId: null, text: error });
-      } else if (groups.length === 0) {
-        rows.push({
-          type: "subHeader",
-          key: `empty:${sectionId}`,
-          navId: null,
-          text: "No open issues",
-        });
-      } else {
-        let isFirstGroup = true;
-        for (const group of groups) {
-          if (!isFirstGroup)
-            rows.push({ type: "gap", key: `gap:${sectionId}:${group.label}`, navId: null });
-          isFirstGroup = false;
-          const subCollapsed = isCollapsed(group.subId);
-          rows.push({
-            type: "subHeader",
-            key: group.subId,
-            navId: group.subId,
-            text: group.label,
-            count: group.issues.length,
-            isCollapsed: subCollapsed,
-          });
-          if (!subCollapsed) {
-            for (const issue of group.issues) {
-              rows.push({
-                type: "issue",
-                key: `gh:${repo.name}:${issue.number}`,
-                navId: `gh:${repo.name}:${issue.number}`,
-                issue,
-                repoName: repo.name,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (tree.tasks.length > 0) {
-    const collapsed = isCollapsed("ticktick");
-    rows.push({
-      type: "sectionHeader",
-      key: "header:ticktick",
-      navId: "header:ticktick",
-      label: "Personal (TickTick)",
-      count: tree.tasks.length,
-      countLabel: "tasks",
-      isCollapsed: collapsed,
-    });
-    if (!collapsed) {
-      for (const task of tree.tasks)
-        rows.push({ type: "task", key: `tt:${task.id}`, navId: `tt:${task.id}`, task });
-    }
-  }
-
   return rows;
 }
 
@@ -327,8 +292,8 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
 
 // ── Dashboard ──
 
-// Header (1) + blank after header (0) + status bar (1) + padding (2 top+bottom)
-const CHROME_ROWS = 4;
+// Header (1) + tab bar (1) + status bar (1) + padding (2 top+bottom)
+const CHROME_ROWS = 5;
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
 function Dashboard({ config, options, activeProfile }: DashboardProps) {
@@ -421,8 +386,35 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     [repos, tasks, allActivity],
   );
 
-  // Navigation
-  const navItems = useMemo(() => buildNavItems(boardTree), [boardTree]);
+  // Tab navigation
+  const tabs = useMemo(() => buildTabs(boardTree), [boardTree]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const effectiveTabId = activeTabId ?? tabs[0]?.id ?? null;
+  const activeTabIdx = tabs.findIndex((t) => t.id === effectiveTabId);
+
+  const nextTab = useCallback(() => {
+    if (tabs.length === 0) return;
+    setActiveTabId(tabs[(Math.max(activeTabIdx, 0) + 1) % tabs.length]?.id ?? null);
+  }, [activeTabIdx, tabs]);
+
+  const prevTab = useCallback(() => {
+    if (tabs.length === 0) return;
+    setActiveTabId(tabs[(Math.max(activeTabIdx, 0) - 1 + tabs.length) % tabs.length]?.id ?? null);
+  }, [activeTabIdx, tabs]);
+
+  const jumpToTab = useCallback(
+    (idx: number) => {
+      const tab = tabs[idx];
+      if (tab) setActiveTabId(tab.id);
+    },
+    [tabs],
+  );
+
+  // Navigation — flat item list for active tab only
+  const navItems = useMemo(
+    () => buildNavItemsForTab(effectiveTabId ?? "", boardTree),
+    [effectiveTabId, boardTree],
+  );
   const nav = useNavigation(navItems);
 
   // Multi-select: resolve nav ID → repo name for same-repo constraint
@@ -612,10 +604,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     termSize.rows - CHROME_ROWS - overlayBarRows - toastRows - logPaneRows,
   );
 
-  // Build flat rows
+  // Build flat rows for active tab
   const flatRows = useMemo(
-    () => buildFlatRows(boardTree, nav.isCollapsed),
-    [boardTree, nav.isCollapsed],
+    () => buildFlatRowsForTab(effectiveTabId ?? "", boardTree),
+    [effectiveTabId, boardTree],
   );
 
   // Scroll offset - tracks viewport position
@@ -809,6 +801,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const handleFuzzySelect = useCallback(
     (navId: string) => {
       nav.select(navId);
+      // Switch to the tab that contains this item
+      if (navId.startsWith("gh:")) {
+        const parts = navId.split(":");
+        if (parts.length >= 3 && parts[1]) setActiveTabId(parts[1]);
+      } else if (navId.startsWith("tt:")) {
+        setActiveTabId("ticktick");
+      }
       ui.exitToNormal();
     },
     [nav, ui],
@@ -846,6 +845,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleToggleLog: () => setLogVisible((v) => !v),
     },
     onSearchEscape,
+    tabNav: { next: nextTab, prev: prevTab, jumpTo: jumpToTab, count: tabs.length },
   });
 
   // Loading state
@@ -894,6 +894,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       </Box>
 
       {error ? <Text color="red">Error: {error}</Text> : null}
+
+      {/* Tab bar */}
+      <TabBar tabs={tabs} activeTabId={effectiveTabId} totalWidth={termSize.cols} />
 
       {/* Overlays — rendered by OverlayRenderer */}
       <OverlayRenderer
@@ -1005,7 +1008,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         searchQuery={searchQuery}
         mineOnly={mineOnly}
         hasUndoable={hasUndoable}
-        onHeader={isHeaderId(nav.selectedId)}
       />
     </Box>
   );

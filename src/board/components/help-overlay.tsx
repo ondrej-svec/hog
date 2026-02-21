@@ -12,15 +12,16 @@ const SHORTCUTS = [
     items: [
       { key: "j / Down", desc: "Move down" },
       { key: "k / Up", desc: "Move up" },
-      { key: "Tab", desc: "Next section" },
-      { key: "Shift+Tab", desc: "Previous section" },
+      { key: "Tab", desc: "Next tab" },
+      { key: "Shift+Tab", desc: "Previous tab" },
+      { key: "1-9", desc: "Jump to tab by number" },
     ],
   },
   {
     category: "View",
     items: [
-      { key: "Enter", desc: "Toggle section / Open in browser" },
-      { key: "Space", desc: "Toggle section / Multi-select" },
+      { key: "Enter", desc: "Open issue in browser" },
+      { key: "Space", desc: "Multi-select item" },
       { key: "/", desc: "Search (inline filter)" },
       { key: "F", desc: "Fuzzy find issue (telescope-style)" },
       { key: "t", desc: "Toggle @me filter (my issues only)" },
@@ -49,7 +50,6 @@ const SHORTCUTS = [
     category: "Board",
     items: [
       { key: "L", desc: "Toggle action log" },
-      { key: "C", desc: "Collapse all sections" },
       { key: "r", desc: "Refresh data" },
       { key: "q", desc: "Quit" },
     ],

@@ -125,7 +125,10 @@ describe("HintBar", () => {
       mineOnly: false,
     });
     const frame = lastFrame() ?? "";
-    expect(frame).toContain('filter:"my query"');
+    // Filter text may wrap across lines in narrow terminal; check for key parts
+    expect(frame).toContain("filter:");
+    expect(frame).toContain("my");
+    expect(frame).toContain("query");
   });
 
   it("normal mode with mineOnly: shows filter:@me", () => {

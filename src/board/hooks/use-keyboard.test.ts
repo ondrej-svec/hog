@@ -77,24 +77,20 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
 
 function makeNav(
   selectedId: string | null = "gh:owner/repo:1",
-): Pick<
-  UseNavigationResult,
-  | "moveUp"
-  | "moveDown"
-  | "prevSection"
-  | "nextSection"
-  | "toggleSection"
-  | "collapseAll"
-  | "selectedId"
-> {
+): Pick<UseNavigationResult, "moveUp" | "moveDown" | "selectedId"> {
   return {
     moveUp: vi.fn(),
     moveDown: vi.fn(),
-    prevSection: vi.fn(),
-    nextSection: vi.fn(),
-    toggleSection: vi.fn(),
-    collapseAll: vi.fn(),
     selectedId,
+  };
+}
+
+function makeTabNav(count = 3) {
+  return {
+    next: vi.fn(),
+    prev: vi.fn(),
+    jumpTo: vi.fn(),
+    count,
   };
 }
 
@@ -152,6 +148,7 @@ interface HarnessOptions {
 interface Harness {
   ui: ReturnType<typeof makeUIState>;
   nav: ReturnType<typeof makeNav>;
+  tabNav: ReturnType<typeof makeTabNav>;
   multiSelect: ReturnType<typeof makeMultiSelect>;
   actions: ReturnType<typeof makeActions>;
   onSearchEscape: ReturnType<typeof vi.fn>;
@@ -175,6 +172,7 @@ function setup(opts: HarnessOptions = {}): Harness {
 
   const ui = makeUIState(mode);
   const nav = makeNav(selectedId);
+  const tabNav = makeTabNav();
   const multiSelect = makeMultiSelect(multiSelectCount);
   const actions = makeActions();
   const onSearchEscape = vi.fn();
@@ -189,6 +187,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       selectedRepoStatusOptionsLength,
       actions: actions as unknown as Parameters<typeof useKeyboard>[0]["actions"],
       onSearchEscape,
+      tabNav,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -210,7 +209,7 @@ function setup(opts: HarnessOptions = {}): Harness {
     searchHandler?.(input, { ...noKey, ...keyOverrides });
   }
 
-  return { ui, nav, multiSelect, actions, onSearchEscape, fire, fireSearch };
+  return { ui, nav, tabNav, multiSelect, actions, onSearchEscape, fire, fireSearch };
 }
 
 // ── Tests ──
@@ -292,16 +291,16 @@ describe("useKeyboard", () => {
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
 
-    it("Tab calls nextSection", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("Tab calls tabNav.next", () => {
+      const { tabNav, fire } = setup({ mode: "normal" });
       fire("", { tab: true });
-      expect(nav.nextSection).toHaveBeenCalledOnce();
+      expect(tabNav.next).toHaveBeenCalledOnce();
     });
 
-    it("Shift+Tab calls prevSection", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("Shift+Tab calls tabNav.prev", () => {
+      const { tabNav, fire } = setup({ mode: "normal" });
       fire("", { tab: true, shift: true });
-      expect(nav.prevSection).toHaveBeenCalledOnce();
+      expect(tabNav.prev).toHaveBeenCalledOnce();
     });
   });
 
@@ -318,12 +317,12 @@ describe("useKeyboard", () => {
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
 
-    it("Tab clears multi-select and calls nextSection", () => {
-      const { nav, multiSelect, ui, fire } = setup({ mode: "multiSelect" });
+    it("Tab clears multi-select and calls tabNav.next", () => {
+      const { tabNav, multiSelect, ui, fire } = setup({ mode: "multiSelect" });
       fire("", { tab: true });
       expect(multiSelect.clear).toHaveBeenCalledOnce();
       expect(ui.clearMultiSelect).toHaveBeenCalledOnce();
-      expect(nav.nextSection).toHaveBeenCalledOnce();
+      expect(tabNav.next).toHaveBeenCalledOnce();
     });
   });
 
@@ -353,19 +352,10 @@ describe("useKeyboard", () => {
       expect(multiSelect.toggle).toHaveBeenCalledWith("gh:owner/repo:1");
     });
 
-    it("Space does nothing when selected item is a header", () => {
+    it("Space does nothing when nothing is selected", () => {
       const { multiSelect, fire } = setup({
         mode: "multiSelect",
-        selectedId: "header:repo",
-      });
-      fire(" ");
-      expect(multiSelect.toggle).not.toHaveBeenCalled();
-    });
-
-    it("Space does nothing when selected item is a sub-header", () => {
-      const { multiSelect, fire } = setup({
-        mode: "multiSelect",
-        selectedId: "sub:repo:In Progress",
+        selectedId: null,
       });
       fire(" ");
       expect(multiSelect.toggle).not.toHaveBeenCalled();
@@ -527,10 +517,40 @@ describe("useKeyboard", () => {
       expect(actions.handleEnterFocus).toHaveBeenCalledOnce();
     });
 
-    it("C calls collapseAll", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("1 calls tabNav.jumpTo(0)", () => {
+      const { tabNav, fire } = setup({ mode: "normal" });
+      fire("1");
+      expect(tabNav.jumpTo).toHaveBeenCalledWith(0);
+    });
+
+    it("2 calls tabNav.jumpTo(1)", () => {
+      const { tabNav, fire } = setup({ mode: "normal" });
+      fire("2");
+      expect(tabNav.jumpTo).toHaveBeenCalledWith(1);
+    });
+
+    it("9 calls tabNav.jumpTo(8) when count >= 9", () => {
+      const { tabNav, fire } = setup({ mode: "normal" });
+      // makeTabNav defaults to count=3, but we need count >= 9 here
+      // re-setup with higher count
+      tabNav.count = 9;
+      fire("9");
+      expect(tabNav.jumpTo).toHaveBeenCalledWith(8);
+    });
+
+    it("digit beyond tab count does nothing", () => {
+      // makeTabNav has count=3; pressing '5' should not call jumpTo
+      const { tabNav, fire } = setup({ mode: "normal" });
+      fire("5");
+      expect(tabNav.jumpTo).not.toHaveBeenCalled();
+    });
+
+    it("C does nothing (collapse-all removed)", () => {
+      const { actions, fire } = setup({ mode: "normal" });
       fire("C");
-      expect(nav.collapseAll).toHaveBeenCalledOnce();
+      // C is no longer a bound key — nothing should be called
+      expect(actions.exit).not.toHaveBeenCalled();
+      expect(actions.refresh).not.toHaveBeenCalled();
     });
 
     it("l enters label mode when an issue is selected", () => {
@@ -590,36 +610,14 @@ describe("useKeyboard", () => {
       expect(ui.enterMultiSelect).toHaveBeenCalledOnce();
     });
 
-    it("on a header item: calls toggleSection", () => {
-      const { nav, ui, multiSelect, fire } = setup({
-        mode: "normal",
-        selectedId: "header:repo",
-      });
-      fire(" ");
-      expect(nav.toggleSection).toHaveBeenCalledOnce();
-      expect(multiSelect.toggle).not.toHaveBeenCalled();
-      expect(ui.enterMultiSelect).not.toHaveBeenCalled();
-    });
-
-    it("on a sub-header item: calls toggleSection", () => {
-      const { nav, multiSelect, fire } = setup({
-        mode: "normal",
-        selectedId: "sub:repo:Backlog",
-      });
-      fire(" ");
-      expect(nav.toggleSection).toHaveBeenCalledOnce();
-      expect(multiSelect.toggle).not.toHaveBeenCalled();
-    });
-
     it("when nothing is selected: does nothing", () => {
-      const { nav, ui, multiSelect, fire } = setup({
+      const { ui, multiSelect, fire } = setup({
         mode: "normal",
         selectedId: null,
       });
       fire(" ");
       expect(multiSelect.toggle).not.toHaveBeenCalled();
       expect(ui.enterMultiSelect).not.toHaveBeenCalled();
-      expect(nav.toggleSection).not.toHaveBeenCalled();
     });
   });
 
@@ -632,21 +630,11 @@ describe("useKeyboard", () => {
       expect(actions.handleOpen).toHaveBeenCalledOnce();
     });
 
-    it("on a header: calls toggleSection", () => {
-      const { nav, actions, fire } = setup({ mode: "normal", selectedId: "header:repo" });
+    it("when nothing selected: calls handleOpen (no-op in practice)", () => {
+      const { actions, fire } = setup({ mode: "normal", selectedId: null });
       fire("", { return: true });
-      expect(nav.toggleSection).toHaveBeenCalledOnce();
-      expect(actions.handleOpen).not.toHaveBeenCalled();
-    });
-
-    it("on a sub-header: calls toggleSection", () => {
-      const { nav, actions, fire } = setup({
-        mode: "normal",
-        selectedId: "sub:repo:In Progress",
-      });
-      fire("", { return: true });
-      expect(nav.toggleSection).toHaveBeenCalledOnce();
-      expect(actions.handleOpen).not.toHaveBeenCalled();
+      // Enter always calls handleOpen — it's a no-op when nothing is selected
+      expect(actions.handleOpen).toHaveBeenCalledOnce();
     });
   });
 

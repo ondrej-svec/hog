@@ -206,7 +206,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should render issues with correct count in collapsed section header", async () => {
+  it("should render issues with correct count in tab bar", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "In progress issue", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Backlog issue", projectStatus: "Backlog" }),
@@ -222,9 +222,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    // Sections start collapsed — header shows count
+    // Tab bar shows repo with count
     expect(frame).toContain("repo");
-    expect(frame).toContain("3 issues");
+    expect(frame).toContain("(3)");
 
     instance.unmount();
   });
@@ -259,7 +259,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should show TickTick section header when tasks exist", async () => {
+  it("should show Tasks tab in tab bar when tasks exist", async () => {
     mockFetchDashboard.mockResolvedValue(
       makeDashboardData({ ticktick: [makeTask({ id: "t1", title: "Buy groceries" })] }),
     );
@@ -271,9 +271,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    // TickTick section header visible (collapsed)
-    expect(frame).toContain("TickTick");
-    expect(frame).toContain("1 task");
+    // Tasks tab visible in tab bar with count
+    expect(frame).toContain("Tasks");
+    expect(frame).toContain("(1)");
 
     instance.unmount();
   });
@@ -363,7 +363,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should show Activity section header when activity events exist", async () => {
+  it("should show Activity tab in tab bar when activity events exist", async () => {
     const activity: ActivityEvent[] = [
       makeActivityEvent({ actor: "alice", summary: "commented on #1" }),
       makeActivityEvent({ actor: "bob", summary: "opened #2", type: "opened" }),
@@ -379,8 +379,8 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    expect(frame).toContain("Recent Activity");
-    expect(frame).toContain("3 events");
+    expect(frame).toContain("Activity");
+    expect(frame).toContain("(3)");
 
     instance.unmount();
   });
@@ -454,8 +454,8 @@ describe("Dashboard integration", () => {
     const frame = instance.lastFrame()!;
     expect(frame).toContain("repo");
     expect(frame).toContain("repo2");
-    // Both sections have collapsed issue counts
-    expect(frame).toContain("1 issue");
+    // Both tabs visible in tab bar with issue counts
+    expect(frame).toContain("(1)");
 
     instance.unmount();
   });
@@ -496,7 +496,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should render status sub-headers as navigable with collapse indicators", async () => {
+  it("should render status sub-headers as visual dividers (no collapse indicators)", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "Active task", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Waiting task", projectStatus: "Backlog" }),
@@ -510,17 +510,19 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Sections start expanded by default — no need to press Enter
     const frame = instance.lastFrame()!;
-    // Sub-headers should show with expand indicator (▼) and count
+    // Sub-headers visible as plain text dividers — issues always visible
     expect(frame).toContain("In Progress");
-    expect(frame).toContain("(1)");
+    expect(frame).toContain("Active task");
     expect(frame).toContain("Backlog");
+    expect(frame).toContain("Waiting task");
+    // Status groups should NOT have ▼ collapse indicator before them
+    expect(frame).not.toContain("\u25BC In Progress"); // no ▼ before group name
 
     instance.unmount();
   });
 
-  it("should collapse status sub-section and hide its issues", async () => {
+  it("should always show all issues in the active tab (no collapse)", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "Active task", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Backlog task", projectStatus: "Backlog" }),
@@ -534,31 +536,17 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Sections start expanded by default — no Enter needed
-    let frame = instance.lastFrame()!;
-    // Both sub-sections should be visible with issues
+    // All issues always visible — no collapse
+    const frame = instance.lastFrame()!;
     expect(frame).toContain("In Progress");
     expect(frame).toContain("Active task");
-
-    // Navigate down to the sub-header "In Progress" (header is selected first)
-    instance.stdin.write("j");
-    await delay(50);
-
-    // Toggle collapse on the sub-header
-    instance.stdin.write("\r");
-    await delay(100);
-
-    frame = instance.lastFrame()!;
-    // Sub-header still visible but issues hidden
-    expect(frame).toContain("In Progress");
-    expect(frame).not.toContain("Active task");
-    // Backlog section still visible
     expect(frame).toContain("Backlog");
+    expect(frame).toContain("Backlog task");
 
     instance.unmount();
   });
 
-  it("should show collapsed sub-header with ▶ indicator", async () => {
+  it("should always show issues without collapse indicators", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "My issue", projectStatus: "In Progress" }),
     ];
@@ -571,23 +559,12 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Sections start expanded by default — no Enter needed
-    let frame = instance.lastFrame()!;
-    // Sub-headers start expanded — should show ▼
-    expect(frame).toContain("\u25BC");
+    const frame = instance.lastFrame()!;
+    // Issue always visible — no collapse arrows on status group headers
     expect(frame).toContain("In Progress");
     expect(frame).toContain("My issue");
-
-    // Navigate to sub-header and collapse it
-    instance.stdin.write("j");
-    await delay(50);
-    instance.stdin.write("\r");
-    await delay(100);
-
-    frame = instance.lastFrame()!;
-    // Should show collapsed indicator ▶
-    expect(frame).toContain("\u25B6");
-    expect(frame).not.toContain("My issue");
+    // Status groups should NOT have ▼ collapse indicator before them
+    expect(frame).not.toContain("\u25BC In Progress"); // no ▼ before group name
 
     instance.unmount();
   });
@@ -666,6 +643,88 @@ describe("Dashboard integration", () => {
     expect(frame).toContain("Backlog");
     // Terminal status should not appear as a header
     expect(frame).not.toContain("Done");
+
+    instance.unmount();
+  });
+
+  it("should switch to next tab when Tab key is pressed", async () => {
+    const repo2Config: RepoConfig = {
+      name: "owner/repo2",
+      shortName: "repo2",
+      projectNumber: 2,
+      statusFieldId: "SF_2",
+      completionAction: { type: "closeIssue" as const },
+    };
+    const repos = [
+      makeRepoData({
+        issues: [makeIssue({ number: 1, title: "Repo1 issue", projectStatus: "In Progress" })],
+      }),
+      {
+        repo: repo2Config,
+        issues: [makeIssue({ number: 10, title: "Repo2 issue", projectStatus: "In Progress" })],
+        statusOptions: [{ id: "opt_1", name: "In Progress" }],
+        error: null,
+      },
+    ];
+    const config: HogConfig = { ...makeConfig(), repos: [makeRepoConfig(), repo2Config] };
+    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
+
+    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
+    await delay(200);
+
+    // First tab (repo) is active by default
+    let frame = instance.lastFrame()!;
+    expect(frame).toContain("Repo1 issue");
+    expect(frame).not.toContain("Repo2 issue");
+
+    // Press Tab to switch to next tab
+    instance.stdin.write("\t");
+    await delay(50);
+
+    frame = instance.lastFrame()!;
+    // Now on repo2 tab — repo2 issue visible, repo1 issue not
+    expect(frame).toContain("Repo2 issue");
+    expect(frame).not.toContain("Repo1 issue");
+
+    instance.unmount();
+  });
+
+  it("should jump to second tab when '2' is pressed", async () => {
+    const repo2Config: RepoConfig = {
+      name: "owner/repo2",
+      shortName: "repo2",
+      projectNumber: 2,
+      statusFieldId: "SF_2",
+      completionAction: { type: "closeIssue" as const },
+    };
+    const repos = [
+      makeRepoData({
+        issues: [makeIssue({ number: 1, title: "Repo1 issue", projectStatus: "In Progress" })],
+      }),
+      {
+        repo: repo2Config,
+        issues: [makeIssue({ number: 10, title: "Repo2 issue", projectStatus: "In Progress" })],
+        statusOptions: [{ id: "opt_1", name: "In Progress" }],
+        error: null,
+      },
+    ];
+    const config: HogConfig = { ...makeConfig(), repos: [makeRepoConfig(), repo2Config] };
+    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
+
+    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
+    await delay(200);
+
+    // First tab is active by default
+    let frame = instance.lastFrame()!;
+    expect(frame).toContain("Repo1 issue");
+
+    // Press '2' to jump directly to second tab
+    instance.stdin.write("2");
+    await delay(50);
+
+    frame = instance.lastFrame()!;
+    expect(frame).toContain("Repo2 issue");
+    expect(frame).not.toContain("Repo1 issue");
 
     instance.unmount();
   });
