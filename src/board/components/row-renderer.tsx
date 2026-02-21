@@ -71,7 +71,15 @@ export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: Row
           </Box>
         );
       }
-      return <Text color="gray"> {row.text}</Text>;
+      return (
+        <Box>
+          <Text bold color="white">
+            {" "}
+            {row.text}
+          </Text>
+          {row.count != null ? <Text color="gray"> ({row.count})</Text> : null}
+        </Box>
+      );
     }
     case "issue": {
       const checkbox = isMultiSelected != null ? (isMultiSelected ? "\u2611 " : "\u2610 ") : "";

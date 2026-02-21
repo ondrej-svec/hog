@@ -612,6 +612,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Scroll offset - tracks viewport position
   const scrollRef = useRef(0);
+  // Reset scroll to top when switching tabs so the first group header is always visible
+  const prevTabIdRef = useRef<string | null>(null);
+  if (effectiveTabId !== prevTabIdRef.current) {
+    prevTabIdRef.current = effectiveTabId;
+    scrollRef.current = 0;
+  }
+
   const selectedRowIdx = useMemo(
     () => flatRows.findIndex((r) => r.navId === nav.selectedId),
     [flatRows, nav.selectedId],
@@ -623,6 +630,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       scrollRef.current = selectedRowIdx;
     } else if (selectedRowIdx >= scrollRef.current + viewportHeight) {
       scrollRef.current = selectedRowIdx - viewportHeight + 1;
+    }
+    // Pull scroll back one row when the selected item is at the very top of the viewport
+    // and the row directly above it is a status-group subHeader — keeps the header visible
+    if (scrollRef.current > 0 && scrollRef.current === selectedRowIdx) {
+      const rowAbove = flatRows[scrollRef.current - 1];
+      if (rowAbove?.type === "subHeader") {
+        scrollRef.current -= 1;
+      }
     }
   }
   const maxOffset = Math.max(0, flatRows.length - viewportHeight);
