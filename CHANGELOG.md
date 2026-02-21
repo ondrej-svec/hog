@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1](https://github.com/ondrej-svec/hog/compare/hog-v1.8.0...hog-v1.8.1) (2026-02-21)
+
+
+### Bug Fixes
+
+* **board:** unify nav/row builders via BoardTree to fix collapse bugs ([47d63af](https://github.com/ondrej-svec/hog/commit/47d63afdf6b1ea457015ed247b52b5dcc9e33072))
+
 ## [1.8.0](https://github.com/ondrej-svec/hog/compare/hog-v1.7.2...hog-v1.8.0) (2026-02-21)
 
 
