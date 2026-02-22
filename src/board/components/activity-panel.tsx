@@ -1,31 +1,30 @@
 import { Box, Text } from "ink";
 import { timeAgo } from "../constants.js";
 import type { ActivityEvent } from "../fetch.js";
+import { Panel } from "./panel.js";
 
-interface ActivityPanelProps {
+export interface ActivityPanelProps {
   readonly events: ActivityEvent[];
   readonly selectedIdx: number;
   readonly isActive: boolean;
   readonly height: number;
+  readonly width: number;
 }
 
-export function ActivityPanel({ events, selectedIdx, isActive, height }: ActivityPanelProps) {
-  const borderColor = isActive ? "cyan" : "gray";
-  // Reserve 2 rows for border + label, clip event rows to remaining height
+export function ActivityPanel({
+  events,
+  selectedIdx,
+  isActive,
+  height,
+  width,
+}: ActivityPanelProps) {
+  // Panel takes 1 row for top border text + 1 row for bottom border inside the inner Box
+  // = 2 overhead rows → content rows = height - 2
   const maxRows = Math.max(1, height - 2);
   const visible = events.slice(0, maxRows);
 
   return (
-    <Box
-      borderStyle="single"
-      borderColor={borderColor}
-      flexDirection="column"
-      height={height}
-      overflow="hidden"
-    >
-      <Text bold color={isActive ? "cyan" : "white"}>
-        [4] Activity
-      </Text>
+    <Panel title="[4] Activity" isActive={isActive} width={width} height={height}>
       {visible.length === 0 ? (
         <Text color="gray"> No recent activity</Text>
       ) : (
@@ -35,7 +34,7 @@ export function ActivityPanel({ events, selectedIdx, isActive, height }: Activit
           return (
             <Box key={`${event.repoShortName}:${event.issueNumber}:${i}`}>
               <Text color={isSel ? "cyan" : "gray"} bold={isSel}>
-                {isSel ? "\u25B6 " : "  "}
+                {isSel ? "► " : "  "}
                 {ago}
               </Text>
               <Text color={isSel ? "white" : "gray"}>
@@ -47,8 +46,6 @@ export function ActivityPanel({ events, selectedIdx, isActive, height }: Activit
           );
         })
       )}
-    </Box>
+    </Panel>
   );
 }
-
-export type { ActivityPanelProps };
