@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/ondrej-svec/hog/compare/hog-v1.10.0...hog-v1.11.0) (2026-02-22)
+
+
+### Features
+
+* **board:** lazygit-style 5-panel layout ([#29](https://github.com/ondrej-svec/hog/issues/29)) ([ec4b431](https://github.com/ondrej-svec/hog/commit/ec4b43186c2d64427c88dee4c9f971b2f485f4fa))
+
 ## [1.10.0](https://github.com/ondrej-svec/hog/compare/hog-v1.9.3...hog-v1.10.0) (2026-02-22)
 
 
