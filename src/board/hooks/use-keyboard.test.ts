@@ -5,6 +5,7 @@ import type { GitHubIssue } from "../../github.js";
 import { useKeyboard } from "./use-keyboard.js";
 import type { UseMultiSelectResult } from "./use-multi-select.js";
 import type { UseNavigationResult } from "./use-navigation.js";
+import type { PanelId } from "./use-panel-focus.js";
 import type { UseUIStateResult } from "./use-ui-state.js";
 
 // ── Mock ink's useInput ──
@@ -85,12 +86,17 @@ function makeNav(
   };
 }
 
-function makeTabNav(count = 3) {
+function makePanelFocus(activePanelId: PanelId = 3) {
   return {
-    next: vi.fn(),
-    prev: vi.fn(),
-    jumpTo: vi.fn(),
-    count,
+    activePanelId,
+    focusPanel: vi.fn(),
+  };
+}
+
+function makePanelNav() {
+  return {
+    moveUp: vi.fn(),
+    moveDown: vi.fn(),
   };
 }
 
@@ -143,15 +149,22 @@ interface HarnessOptions {
   selectedIssue?: GitHubIssue | null;
   selectedRepoStatusOptionsLength?: number;
   multiSelectCount?: number;
+  activePanelId?: PanelId;
 }
 
 interface Harness {
   ui: ReturnType<typeof makeUIState>;
   nav: ReturnType<typeof makeNav>;
-  tabNav: ReturnType<typeof makeTabNav>;
+  panelFocus: ReturnType<typeof makePanelFocus>;
+  reposNav: ReturnType<typeof makePanelNav>;
+  statusesNav: ReturnType<typeof makePanelNav>;
+  activityNav: ReturnType<typeof makePanelNav>;
   multiSelect: ReturnType<typeof makeMultiSelect>;
   actions: ReturnType<typeof makeActions>;
   onSearchEscape: ReturnType<typeof vi.fn>;
+  onRepoEnter: ReturnType<typeof vi.fn>;
+  onStatusEnter: ReturnType<typeof vi.fn>;
+  onActivityEnter: ReturnType<typeof vi.fn>;
   /** Fire the main keyboard handler (normal / multiSelect / focus input) */
   fire: (input: string, keyOverrides?: Partial<typeof noKey>) => void;
   /** Fire the search-mode handler */
@@ -165,6 +178,7 @@ function setup(opts: HarnessOptions = {}): Harness {
     selectedIssue = makeIssue(),
     selectedRepoStatusOptionsLength = 3,
     multiSelectCount = 0,
+    activePanelId = 3,
   } = opts;
 
   // Clear captured handlers before each render
@@ -172,10 +186,16 @@ function setup(opts: HarnessOptions = {}): Harness {
 
   const ui = makeUIState(mode);
   const nav = makeNav(selectedId);
-  const tabNav = makeTabNav();
+  const panelFocus = makePanelFocus(activePanelId);
+  const reposNav = makePanelNav();
+  const statusesNav = makePanelNav();
+  const activityNav = makePanelNav();
   const multiSelect = makeMultiSelect(multiSelectCount);
   const actions = makeActions();
   const onSearchEscape = vi.fn();
+  const onRepoEnter = vi.fn();
+  const onStatusEnter = vi.fn();
+  const onActivityEnter = vi.fn();
 
   // Custom hook wrapper that exercises useKeyboard inside a hook context
   function useKeyboardTester() {
@@ -187,8 +207,13 @@ function setup(opts: HarnessOptions = {}): Harness {
       selectedRepoStatusOptionsLength,
       actions: actions as unknown as Parameters<typeof useKeyboard>[0]["actions"],
       onSearchEscape,
-      tabNav,
-      statusNav: null,
+      panelFocus,
+      reposNav,
+      statusesNav,
+      activityNav,
+      onRepoEnter,
+      onStatusEnter,
+      onActivityEnter,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -210,7 +235,22 @@ function setup(opts: HarnessOptions = {}): Harness {
     searchHandler?.(input, { ...noKey, ...keyOverrides });
   }
 
-  return { ui, nav, tabNav, multiSelect, actions, onSearchEscape, fire, fireSearch };
+  return {
+    ui,
+    nav,
+    panelFocus,
+    reposNav,
+    statusesNav,
+    activityNav,
+    multiSelect,
+    actions,
+    onSearchEscape,
+    onRepoEnter,
+    onStatusEnter,
+    onActivityEnter,
+    fire,
+    fireSearch,
+  };
 }
 
 // ── Tests ──
@@ -267,75 +307,103 @@ describe("useKeyboard", () => {
 
   // ── Navigation keys ──
 
-  describe("navigation keys (normal mode)", () => {
-    it("j key calls moveDown", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+  describe("navigation keys — panel 3 (Issues, default)", () => {
+    it("j key calls issues nav.moveDown", () => {
+      const { nav, fire } = setup({ mode: "normal", activePanelId: 3 });
       fire("j");
       expect(nav.moveDown).toHaveBeenCalledOnce();
     });
 
-    it("downArrow calls moveDown", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("downArrow calls issues nav.moveDown", () => {
+      const { nav, fire } = setup({ mode: "normal", activePanelId: 3 });
       fire("", { downArrow: true });
       expect(nav.moveDown).toHaveBeenCalledOnce();
     });
 
-    it("k key calls moveUp", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("k key calls issues nav.moveUp", () => {
+      const { nav, fire } = setup({ mode: "normal", activePanelId: 3 });
       fire("k");
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
 
-    it("upArrow calls moveUp", () => {
-      const { nav, fire } = setup({ mode: "normal" });
+    it("upArrow calls issues nav.moveUp", () => {
+      const { nav, fire } = setup({ mode: "normal", activePanelId: 3 });
       fire("", { upArrow: true });
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
+  });
 
-    it("Tab calls tabNav.next", () => {
-      const { tabNav, fire } = setup({ mode: "normal" });
-      fire("", { tab: true });
-      expect(tabNav.next).toHaveBeenCalledOnce();
+  describe("navigation keys — panel 1 (Repos)", () => {
+    it("j key calls reposNav.moveDown", () => {
+      const { reposNav, nav, fire } = setup({ mode: "normal", activePanelId: 1 });
+      fire("j");
+      expect(reposNav.moveDown).toHaveBeenCalledOnce();
+      expect(nav.moveDown).not.toHaveBeenCalled();
     });
 
-    it("Shift+Tab calls tabNav.prev", () => {
-      const { tabNav, fire } = setup({ mode: "normal" });
-      fire("", { tab: true, shift: true });
-      expect(tabNav.prev).toHaveBeenCalledOnce();
+    it("k key calls reposNav.moveUp", () => {
+      const { reposNav, nav, fire } = setup({ mode: "normal", activePanelId: 1 });
+      fire("k");
+      expect(reposNav.moveUp).toHaveBeenCalledOnce();
+      expect(nav.moveUp).not.toHaveBeenCalled();
     });
   });
 
-  describe("navigation keys (multiSelect mode)", () => {
-    it("j key calls moveDown", () => {
-      const { nav, fire } = setup({ mode: "multiSelect" });
+  describe("navigation keys — panel 2 (Statuses)", () => {
+    it("j key calls statusesNav.moveDown", () => {
+      const { statusesNav, nav, fire } = setup({ mode: "normal", activePanelId: 2 });
+      fire("j");
+      expect(statusesNav.moveDown).toHaveBeenCalledOnce();
+      expect(nav.moveDown).not.toHaveBeenCalled();
+    });
+
+    it("k key calls statusesNav.moveUp", () => {
+      const { statusesNav, nav, fire } = setup({ mode: "normal", activePanelId: 2 });
+      fire("k");
+      expect(statusesNav.moveUp).toHaveBeenCalledOnce();
+      expect(nav.moveUp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("navigation keys — panel 4 (Activity)", () => {
+    it("j key calls activityNav.moveDown", () => {
+      const { activityNav, nav, fire } = setup({ mode: "normal", activePanelId: 4 });
+      fire("j");
+      expect(activityNav.moveDown).toHaveBeenCalledOnce();
+      expect(nav.moveDown).not.toHaveBeenCalled();
+    });
+
+    it("k key calls activityNav.moveUp", () => {
+      const { activityNav, nav, fire } = setup({ mode: "normal", activePanelId: 4 });
+      fire("k");
+      expect(activityNav.moveUp).toHaveBeenCalledOnce();
+      expect(nav.moveUp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("navigation keys (multiSelect mode) — panel 3", () => {
+    it("j key calls nav.moveDown", () => {
+      const { nav, fire } = setup({ mode: "multiSelect", activePanelId: 3 });
       fire("j");
       expect(nav.moveDown).toHaveBeenCalledOnce();
     });
 
-    it("k key calls moveUp", () => {
-      const { nav, fire } = setup({ mode: "multiSelect" });
+    it("k key calls nav.moveUp", () => {
+      const { nav, fire } = setup({ mode: "multiSelect", activePanelId: 3 });
       fire("k");
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
-
-    it("Tab clears multi-select and calls tabNav.next", () => {
-      const { tabNav, multiSelect, ui, fire } = setup({ mode: "multiSelect" });
-      fire("", { tab: true });
-      expect(multiSelect.clear).toHaveBeenCalledOnce();
-      expect(ui.clearMultiSelect).toHaveBeenCalledOnce();
-      expect(tabNav.next).toHaveBeenCalledOnce();
-    });
   });
 
-  describe("navigation keys (focus mode)", () => {
-    it("j key calls moveDown", () => {
-      const { nav, fire } = setup({ mode: "focus" });
+  describe("navigation keys (focus mode) — panel 3", () => {
+    it("j key calls nav.moveDown", () => {
+      const { nav, fire } = setup({ mode: "focus", activePanelId: 3 });
       fire("j");
       expect(nav.moveDown).toHaveBeenCalledOnce();
     });
 
-    it("k key calls moveUp", () => {
-      const { nav, fire } = setup({ mode: "focus" });
+    it("k key calls nav.moveUp", () => {
+      const { nav, fire } = setup({ mode: "focus", activePanelId: 3 });
       fire("k");
       expect(nav.moveUp).toHaveBeenCalledOnce();
     });
@@ -518,32 +586,40 @@ describe("useKeyboard", () => {
       expect(actions.handleEnterFocus).toHaveBeenCalledOnce();
     });
 
-    it("1 calls tabNav.jumpTo(0)", () => {
-      const { tabNav, fire } = setup({ mode: "normal" });
+    it("0 calls panelFocus.focusPanel(0)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
+      fire("0");
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(0);
+    });
+
+    it("1 calls panelFocus.focusPanel(1)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
       fire("1");
-      expect(tabNav.jumpTo).toHaveBeenCalledWith(0);
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(1);
     });
 
-    it("2 calls tabNav.jumpTo(1)", () => {
-      const { tabNav, fire } = setup({ mode: "normal" });
+    it("2 calls panelFocus.focusPanel(2)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
       fire("2");
-      expect(tabNav.jumpTo).toHaveBeenCalledWith(1);
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(2);
     });
 
-    it("9 calls tabNav.jumpTo(8) when count >= 9", () => {
-      const { tabNav, fire } = setup({ mode: "normal" });
-      // makeTabNav defaults to count=3, but we need count >= 9 here
-      // re-setup with higher count
-      tabNav.count = 9;
-      fire("9");
-      expect(tabNav.jumpTo).toHaveBeenCalledWith(8);
+    it("3 calls panelFocus.focusPanel(3)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
+      fire("3");
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(3);
     });
 
-    it("digit beyond tab count does nothing", () => {
-      // makeTabNav has count=3; pressing '5' should not call jumpTo
-      const { tabNav, fire } = setup({ mode: "normal" });
+    it("4 calls panelFocus.focusPanel(4)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
+      fire("4");
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(4);
+    });
+
+    it("5 does not call panelFocus.focusPanel (out of range)", () => {
+      const { panelFocus, fire } = setup({ mode: "normal" });
       fire("5");
-      expect(tabNav.jumpTo).not.toHaveBeenCalled();
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
     });
 
     it("C does nothing (collapse-all removed)", () => {
@@ -622,20 +698,47 @@ describe("useKeyboard", () => {
     });
   });
 
-  // ── Enter in normal mode ──
+  // ── Enter routing by panel ──
 
-  describe("Enter key in normal mode", () => {
-    it("on a regular item: calls handleOpen", () => {
-      const { actions, fire } = setup({ mode: "normal", selectedId: "gh:owner/repo:1" });
+  describe("Enter key — routing by active panel", () => {
+    it("panel 3: calls handleOpen", () => {
+      const { actions, onRepoEnter, onStatusEnter, onActivityEnter, fire } = setup({
+        mode: "normal",
+        activePanelId: 3,
+      });
       fire("", { return: true });
       expect(actions.handleOpen).toHaveBeenCalledOnce();
+      expect(onRepoEnter).not.toHaveBeenCalled();
+      expect(onStatusEnter).not.toHaveBeenCalled();
+      expect(onActivityEnter).not.toHaveBeenCalled();
     });
 
-    it("when nothing selected: calls handleOpen (no-op in practice)", () => {
-      const { actions, fire } = setup({ mode: "normal", selectedId: null });
+    it("panel 1: calls onRepoEnter", () => {
+      const { onRepoEnter, actions, fire } = setup({ mode: "normal", activePanelId: 1 });
       fire("", { return: true });
-      // Enter always calls handleOpen — it's a no-op when nothing is selected
-      expect(actions.handleOpen).toHaveBeenCalledOnce();
+      expect(onRepoEnter).toHaveBeenCalledOnce();
+      expect(actions.handleOpen).not.toHaveBeenCalled();
+    });
+
+    it("panel 2: calls onStatusEnter", () => {
+      const { onStatusEnter, actions, fire } = setup({ mode: "normal", activePanelId: 2 });
+      fire("", { return: true });
+      expect(onStatusEnter).toHaveBeenCalledOnce();
+      expect(actions.handleOpen).not.toHaveBeenCalled();
+    });
+
+    it("panel 4: calls onActivityEnter", () => {
+      const { onActivityEnter, actions, fire } = setup({ mode: "normal", activePanelId: 4 });
+      fire("", { return: true });
+      expect(onActivityEnter).toHaveBeenCalledOnce();
+      expect(actions.handleOpen).not.toHaveBeenCalled();
+    });
+
+    it("panel 0 (detail): no-op", () => {
+      const { actions, onRepoEnter, fire } = setup({ mode: "normal", activePanelId: 0 });
+      fire("", { return: true });
+      expect(actions.handleOpen).not.toHaveBeenCalled();
+      expect(onRepoEnter).not.toHaveBeenCalled();
     });
   });
 

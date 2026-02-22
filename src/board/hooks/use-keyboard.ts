@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import type { GitHubIssue } from "../../github.js";
 import type { UseMultiSelectResult } from "./use-multi-select.js";
 import type { UseNavigationResult } from "./use-navigation.js";
+import type { PanelId } from "./use-panel-focus.js";
 import type { UseUIStateResult } from "./use-ui-state.js";
 
 // ── Types ──
@@ -27,24 +28,27 @@ interface KeyboardActions {
   handleToggleLog: () => void;
 }
 
+interface PanelNav {
+  moveUp: () => void;
+  moveDown: () => void;
+}
+
 interface UseKeyboardOptions {
   ui: UseUIStateResult;
+  /** Issues panel (3) navigation */
   nav: Pick<UseNavigationResult, "moveUp" | "moveDown" | "selectedId">;
   multiSelect: Pick<UseMultiSelectResult, "count" | "toggle" | "clear">;
   selectedIssue: GitHubIssue | null;
   selectedRepoStatusOptionsLength: number;
   actions: KeyboardActions;
   onSearchEscape: () => void;
-  tabNav: {
-    next: () => void;
-    prev: () => void;
-    jumpTo: (idx: number) => void;
-    count: number;
-  };
-  statusNav: {
-    next: () => void;
-    prev: () => void;
-  } | null;
+  panelFocus: { activePanelId: PanelId; focusPanel: (id: PanelId) => void };
+  reposNav: PanelNav;
+  statusesNav: PanelNav;
+  activityNav: PanelNav;
+  onRepoEnter: () => void;
+  onStatusEnter: () => void;
+  onActivityEnter: () => void;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -56,8 +60,13 @@ export function useKeyboard({
   selectedRepoStatusOptionsLength,
   actions,
   onSearchEscape,
-  tabNav,
-  statusNav,
+  panelFocus,
+  reposNav,
+  statusesNav,
+  activityNav,
+  onRepoEnter,
+  onStatusEnter,
+  onActivityEnter,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -111,20 +120,41 @@ export function useKeyboard({
       // Navigation (works in normal, multiSelect, focus)
       if (ui.canNavigate) {
         if (input === "j" || key.downArrow) {
-          nav.moveDown();
+          switch (panelFocus.activePanelId) {
+            case 1:
+              reposNav.moveDown();
+              break;
+            case 2:
+              statusesNav.moveDown();
+              break;
+            case 3:
+              nav.moveDown();
+              break;
+            case 4:
+              activityNav.moveDown();
+              break;
+            default:
+              break; // panel 0 (detail): no-op
+          }
           return;
         }
         if (input === "k" || key.upArrow) {
-          nav.moveUp();
-          return;
-        }
-        if (key.tab) {
-          // Tab switch clears selection (per spec: "changing tab")
-          if (ui.state.mode === "multiSelect") {
-            multiSelect.clear();
-            ui.clearMultiSelect();
+          switch (panelFocus.activePanelId) {
+            case 1:
+              reposNav.moveUp();
+              break;
+            case 2:
+              statusesNav.moveUp();
+              break;
+            case 3:
+              nav.moveUp();
+              break;
+            case 4:
+              activityNav.moveUp();
+              break;
+            default:
+              break; // panel 0 (detail): no-op
           }
-          key.shift ? tabNav.prev() : tabNav.next();
           return;
         }
       }
@@ -162,10 +192,10 @@ export function useKeyboard({
 
       // Actions (only in normal mode)
       if (ui.canAct) {
-        // Digit 1-9: jump directly to a tab
+        // Digit 0-4: focus panel by number
         const digit = parseInt(input, 10);
-        if (!Number.isNaN(digit) && digit >= 1 && digit <= tabNav.count) {
-          tabNav.jumpTo(digit - 1);
+        if (!Number.isNaN(digit) && digit >= 0 && digit <= 4) {
+          panelFocus.focusPanel(digit as PanelId);
           return;
         }
 
@@ -181,14 +211,6 @@ export function useKeyboard({
         if (input === "r" || input === "R") {
           multiSelect.clear();
           refresh();
-          return;
-        }
-        if (input === "s") {
-          statusNav?.next();
-          return;
-        }
-        if (input === "S") {
-          statusNav?.prev();
           return;
         }
         if (input === "o") {
@@ -277,7 +299,22 @@ export function useKeyboard({
         }
 
         if (key.return) {
-          handleOpen();
+          switch (panelFocus.activePanelId) {
+            case 1:
+              onRepoEnter();
+              break;
+            case 2:
+              onStatusEnter();
+              break;
+            case 3:
+              handleOpen();
+              break;
+            case 4:
+              onActivityEnter();
+              break;
+            default:
+              break; // panel 0 (detail): no-op
+          }
           return;
         }
       }
@@ -285,8 +322,13 @@ export function useKeyboard({
     [
       ui,
       nav,
-      tabNav,
-      statusNav,
+      panelFocus,
+      reposNav,
+      statusesNav,
+      activityNav,
+      onRepoEnter,
+      onStatusEnter,
+      onActivityEnter,
       exit,
       refresh,
       handleSlack,

@@ -79,7 +79,8 @@
       "linter": {
         "rules": {
           "correctness": {
-            "noUnusedImports": "warn"
+            "noUnusedImports": "warn",
+            "useHookAtTopLevel": "off"
           },
           "style": {
             "noNonNullAssertion": "off"

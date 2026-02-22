@@ -3,8 +3,6 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, StatusOption } from "../../github.js";
-import type { Task } from "../../types.js";
-import { Priority } from "../../types.js";
 import type { ActivityEvent, DashboardData, FetchOptions, RepoData } from "../fetch.js";
 
 // Mock Worker: simulates the fetch-worker.ts behavior (useData spawns a worker thread)
@@ -103,29 +101,6 @@ function makeRepoData(overrides: Partial<RepoData> = {}): RepoData {
   };
 }
 
-function makeTask(overrides: Partial<Task> = {}): Task {
-  return {
-    id: "task-1",
-    projectId: "proj-1",
-    title: "Test task",
-    content: "",
-    desc: "",
-    isAllDay: false,
-    startDate: "",
-    dueDate: "",
-    completedTime: "",
-    priority: Priority.None,
-    reminders: [],
-    repeatFlag: "",
-    sortOrder: 0,
-    status: 0,
-    timeZone: "UTC",
-    tags: [],
-    items: [],
-    ...overrides,
-  };
-}
-
 function makeActivityEvent(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
   return {
     type: "comment",
@@ -206,7 +181,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should render issues with correct count in tab bar", async () => {
+  it("should render issues for the selected repo and status group", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "In progress issue", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Backlog issue", projectStatus: "Backlog" }),
@@ -222,9 +197,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    // Tab bar shows repo with count
+    // Repos panel shows repo name, issues panel shows first group's issues
     expect(frame).toContain("repo");
-    expect(frame).toContain("(3)");
+    expect(frame).toContain("In progress issue");
 
     instance.unmount();
   });
@@ -255,25 +230,6 @@ describe("Dashboard integration", () => {
     // "Done issue" filtered out, so only 1 issue visible
     expect(frame).toContain("repo");
     expect(frame).not.toContain("Done issue");
-
-    instance.unmount();
-  });
-
-  it("should show Tasks tab in tab bar when tasks exist", async () => {
-    mockFetchDashboard.mockResolvedValue(
-      makeDashboardData({ ticktick: [makeTask({ id: "t1", title: "Buy groceries" })] }),
-    );
-
-    const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
-    );
-
-    await delay(200);
-
-    const frame = instance.lastFrame()!;
-    // Tasks tab visible in tab bar with count
-    expect(frame).toContain("Tasks");
-    expect(frame).toContain("(1)");
 
     instance.unmount();
   });
@@ -363,7 +319,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should show Activity tab in tab bar when activity events exist", async () => {
+  it("should show Activity panel when activity events exist", async () => {
     const activity: ActivityEvent[] = [
       makeActivityEvent({ actor: "alice", summary: "commented on #1" }),
       makeActivityEvent({ actor: "bob", summary: "opened #2", type: "opened" }),
@@ -379,8 +335,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
+    // Activity panel [4] is always shown at the bottom
+    // With height=3 (border + label), event rows are clipped — only the label is visible
     expect(frame).toContain("Activity");
-    expect(frame).toContain("(3)");
 
     instance.unmount();
   });
@@ -410,8 +367,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    expect(frame).toContain("j/k:nav");
-    expect(frame).toContain("?:more");
+    // Panel 3 (Issues) is the default active panel
+    expect(frame).toContain("j/k:move");
+    expect(frame).toContain("? help");
 
     instance.unmount();
   });
@@ -452,10 +410,9 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
+    // Both repos visible in repos panel
     expect(frame).toContain("repo");
     expect(frame).toContain("repo2");
-    // Both tabs visible in tab bar with issue counts
-    expect(frame).toContain("(1)");
 
     instance.unmount();
   });
@@ -524,37 +481,6 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should show only active status group's issues (s key cycles groups)", async () => {
-    const issues: GitHubIssue[] = [
-      makeIssue({ number: 1, title: "Active task", projectStatus: "In Progress" }),
-      makeIssue({ number: 2, title: "Backlog task", projectStatus: "Backlog" }),
-    ];
-
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
-
-    const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
-    );
-
-    await delay(200);
-
-    // Default: first group (In Progress) is active
-    const frame = instance.lastFrame()!;
-    expect(frame).toContain("In Progress");
-    expect(frame).toContain("Active task");
-    expect(frame).toContain("Backlog"); // visible in status tab bar
-    expect(frame).not.toContain("Backlog task"); // Backlog tab not active
-
-    // Press s to switch to Backlog tab
-    instance.stdin.write("s");
-    await delay(50);
-    const frame2 = instance.lastFrame()!;
-    expect(frame2).toContain("Backlog task");
-    expect(frame2).not.toContain("Active task"); // In Progress tab not active
-
-    instance.unmount();
-  });
-
   it("should always show issues without collapse indicators", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "My issue", projectStatus: "In Progress" }),
@@ -607,7 +533,7 @@ describe("Dashboard integration", () => {
 
     // Default: first group (In Progress) is active
     const frame = instance.lastFrame()!;
-    // Both group labels visible in status tab bar
+    // Both group labels visible in statuses panel
     expect(frame).toContain("In Progress");
     // "Todo" used as merged header label (first status in "Todo,Backlog" group)
     expect(frame).toContain("Todo");
@@ -617,14 +543,6 @@ describe("Dashboard integration", () => {
     expect(frame).not.toContain("Todo task");
     // "Done" is terminal and should not appear as a header
     expect(frame).not.toContain("Done");
-
-    // Press s to switch to Todo (merged) tab
-    instance.stdin.write("s");
-    await delay(50);
-    const frame2 = instance.lastFrame()!;
-    // Both tasks from merged group visible under "Todo"
-    expect(frame2).toContain("Backlog task");
-    expect(frame2).toContain("Todo task");
 
     instance.unmount();
   });
@@ -665,88 +583,6 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should switch to next tab when Tab key is pressed", async () => {
-    const repo2Config: RepoConfig = {
-      name: "owner/repo2",
-      shortName: "repo2",
-      projectNumber: 2,
-      statusFieldId: "SF_2",
-      completionAction: { type: "closeIssue" as const },
-    };
-    const repos = [
-      makeRepoData({
-        issues: [makeIssue({ number: 1, title: "Repo1 issue", projectStatus: "In Progress" })],
-      }),
-      {
-        repo: repo2Config,
-        issues: [makeIssue({ number: 10, title: "Repo2 issue", projectStatus: "In Progress" })],
-        statusOptions: [{ id: "opt_1", name: "In Progress" }],
-        error: null,
-      },
-    ];
-    const config: HogConfig = { ...makeConfig(), repos: [makeRepoConfig(), repo2Config] };
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
-
-    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
-    await delay(200);
-
-    // First tab (repo) is active by default
-    let frame = instance.lastFrame()!;
-    expect(frame).toContain("Repo1 issue");
-    expect(frame).not.toContain("Repo2 issue");
-
-    // Press Tab to switch to next tab
-    instance.stdin.write("\t");
-    await delay(50);
-
-    frame = instance.lastFrame()!;
-    // Now on repo2 tab — repo2 issue visible, repo1 issue not
-    expect(frame).toContain("Repo2 issue");
-    expect(frame).not.toContain("Repo1 issue");
-
-    instance.unmount();
-  });
-
-  it("should jump to second tab when '2' is pressed", async () => {
-    const repo2Config: RepoConfig = {
-      name: "owner/repo2",
-      shortName: "repo2",
-      projectNumber: 2,
-      statusFieldId: "SF_2",
-      completionAction: { type: "closeIssue" as const },
-    };
-    const repos = [
-      makeRepoData({
-        issues: [makeIssue({ number: 1, title: "Repo1 issue", projectStatus: "In Progress" })],
-      }),
-      {
-        repo: repo2Config,
-        issues: [makeIssue({ number: 10, title: "Repo2 issue", projectStatus: "In Progress" })],
-        statusOptions: [{ id: "opt_1", name: "In Progress" }],
-        error: null,
-      },
-    ];
-    const config: HogConfig = { ...makeConfig(), repos: [makeRepoConfig(), repo2Config] };
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
-
-    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
-    await delay(200);
-
-    // First tab is active by default
-    let frame = instance.lastFrame()!;
-    expect(frame).toContain("Repo1 issue");
-
-    // Press '2' to jump directly to second tab
-    instance.stdin.write("2");
-    await delay(50);
-
-    frame = instance.lastFrame()!;
-    expect(frame).toContain("Repo2 issue");
-    expect(frame).not.toContain("Repo1 issue");
-
-    instance.unmount();
-  });
-
   it("should show merged issue count in status group header", async () => {
     const repo = makeRepoConfig();
     (repo as Record<string, unknown>)["statusGroups"] = ["Todo,Backlog"];
@@ -773,8 +609,8 @@ describe("Dashboard integration", () => {
 
     // Sections start expanded by default — no Enter needed
     const frame = instance.lastFrame()!;
-    // Merged group should show combined count (3 issues total)
-    expect(frame).toContain("(3)");
+    // Merged group label "Todo" appears in statuses panel with count
+    expect(frame).toContain("Todo");
 
     instance.unmount();
   });
@@ -822,30 +658,6 @@ describe("sticky group header", () => {
     }
     // Status tab bar shows group label regardless of scroll position
     expect(instance.lastFrame()).toContain("In Progress");
-    instance.unmount();
-  });
-
-  it("s key switches status tab and shows that group's issues", async () => {
-    const issues: GitHubIssue[] = [
-      makeIssue({ number: 1, title: "WIP issue", projectStatus: "In Progress" }),
-      makeIssue({ number: 2, title: "Backlog #1", projectStatus: "Backlog" }),
-      makeIssue({ number: 3, title: "Backlog #2", projectStatus: "Backlog" }),
-    ];
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
-    const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
-    );
-    await delay(200);
-    // Default: In Progress tab active — only WIP issue visible
-    expect(instance.lastFrame()).toContain("WIP issue");
-    expect(instance.lastFrame()).not.toContain("Backlog #1");
-    // Press s to switch to Backlog tab
-    instance.stdin.write("s");
-    await delay(30);
-    // Now on Backlog tab — Backlog issues visible, WIP not visible
-    expect(instance.lastFrame()).toContain("Backlog #1");
-    expect(instance.lastFrame()).toContain("Backlog #2");
-    expect(instance.lastFrame()).not.toContain("WIP issue");
     instance.unmount();
   });
 

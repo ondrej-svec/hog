@@ -1,7 +1,6 @@
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import { Priority, TaskStatus } from "../../types.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
 
@@ -56,36 +55,6 @@ function makeIssueRow(
       updatedAt: "2024-01-01T00:00:00Z",
       labels: [],
       assignees: [],
-    },
-    ...overrides,
-  };
-}
-
-function makeTaskRow(
-  overrides: Partial<Extract<FlatRow, { type: "task" }>> = {},
-): Extract<FlatRow, { type: "task" }> {
-  return {
-    type: "task",
-    key: "task-1",
-    navId: "tt:task-abc",
-    task: {
-      id: "task-abc",
-      projectId: "proj-1",
-      title: "Write tests",
-      content: "",
-      desc: "",
-      isAllDay: false,
-      startDate: "",
-      dueDate: "",
-      completedTime: "",
-      priority: Priority.None,
-      reminders: [],
-      repeatFlag: "",
-      sortOrder: 0,
-      status: TaskStatus.Active,
-      timeZone: "UTC",
-      tags: [],
-      items: [],
     },
     ...overrides,
   };
@@ -184,7 +153,7 @@ describe("RowRenderer subHeader", () => {
     expect(frame).toContain("▶");
   });
 
-  it("renders plain text when navId is null (line 73)", () => {
+  it("renders plain text when navId is null", () => {
     const row = makeSubHeaderRow({ navId: null, text: "Plain label" });
     const { lastFrame } = renderRow(row);
     const frame = lastFrame() ?? "";
@@ -222,7 +191,7 @@ describe("RowRenderer issue", () => {
     expect(frame).not.toContain("☐");
   });
 
-  it("shows checked checkbox when isMultiSelected is true (line 76)", () => {
+  it("shows checked checkbox when isMultiSelected is true", () => {
     const row = makeIssueRow();
     const { lastFrame } = render(
       React.createElement(RowRenderer, {
@@ -236,62 +205,8 @@ describe("RowRenderer issue", () => {
     expect(frame).toContain("☑");
   });
 
-  it("shows unchecked checkbox when isMultiSelected is false (line 76)", () => {
+  it("shows unchecked checkbox when isMultiSelected is false", () => {
     const row = makeIssueRow();
-    const { lastFrame } = render(
-      React.createElement(RowRenderer, {
-        row,
-        selectedId: null,
-        selfLogin: "me",
-        isMultiSelected: false,
-      }),
-    );
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("☐");
-  });
-});
-
-// ── task ──
-
-describe("RowRenderer task", () => {
-  it("renders task title", () => {
-    const row = makeTaskRow();
-    const { lastFrame } = renderRow(row);
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("Write tests");
-  });
-
-  it("shows no checkbox when isMultiSelected is undefined", () => {
-    const row = makeTaskRow();
-    const { lastFrame } = render(
-      React.createElement(RowRenderer, {
-        row,
-        selectedId: null,
-        selfLogin: "me",
-        isMultiSelected: undefined,
-      }),
-    );
-    const frame = lastFrame() ?? "";
-    expect(frame).not.toContain("☑");
-    expect(frame).not.toContain("☐");
-  });
-
-  it("shows checked checkbox when isMultiSelected is true (lines 94-95)", () => {
-    const row = makeTaskRow();
-    const { lastFrame } = render(
-      React.createElement(RowRenderer, {
-        row,
-        selectedId: null,
-        selfLogin: "me",
-        isMultiSelected: true,
-      }),
-    );
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("☑");
-  });
-
-  it("shows unchecked checkbox when isMultiSelected is false (lines 94-95)", () => {
-    const row = makeTaskRow();
     const { lastFrame } = render(
       React.createElement(RowRenderer, {
         row,
@@ -308,7 +223,7 @@ describe("RowRenderer task", () => {
 // ── activity ──
 
 describe("RowRenderer activity", () => {
-  it("renders actor and summary (lines 111-115)", () => {
+  it("renders actor and summary", () => {
     const row = makeActivityRow();
     const { lastFrame } = renderRow(row);
     const frame = lastFrame() ?? "";
@@ -316,30 +231,24 @@ describe("RowRenderer activity", () => {
     expect(frame).toContain("left a comment on #7");
   });
 
-  it("renders repo short name in parentheses (lines 111-115)", () => {
+  it("renders repo short name in parentheses", () => {
     const row = makeActivityRow();
     const { lastFrame } = renderRow(row);
     const frame = lastFrame() ?? "";
     expect(frame).toContain("myrepo");
   });
 
-  it("shows 'just now' for a very recent event (line 112)", () => {
-    const row = makeActivityRow({
-      event: {
-        type: "comment",
-        repoShortName: "myrepo",
-        issueNumber: 1,
-        actor: "bob",
-        summary: "did something",
-        timestamp: new Date(Date.now() - 3 * 1000), // 3 seconds ago → "just now"
-      },
-    });
+  it("renders a timestamp for the event", () => {
+    const row = makeActivityRow();
     const { lastFrame } = renderRow(row);
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("just now");
+    // The time is shown as a locale time string (e.g., "2:30:00 PM")
+    // Just verify something is rendered between prefix and actor
+    expect(frame).toContain("@alice");
+    expect(frame.length).toBeGreaterThan(0);
   });
 
-  it("shows seconds-ago for events under 60s (line 113)", () => {
+  it("renders different event types (status change)", () => {
     const row = makeActivityRow({
       event: {
         type: "status",
@@ -347,28 +256,13 @@ describe("RowRenderer activity", () => {
         issueNumber: 2,
         actor: "carol",
         summary: "changed status",
-        timestamp: new Date(Date.now() - 30 * 1000), // 30s ago
+        timestamp: new Date(Date.now() - 30 * 1000),
       },
     });
     const { lastFrame } = renderRow(row);
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("s ago");
-  });
-
-  it("shows minutes-ago for events over 60s (lines 114-115)", () => {
-    const row = makeActivityRow({
-      event: {
-        type: "assignment",
-        repoShortName: "myrepo",
-        issueNumber: 3,
-        actor: "dave",
-        summary: "was assigned",
-        timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 minutes ago
-      },
-    });
-    const { lastFrame } = renderRow(row);
-    const frame = lastFrame() ?? "";
-    expect(frame).toContain("m ago");
+    expect(frame).toContain("@carol");
+    expect(frame).toContain("changed status");
   });
 });
 

@@ -6,7 +6,6 @@ import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
-import type { Task } from "../../types.js";
 import { isHeaderId, isTerminalStatus, timeAgo } from "../constants.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
@@ -16,18 +15,21 @@ import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
+import { usePanelFocus } from "../hooks/use-panel-focus.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { ActionLog } from "./action-log.js";
+import { ActivityPanel } from "./activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { HintBar } from "./hint-bar.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
+import { ACTIVITY_HEIGHT, getDetailWidth, getLayoutMode, PanelLayout } from "./panel-layout.js";
+import { ReposPanel } from "./repos-panel.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
-import { StatusTabBar } from "./status-tab-bar.js";
-import { TabBar } from "./tab-bar.js";
+import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
 
 // ── Types ──
@@ -61,7 +63,6 @@ interface BoardSection {
 interface BoardTree {
   activity: ActivityEvent[];
   sections: BoardSection[];
-  tasks: Task[];
 }
 
 /**
@@ -128,7 +129,7 @@ function groupByStatus(issues: GitHubIssue[]): Map<string, GitHubIssue[]> {
 }
 
 /** Build the unified board tree — single source of truth for all nav/row builders. */
-function buildBoardTree(repos: RepoData[], tasks: Task[], activity: ActivityEvent[]): BoardTree {
+function buildBoardTree(repos: RepoData[], activity: ActivityEvent[]): BoardTree {
   const sections = repos.map((rd): BoardSection => {
     const sectionId = rd.repo.name;
 
@@ -164,101 +165,70 @@ function buildBoardTree(repos: RepoData[], tasks: Task[], activity: ActivityEven
     return { repo: rd.repo, sectionId, groups, error: null };
   });
 
-  return { activity, sections, tasks };
+  return { activity, sections };
 }
 
-// ── Tab navigation ──
+// ── Panel-based row builders ──
 
-interface Tab {
-  id: string; // repo.name | "activity" | "ticktick"
-  label: string; // repo.shortName | "Activity" | "Tasks"
-  count: number; // issue/task/event count
-}
-
-function buildTabs(tree: BoardTree): Tab[] {
-  const tabs: Tab[] = tree.sections.map(({ repo, groups }) => ({
-    id: repo.name,
-    label: repo.shortName,
-    count: groups.reduce((s, g) => s + g.issues.length, 0),
-  }));
-  if (tree.activity.length > 0)
-    tabs.push({ id: "activity", label: "Activity", count: tree.activity.length });
-  if (tree.tasks.length > 0)
-    tabs.push({ id: "ticktick", label: "Tasks", count: tree.tasks.length });
-  return tabs;
-}
-
-// ── Status tab navigation ──
-
-interface StatusTab {
-  id: string; // BoardGroup.subId — e.g., "sub:aimee:Backlog"
-  label: string; // BoardGroup.label — e.g., "Backlog"
-  count: number; // BoardGroup.issues.length
-}
-
-function isRepoTab(tabId: string | null): boolean {
-  return tabId !== null && tabId !== "activity" && tabId !== "ticktick";
-}
-
-function buildStatusTabs(tabId: string | null, tree: BoardTree): StatusTab[] {
-  if (!isRepoTab(tabId)) return [];
-  const section = tree.sections.find((s) => s.sectionId === tabId);
-  if (!section) return [];
-  return section.groups.map((g) => ({ id: g.subId, label: g.label, count: g.issues.length }));
-}
-
-function buildNavItemsForTab(
-  tabId: string,
-  tree: BoardTree,
-  activeStatusId: string | null,
+function buildNavItemsForRepo(
+  sections: BoardSection[],
+  repoName: string | null,
+  statusGroupId: string | null,
 ): NavItem[] {
-  if (tabId === "activity") return [];
-  if (tabId === "ticktick")
-    return tree.tasks.map((task) => ({
-      id: `tt:${task.id}`,
-      section: tabId,
-      type: "item" as const,
-    }));
-  const section = tree.sections.find((s) => s.sectionId === tabId);
+  if (!repoName) return [];
+  const section = sections.find((s) => s.sectionId === repoName);
   if (!section) return [];
-  const activeGroup = section.groups.find((g) => g.subId === activeStatusId) ?? section.groups[0];
+  const activeGroup = section.groups.find((g) => g.subId === statusGroupId) ?? section.groups[0];
   if (!activeGroup) return [];
   return activeGroup.issues.map((issue) => ({
     id: `gh:${section.repo.name}:${issue.number}`,
-    section: tabId,
+    section: repoName,
     type: "item" as const,
   }));
 }
 
-function buildFlatRowsForTab(
-  tabId: string,
-  tree: BoardTree,
-  activeStatusId: string | null,
+function buildFlatRowsForRepo(
+  sections: BoardSection[],
+  repoName: string | null,
+  statusGroupId: string | null,
 ): FlatRow[] {
-  if (tabId === "activity")
-    return tree.activity.map((event, i) => ({
-      type: "activity" as const,
-      key: `act:${i}`,
-      navId: null,
-      event,
-    }));
-  if (tabId === "ticktick")
-    return tree.tasks.map((task) => ({
-      type: "task" as const,
-      key: `tt:${task.id}`,
-      navId: `tt:${task.id}`,
-      task,
-    }));
-  const section = tree.sections.find((s) => s.sectionId === tabId);
-  if (!section) return [];
-  if (section.error)
-    return [{ type: "error" as const, key: `error:${tabId}`, navId: null, text: section.error }];
-  if (section.groups.length === 0)
+  if (!repoName) {
     return [
-      { type: "subHeader" as const, key: `empty:${tabId}`, navId: null, text: "No open issues" },
+      {
+        type: "subHeader" as const,
+        key: "select-repo",
+        navId: null,
+        text: "Select a repo in panel [1]",
+      },
     ];
-  const activeGroup = section.groups.find((g) => g.subId === activeStatusId) ?? section.groups[0];
+  }
+  const section = sections.find((s) => s.sectionId === repoName);
+  if (!section) return [];
+  if (section.error) {
+    return [{ type: "error" as const, key: `error:${repoName}`, navId: null, text: section.error }];
+  }
+  if (section.groups.length === 0) {
+    return [
+      {
+        type: "subHeader" as const,
+        key: `empty:${repoName}`,
+        navId: null,
+        text: "No open issues",
+      },
+    ];
+  }
+  const activeGroup = section.groups.find((g) => g.subId === statusGroupId) ?? section.groups[0];
   if (!activeGroup) return [];
+  if (activeGroup.issues.length === 0) {
+    return [
+      {
+        type: "subHeader" as const,
+        key: `empty-group:${statusGroupId}`,
+        navId: null,
+        text: "No issues in this status group",
+      },
+    ];
+  }
   return activeGroup.issues.map((issue) => ({
     type: "issue" as const,
     key: `gh:${section.repo.name}:${issue.number}`,
@@ -303,12 +273,9 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
   return <Text color={refreshAgeColor(lastRefresh)}>Updated {timeAgo(lastRefresh)}</Text>;
 }
 
-// ── Dashboard ──
+// ── Issues panel box (scrollable list + detail) ──
 
-// Header (1) + tab bar (1) + status sub-tab bar (1, repo tabs only) + hint bar (1) + padding (2 top+bottom)
-// Repo tabs: 6 rows (status sub-tab bar visible). Activity/Tasks: 5 rows (status bar hidden).
-const CHROME_ROWS_REPO = 6;
-const CHROME_ROWS_OTHER = 5;
+const CHROME_ROWS = 3; // header (1) + hintbar (1) + paddingX top/bottom (1)
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
 function Dashboard({ config, options, activeProfile }: DashboardProps) {
@@ -332,14 +299,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Stable empty arrays to avoid new references when data is null
   const allRepos = useMemo(() => data?.repos ?? [], [data?.repos]);
-  const allTasks = useMemo(
-    () => (config.ticktick.enabled ? (data?.ticktick ?? []) : []),
-    [data?.ticktick, config.ticktick.enabled],
-  );
   const allActivity = useMemo(() => data?.activity ?? [], [data?.activity]);
 
   // UI state machine
   const ui = useUIState();
+
+  // Panel focus state — default to Issues panel [3]
+  const panelFocus = usePanelFocus(3);
 
   // Search state (managed separately — search query persists across mode changes)
   const [searchQuery, setSearchQuery] = useState("");
@@ -389,86 +355,98 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       .filter((rd) => rd.issues.length > 0);
   }, [allRepos, searchQuery, mineOnly, config.board.assignee]);
 
-  const tasks = useMemo(() => {
-    if (!searchQuery) return allTasks;
-    const q = searchQuery.toLowerCase();
-    return allTasks.filter((t) => t.title.toLowerCase().includes(q));
-  }, [allTasks, searchQuery]);
+  // Single source of truth — computed once (no tasks)
+  const boardTree = useMemo(() => buildBoardTree(repos, allActivity), [repos, allActivity]);
 
-  // Single source of truth — computed once
-  const boardTree = useMemo(
-    () => buildBoardTree(repos, tasks, allActivity),
-    [repos, tasks, allActivity],
+  // Panel [1] — Repos cursor
+  const [selectedRepoIdx, setSelectedRepoIdx] = useState(0);
+  const clampedRepoIdx = Math.min(selectedRepoIdx, Math.max(0, boardTree.sections.length - 1));
+
+  const reposNav = {
+    moveUp: useCallback(() => setSelectedRepoIdx((i) => Math.max(0, i - 1)), []),
+    moveDown: useCallback(
+      () => setSelectedRepoIdx((i) => Math.min(Math.max(0, boardTree.sections.length - 1), i + 1)),
+      [boardTree.sections.length],
+    ),
+  };
+
+  // Panel [2] — Statuses cursor
+  const [selectedStatusIdx, setSelectedStatusIdx] = useState(0);
+  const selectedSection = boardTree.sections[clampedRepoIdx] ?? null;
+  const clampedStatusIdx = Math.min(
+    selectedStatusIdx,
+    Math.max(0, (selectedSection?.groups.length ?? 1) - 1),
   );
 
-  // Tab navigation
-  const tabs = useMemo(() => buildTabs(boardTree), [boardTree]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const effectiveTabId = activeTabId ?? tabs[0]?.id ?? null;
-  const activeTabIdx = tabs.findIndex((t) => t.id === effectiveTabId);
+  const statusesNav = {
+    moveUp: useCallback(() => setSelectedStatusIdx((i) => Math.max(0, i - 1)), []),
+    moveDown: useCallback(
+      () =>
+        setSelectedStatusIdx((i) =>
+          Math.min(Math.max(0, (selectedSection?.groups.length ?? 1) - 1), i + 1),
+        ),
+      [selectedSection?.groups.length],
+    ),
+  };
 
-  const nextTab = useCallback(() => {
-    if (tabs.length === 0) return;
-    setActiveTabId(tabs[(Math.max(activeTabIdx, 0) + 1) % tabs.length]?.id ?? null);
-    setActiveStatusId(null);
-  }, [activeTabIdx, tabs]);
-
-  const prevTab = useCallback(() => {
-    if (tabs.length === 0) return;
-    setActiveTabId(tabs[(Math.max(activeTabIdx, 0) - 1 + tabs.length) % tabs.length]?.id ?? null);
-    setActiveStatusId(null);
-  }, [activeTabIdx, tabs]);
-
-  const jumpToTab = useCallback(
-    (idx: number) => {
-      const tab = tabs[idx];
-      if (tab) {
-        setActiveTabId(tab.id);
-        setActiveStatusId(null);
-      }
-    },
-    [tabs],
+  // Panel [4] — Activity cursor
+  const [activitySelectedIdx, setActivitySelectedIdx] = useState(0);
+  const clampedActivityIdx = Math.min(
+    activitySelectedIdx,
+    Math.max(0, boardTree.activity.length - 1),
   );
 
-  // Status sub-tab navigation (second-level tabs within a repo tab)
-  const [activeStatusId, setActiveStatusId] = useState<string | null>(null);
-  const statusTabs = useMemo(
-    () => buildStatusTabs(effectiveTabId, boardTree),
-    [effectiveTabId, boardTree],
-  );
-  const effectiveStatusId = activeStatusId ?? statusTabs[0]?.id ?? null;
-  const activeStatusIdx = statusTabs.findIndex((t) => t.id === effectiveStatusId);
+  const activityNav = {
+    moveUp: useCallback(() => setActivitySelectedIdx((i) => Math.max(0, i - 1)), []),
+    moveDown: useCallback(
+      () =>
+        setActivitySelectedIdx((i) => Math.min(Math.max(0, boardTree.activity.length - 1), i + 1)),
+      [boardTree.activity.length],
+    ),
+  };
 
-  const nextStatus = useCallback(() => {
-    if (statusTabs.length === 0) return;
-    setActiveStatusId(
-      statusTabs[(Math.max(activeStatusIdx, 0) + 1) % statusTabs.length]?.id ?? null,
+  // Derived selection state
+  const selectedRepoName = selectedSection?.sectionId ?? null;
+  const selectedStatusGroup = selectedSection?.groups[clampedStatusIdx] ?? null;
+  const selectedStatusGroupId = selectedStatusGroup?.subId ?? null;
+
+  // Panel Enter handlers
+  const onRepoEnter = useCallback(() => {
+    setSelectedStatusIdx(0);
+    panelFocus.focusPanel(3);
+  }, [panelFocus]);
+
+  const onStatusEnter = useCallback(() => {
+    panelFocus.focusPanel(3);
+  }, [panelFocus]);
+
+  const onActivityEnter = useCallback(() => {
+    const event = boardTree.activity[clampedActivityIdx];
+    if (!event) return;
+    const repoIdx = boardTree.sections.findIndex(
+      (s) =>
+        s.repo.shortName === event.repoShortName || s.sectionId.endsWith(`/${event.repoShortName}`),
     );
-  }, [activeStatusIdx, statusTabs]);
+    if (repoIdx >= 0) {
+      setSelectedRepoIdx(repoIdx);
+      setSelectedStatusIdx(0);
+      panelFocus.focusPanel(3);
+    }
+  }, [boardTree, clampedActivityIdx, panelFocus]);
 
-  const prevStatus = useCallback(() => {
-    if (statusTabs.length === 0) return;
-    setActiveStatusId(
-      statusTabs[(Math.max(activeStatusIdx, 0) - 1 + statusTabs.length) % statusTabs.length]?.id ??
-        null,
-    );
-  }, [activeStatusIdx, statusTabs]);
-
-  // Navigation — flat item list for active tab only
+  // Navigation — flat item list for active repo + status group
   const navItems = useMemo(
-    () => buildNavItemsForTab(effectiveTabId ?? "", boardTree, effectiveStatusId),
-    [effectiveTabId, boardTree, effectiveStatusId],
+    () => buildNavItemsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId),
+    [boardTree.sections, selectedRepoName, selectedStatusGroupId],
   );
   const nav = useNavigation(navItems);
 
   // Multi-select: resolve nav ID → repo name for same-repo constraint
   const getRepoForId = useCallback((id: string): string | null => {
     if (id.startsWith("gh:")) {
-      // Format: gh:owner/repo:number
       const parts = id.split(":");
       return parts.length >= 3 ? `${parts[1]}` : null;
     }
-    if (id.startsWith("tt:")) return "ticktick";
     return null;
   }, []);
   const multiSelect = useMultiSelect(getRepoForId);
@@ -575,16 +553,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         const rc = config.repos.find((r) => r.name === found.repoName);
         label = `${rc?.shortName ?? found.repoName}#${found.issue.number} — ${found.issue.title}`;
       }
-    } else if (id.startsWith("tt:")) {
-      const taskId = id.slice(3);
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) label = task.title;
     }
 
     if (!label) return;
     setFocusLabel(label);
     ui.enterFocus();
-  }, [nav.selectedId, repos, tasks, config.repos, ui]);
+  }, [nav.selectedId, repos, config.repos, ui]);
 
   const handleFocusExit = useCallback(() => {
     setFocusLabel(null);
@@ -595,10 +569,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     (action: FocusEndAction) => {
       switch (action) {
         case "restart":
-          // Timer restarts — just stay in focus mode (component remounts with key)
           toast.info("Focus restarted!");
           setFocusLabel((prev) => prev); // no-op to preserve label
-          // Force remount by toggling a counter
           setFocusKey((k) => k + 1);
           break;
         case "break":
@@ -638,29 +610,36 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     };
   }, [stdout]);
 
-  const showDetailPanel = termSize.cols >= 120;
-  const detailPanelWidth = showDetailPanel ? Math.floor(termSize.cols * 0.35) : 0;
+  const layoutMode = getLayoutMode(termSize.cols);
+  const detailPanelWidth =
+    layoutMode === "wide" ? getDetailWidth(termSize.cols) : Math.floor(termSize.cols * 0.35);
+  const showDetailPanel = layoutMode === "wide";
+
   const overlayBarRows = ui.state.mode === "search" || ui.state.mode === "overlay:comment" ? 1 : 0;
   const toastRows = toasts.length;
   const logPaneRows = logVisible ? 4 : 0;
-  const chromeRows = isRepoTab(effectiveTabId) ? CHROME_ROWS_REPO : CHROME_ROWS_OTHER;
-  const viewportHeight = Math.max(
-    5,
-    termSize.rows - chromeRows - overlayBarRows - toastRows - logPaneRows,
-  );
 
-  // Build flat rows for active tab
+  // Total height available for the panel layout (issues + activity)
+  const totalPanelHeight = Math.max(
+    8,
+    termSize.rows - CHROME_ROWS - overlayBarRows - toastRows - logPaneRows,
+  );
+  const issuesPanelHeight = Math.max(5, totalPanelHeight - ACTIVITY_HEIGHT);
+
+  // Build flat rows for issues panel
   const flatRows = useMemo(
-    () => buildFlatRowsForTab(effectiveTabId ?? "", boardTree, effectiveStatusId),
-    [effectiveTabId, boardTree, effectiveStatusId],
+    () => buildFlatRowsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId),
+    [boardTree.sections, selectedRepoName, selectedStatusGroupId],
   );
 
   // Scroll offset - tracks viewport position
   const scrollRef = useRef(0);
-  // Reset scroll to top when switching tabs so the first group header is always visible
-  const prevTabIdRef = useRef<string | null>(null);
-  if (effectiveTabId !== prevTabIdRef.current) {
-    prevTabIdRef.current = effectiveTabId;
+  // Reset scroll to top when switching repos or status groups
+  const prevRepoRef = useRef<string | null>(null);
+  const prevStatusRef = useRef<string | null>(null);
+  if (selectedRepoName !== prevRepoRef.current || selectedStatusGroupId !== prevStatusRef.current) {
+    prevRepoRef.current = selectedRepoName;
+    prevStatusRef.current = selectedStatusGroupId;
     scrollRef.current = 0;
   }
 
@@ -673,42 +652,35 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   if (selectedRowIdx >= 0) {
     if (selectedRowIdx < scrollRef.current) {
       scrollRef.current = selectedRowIdx;
-    } else if (selectedRowIdx >= scrollRef.current + viewportHeight) {
-      scrollRef.current = selectedRowIdx - viewportHeight + 1;
+    } else if (selectedRowIdx >= scrollRef.current + issuesPanelHeight) {
+      scrollRef.current = selectedRowIdx - issuesPanelHeight + 1;
     }
   }
-  const maxOffset = Math.max(0, flatRows.length - viewportHeight);
+  const maxOffset = Math.max(0, flatRows.length - issuesPanelHeight);
   scrollRef.current = Math.max(0, Math.min(scrollRef.current, maxOffset));
 
-  const visibleRows = flatRows.slice(scrollRef.current, scrollRef.current + viewportHeight);
+  const visibleRows = flatRows.slice(scrollRef.current, scrollRef.current + issuesPanelHeight);
   const hasMoreAbove = scrollRef.current > 0;
-  const hasMoreBelow = scrollRef.current + viewportHeight < flatRows.length;
+  const hasMoreBelow = scrollRef.current + issuesPanelHeight < flatRows.length;
   const aboveCount = scrollRef.current;
-  const belowCount = flatRows.length - scrollRef.current - viewportHeight;
+  const belowCount = flatRows.length - scrollRef.current - issuesPanelHeight;
 
   // Find selected item for detail panel and overlays
   const selectedItem = useMemo((): {
     issue: GitHubIssue | null;
-    task: Task | null;
     repoName: string | null;
   } => {
     const id = nav.selectedId;
-    if (!id || isHeaderId(id)) return { issue: null, task: null, repoName: null };
+    if (!id || isHeaderId(id)) return { issue: null, repoName: null };
     if (id.startsWith("gh:")) {
       for (const rd of repos) {
         for (const issue of rd.issues) {
-          if (`gh:${rd.repo.name}:${issue.number}` === id)
-            return { issue, task: null, repoName: rd.repo.name };
+          if (`gh:${rd.repo.name}:${issue.number}` === id) return { issue, repoName: rd.repo.name };
         }
       }
     }
-    if (id.startsWith("tt:")) {
-      const taskId = id.slice(3);
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) return { issue: null, task, repoName: null };
-    }
-    return { issue: null, task: null, repoName: null };
-  }, [nav.selectedId, repos, tasks]);
+    return { issue: null, repoName: null };
+  }, [nav.selectedId, repos]);
 
   // Derive current commentsState (re-computes on tick or selected issue change)
   // biome-ignore lint/correctness/useExhaustiveDependencies: commentTick is a cache-invalidation signal; it's intentionally in deps without being used in the body
@@ -724,11 +696,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, [selectedItem.repoName, config.repos]);
 
   // Status options for the selected issue's repo (for status picker, single or bulk)
-  // Terminal statuses are now included — StatusPicker renders them with a "(Done)" suffix
   const selectedRepoStatusOptions = useMemo(() => {
-    // In multi-select, use the constrained repo
     const repoName = multiSelect.count > 0 ? multiSelect.constrainedRepo : selectedItem.repoName;
-    if (!repoName || repoName === "ticktick") return [];
+    if (!repoName) return [];
     const rd = repos.find((r) => r.repo.name === repoName);
     return rd?.statusOptions ?? [];
   }, [selectedItem.repoName, repos, multiSelect.count, multiSelect.constrainedRepo]);
@@ -773,14 +743,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = useMemo((): "github" | "ticktick" | "mixed" => {
-    let hasGh = false;
-    let hasTt = false;
     for (const id of multiSelect.selected) {
-      if (id.startsWith("gh:")) hasGh = true;
-      if (id.startsWith("tt:")) hasTt = true;
+      if (id.startsWith("tt:")) return "ticktick";
     }
-    if (hasGh && hasTt) return "mixed";
-    if (hasTt) return "ticktick";
     return "github";
   }, [multiSelect.selected]);
 
@@ -817,12 +782,11 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           return;
         }
         case "statusChange":
-          // Open status picker from bulk action menu — the reducer allows this transition
           ui.enterStatus();
-          return; // status picker will call handleBulkStatusSelect on select
+          return;
         case "complete":
         case "delete":
-          toast.info(`Bulk ${action.type} not yet implemented for TickTick`);
+          toast.info(`Bulk ${action.type} not yet implemented`);
           ui.exitOverlay();
           multiSelect.clear();
           return;
@@ -835,7 +799,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const handleBulkStatusSelect = useCallback(
     (optionId: string) => {
       const ids = multiSelect.selected;
-      ui.exitOverlay(); // close status picker
+      ui.exitOverlay();
       actions.handleBulkStatusChange(ids, optionId).then((failedIds) => {
         if (failedIds.length > 0) {
           multiSelect.clear();
@@ -853,23 +817,21 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const handleFuzzySelect = useCallback(
     (navId: string) => {
       nav.select(navId);
-      // Switch to the tab that contains this item
       if (navId.startsWith("gh:")) {
         const parts = navId.split(":");
         const repoName = parts[1];
         if (parts.length >= 3 && repoName) {
-          setActiveTabId(repoName);
-          // Jump to the status group containing this issue
-          const section = boardTree.sections.find((s) => s.sectionId === repoName);
-          const issueNum = parts[2] ? Number(parts[2]) : null;
-          const targetGroup = section?.groups.find((g) =>
-            g.issues.some((iss) => iss.number === issueNum),
-          );
-          setActiveStatusId(targetGroup?.subId ?? null);
+          const repoIdx = boardTree.sections.findIndex((s) => s.sectionId === repoName);
+          if (repoIdx >= 0) {
+            setSelectedRepoIdx(repoIdx);
+            const section = boardTree.sections[repoIdx];
+            const issueNum = parts[2] ? Number(parts[2]) : null;
+            const groupIdx =
+              section?.groups.findIndex((g) => g.issues.some((iss) => iss.number === issueNum)) ??
+              -1;
+            setSelectedStatusIdx(Math.max(0, groupIdx));
+          }
         }
-      } else if (navId.startsWith("tt:")) {
-        setActiveTabId("ticktick");
-        setActiveStatusId(null);
       }
       ui.exitToNormal();
     },
@@ -908,8 +870,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleToggleLog: () => setLogVisible((v) => !v),
     },
     onSearchEscape,
-    tabNav: { next: nextTab, prev: prevTab, jumpTo: jumpToTab, count: tabs.length },
-    statusNav: isRepoTab(effectiveTabId) ? { next: nextStatus, prev: prevStatus } : null,
+    panelFocus,
+    reposNav,
+    statusesNav,
+    activityNav,
+    onRepoEnter,
+    onStatusEnter,
+    onActivityEnter,
   });
 
   // Loading state
@@ -927,6 +894,99 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     day: "numeric",
     year: "numeric",
   });
+
+  // Panel [1] — Repos data
+  const reposData = boardTree.sections.map(({ repo, groups }) => ({
+    name: repo.name,
+    openCount: groups.reduce((s, g) => s + g.issues.length, 0),
+  }));
+
+  // Panel [2] — Statuses data
+  const statusesData = (selectedSection?.groups ?? []).map(({ label, subId, issues }) => ({
+    id: subId,
+    label,
+    count: issues.length,
+  }));
+
+  // Panels
+  const reposPanel = (
+    <ReposPanel
+      repos={reposData}
+      selectedIdx={clampedRepoIdx}
+      isActive={panelFocus.activePanelId === 1}
+    />
+  );
+
+  const statusesPanel = (
+    <StatusesPanel
+      groups={statusesData}
+      selectedIdx={clampedStatusIdx}
+      isActive={panelFocus.activePanelId === 2}
+    />
+  );
+
+  const issuesBorderColor = panelFocus.activePanelId === 3 ? "cyan" : "gray";
+
+  const issuesPanel = (
+    <Box
+      borderStyle="single"
+      borderColor={issuesBorderColor}
+      flexDirection="column"
+      flexGrow={1}
+      overflow="hidden"
+    >
+      <Text bold color={panelFocus.activePanelId === 3 ? "cyan" : "white"}>
+        [3] Issues
+        {selectedSection ? ` — ${selectedSection.repo.shortName}` : ""}
+        {selectedStatusGroup ? ` / ${selectedStatusGroup.label}` : ""}
+      </Text>
+      {hasMoreAbove ? (
+        <Text color="gray" dimColor>
+          {" "}
+          {"\u25B2"} {aboveCount} more above
+        </Text>
+      ) : null}
+      {visibleRows.map((row) => (
+        <RowRenderer
+          key={row.key}
+          row={row}
+          selectedId={nav.selectedId}
+          selfLogin={config.board.assignee}
+          isMultiSelected={
+            ui.state.mode === "multiSelect" && row.navId
+              ? multiSelect.isSelected(row.navId)
+              : undefined
+          }
+        />
+      ))}
+      {hasMoreBelow ? (
+        <Text color="gray" dimColor>
+          {" "}
+          {"\u25BC"} {belowCount} more below
+        </Text>
+      ) : null}
+    </Box>
+  );
+
+  const detailPanel = showDetailPanel ? (
+    <DetailPanel
+      issue={selectedItem.issue}
+      width={detailPanelWidth}
+      isActive={panelFocus.activePanelId === 0}
+      issueRepo={selectedItem.repoName}
+      fetchComments={handleFetchComments}
+      commentsState={currentCommentsState}
+    />
+  ) : null;
+
+  const activityPanel = (
+    <ActivityPanel
+      events={boardTree.activity}
+      selectedIdx={clampedActivityIdx}
+      isActive={panelFocus.activePanelId === 4}
+      height={ACTIVITY_HEIGHT}
+    />
+  );
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -958,9 +1018,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       </Box>
 
       {error ? <Text color="red">Error: {error}</Text> : null}
-
-      {/* Tab bar */}
-      <TabBar tabs={tabs} activeTabId={effectiveTabId} totalWidth={termSize.cols} />
 
       {/* Overlays — rendered by OverlayRenderer */}
       <OverlayRenderer
@@ -1003,7 +1060,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onPushEntry={pushEntry}
       />
 
-      {/* Main content: sticky header + scrollable list + optional detail panel (hidden during full-screen overlays) */}
+      {/* Main content: 5-panel layout (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
       ui.state.mode !== "overlay:create" &&
@@ -1011,62 +1068,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "focus" ? (
-        <>
-          {/* Status sub-tab bar — only on repo tabs */}
-          {isRepoTab(effectiveTabId) ? (
-            <StatusTabBar
-              tabs={statusTabs}
-              activeTabId={effectiveStatusId}
-              totalWidth={termSize.cols}
-            />
-          ) : null}
-          <Box height={viewportHeight}>
-            {/* Scrollable list */}
-            <Box flexDirection="column" flexGrow={1}>
-              {hasMoreAbove ? (
-                <Text color="gray" dimColor>
-                  {" "}
-                  {"\u25B2"} {aboveCount} more above
-                </Text>
-              ) : null}
-
-              {visibleRows.map((row) => (
-                <RowRenderer
-                  key={row.key}
-                  row={row}
-                  selectedId={nav.selectedId}
-                  selfLogin={config.board.assignee}
-                  isMultiSelected={
-                    ui.state.mode === "multiSelect" && row.navId
-                      ? multiSelect.isSelected(row.navId)
-                      : undefined
-                  }
-                />
-              ))}
-
-              {hasMoreBelow ? (
-                <Text color="gray" dimColor>
-                  {" "}
-                  {"\u25BC"} {belowCount} more below
-                </Text>
-              ) : null}
-            </Box>
-
-            {/* Detail panel */}
-            {showDetailPanel ? (
-              <Box marginLeft={1} width={detailPanelWidth}>
-                <DetailPanel
-                  issue={selectedItem.issue}
-                  task={selectedItem.task}
-                  width={detailPanelWidth}
-                  issueRepo={selectedItem.repoName}
-                  fetchComments={handleFetchComments}
-                  commentsState={currentCommentsState}
-                />
-              </Box>
-            ) : null}
-          </Box>
-        </>
+        <PanelLayout
+          cols={termSize.cols}
+          issuesPanelHeight={issuesPanelHeight}
+          reposPanel={reposPanel}
+          statusesPanel={statusesPanel}
+          issuesPanel={issuesPanel}
+          detailPanel={detailPanel}
+          activityPanel={activityPanel}
+        />
       ) : null}
 
       {/* Toast notifications */}
@@ -1078,6 +1088,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       {/* Status bar */}
       <HintBar
         uiMode={ui.state.mode}
+        activePanelId={panelFocus.activePanelId}
         multiSelectCount={multiSelect.count}
         searchQuery={searchQuery}
         mineOnly={mineOnly}
