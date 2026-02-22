@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/ondrej-svec/hog/compare/hog-v1.9.3...hog-v1.10.0) (2026-02-22)
+
+
+### Features
+
+* **board:** add status sub-tab two-level navigation ([dc941b2](https://github.com/ondrej-svec/hog/commit/dc941b2a5803e12434df97f5350a14e66f272a24))
+* **board:** status sub-tab two-level navigation ([bdef112](https://github.com/ondrej-svec/hog/commit/bdef112cade2ff688ab3ac8bebb6b5237d6322c4))
+
 ## [1.9.3](https://github.com/ondrej-svec/hog/compare/hog-v1.9.2...hog-v1.9.3) (2026-02-22)
 
 
