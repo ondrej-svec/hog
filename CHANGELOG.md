@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.13.0](https://github.com/ondrej-svec/hog/compare/hog-v1.12.0...hog-v1.13.0) (2026-02-22)
+
+
+### Features
+
+* **board:** width-aware single-line issue rows with compact labels ([6a7efd5](https://github.com/ondrej-svec/hog/commit/6a7efd5621b7e86323e67b1d9dbada475b375a10))
+* **board:** width-aware single-line issue rows with compact labels ([f578562](https://github.com/ondrej-svec/hog/commit/f5785625669ac1bfbc3ffe725763fa85b60c3c10))
+
 ## [1.12.0](https://github.com/ondrej-svec/hog/compare/hog-v1.11.0...hog-v1.12.0) (2026-02-22)
 
 
