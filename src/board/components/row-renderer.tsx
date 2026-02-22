@@ -1,10 +1,7 @@
 import { Box, Text } from "ink";
 import type { GitHubIssue } from "../../github.js";
-import type { Task } from "../../types.js";
-import { timeAgo } from "../constants.js";
 import type { ActivityEvent } from "../fetch.js";
 import { IssueRow } from "./issue-row.js";
-import { TaskRow } from "./task-row.js";
 
 // ── Types ──
 
@@ -27,7 +24,6 @@ export type FlatRow =
       isCollapsed?: boolean;
     }
   | { type: "issue"; key: string; navId: string; issue: GitHubIssue; repoName: string }
-  | { type: "task"; key: string; navId: string; task: Task }
   | { type: "activity"; key: string; navId: null; event: ActivityEvent }
   | { type: "error"; key: string; navId: null; text: string }
   | { type: "gap"; key: string; navId: null };
@@ -39,7 +35,6 @@ interface RowRendererProps {
   readonly isMultiSelected?: boolean | undefined;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: many row type variants
 export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: RowRendererProps) {
   switch (row.type) {
     case "sectionHeader": {
@@ -90,17 +85,8 @@ export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: Row
         </Box>
       );
     }
-    case "task": {
-      const checkbox = isMultiSelected != null ? (isMultiSelected ? "\u2611 " : "\u2610 ") : "";
-      return (
-        <Box>
-          {checkbox ? <Text color={isMultiSelected ? "cyan" : "gray"}>{checkbox}</Text> : null}
-          <TaskRow task={row.task} isSelected={selectedId === row.navId} />
-        </Box>
-      );
-    }
     case "activity": {
-      const ago = timeAgo(row.event.timestamp);
+      const ago = new Date(row.event.timestamp).toLocaleTimeString();
       return (
         <Text dimColor>
           {"  "}

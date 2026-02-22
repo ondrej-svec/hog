@@ -9,21 +9,23 @@ function renderHintBar(props: HintBarProps) {
 }
 
 describe("HintBar", () => {
-  it("normal mode: shows navigation and quit shortcuts", () => {
+  it("normal mode (panel 3): shows move and quit shortcuts", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "normal",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
     });
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("j/k:nav");
-    expect(frame).toContain("?:more q:quit");
+    expect(frame).toContain("j/k:move");
+    expect(frame).toContain("q:quit");
   });
 
   it("search mode: shows [SEARCH] label", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "search",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -35,6 +37,7 @@ describe("HintBar", () => {
   it("multiSelect mode: shows [MULTI-SELECT] with count", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "multiSelect",
+      activePanelId: 3,
       multiSelectCount: 3,
       searchQuery: "",
       mineOnly: false,
@@ -47,6 +50,7 @@ describe("HintBar", () => {
   it("focus mode: shows [FOCUS] label", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "focus",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -58,6 +62,7 @@ describe("HintBar", () => {
   it("overlay:fuzzyPicker mode: shows fuzzy picker navigation hints", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "overlay:fuzzyPicker",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -71,6 +76,7 @@ describe("HintBar", () => {
   it("overlay:status mode: shows generic overlay hints", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "overlay:status",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -84,6 +90,7 @@ describe("HintBar", () => {
   it("overlay:comment mode: shows generic overlay hints", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "overlay:comment",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -93,9 +100,10 @@ describe("HintBar", () => {
     expect(frame).toContain("Esc:cancel");
   });
 
-  it("normal mode with hasUndoable=true: shows u:undo shortcut", () => {
+  it("normal mode (panel 3) with hasUndoable=true: shows u:undo shortcut", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "normal",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -105,9 +113,10 @@ describe("HintBar", () => {
     expect(frame).toContain("u:undo");
   });
 
-  it("normal mode with hasUndoable=false: does not show u:undo", () => {
+  it("normal mode (panel 3) with hasUndoable=false: does not show u:undo", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "normal",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: false,
@@ -120,6 +129,7 @@ describe("HintBar", () => {
   it("normal mode with searchQuery: shows filter with query", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "normal",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "my query",
       mineOnly: false,
@@ -134,6 +144,7 @@ describe("HintBar", () => {
   it("normal mode with mineOnly: shows filter:@me", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "normal",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "",
       mineOnly: true,
@@ -145,6 +156,7 @@ describe("HintBar", () => {
   it("search mode with searchQuery: shows the query", () => {
     const { lastFrame } = renderHintBar({
       uiMode: "search",
+      activePanelId: 3,
       multiSelectCount: 0,
       searchQuery: "bug",
       mineOnly: false,
@@ -152,5 +164,31 @@ describe("HintBar", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("[SEARCH]");
     expect(frame).toContain('"bug"');
+  });
+
+  it("normal mode panel 1 (Repos): shows repos navigation hints", () => {
+    const { lastFrame } = renderHintBar({
+      uiMode: "normal",
+      activePanelId: 1,
+      multiSelectCount: 0,
+      searchQuery: "",
+      mineOnly: false,
+    });
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("j/k:move");
+    expect(frame).toContain("Enter:filter");
+  });
+
+  it("normal mode panel 4 (Activity): shows activity navigation hints", () => {
+    const { lastFrame } = renderHintBar({
+      uiMode: "normal",
+      activePanelId: 4,
+      multiSelectCount: 0,
+      searchQuery: "",
+      mineOnly: false,
+    });
+    const frame = lastFrame() ?? "";
+    expect(frame).toContain("j/k:scroll");
+    expect(frame).toContain("Enter:jump");
   });
 });

@@ -386,12 +386,14 @@ describe("fetchProjectEnrichment", () => {
       targetDate?: string;
       status?: string;
     }>,
+    pageInfo: { hasNextPage: boolean; endCursor?: string } = { hasNextPage: false },
   ) {
     return {
       data: {
         organization: {
           projectV2: {
             items: {
+              pageInfo,
               nodes: items.map(({ issueNumber, targetDate, status }) => {
                 const fieldValues: unknown[] = [];
                 if (targetDate) {
@@ -460,6 +462,30 @@ describe("fetchProjectEnrichment", () => {
 
     expect(result.size).toBe(1);
     expect(result.get(3)).toEqual({ projectStatus: "Todo" });
+  });
+
+  it("paginates through multiple pages", () => {
+    mockExecFileSync
+      .mockReturnValueOnce(
+        JSON.stringify(
+          makeEnrichmentResponse([{ issueNumber: 1, status: "In Progress" }], {
+            hasNextPage: true,
+            endCursor: "cursor1",
+          }),
+        ),
+      )
+      .mockReturnValueOnce(
+        JSON.stringify(
+          makeEnrichmentResponse([{ issueNumber: 2, status: "Review" }], { hasNextPage: false }),
+        ),
+      );
+
+    const result = fetchProjectEnrichment("org/repo", 5);
+
+    expect(result.size).toBe(2);
+    expect(result.get(1)).toEqual({ projectStatus: "In Progress" });
+    expect(result.get(2)).toEqual({ projectStatus: "Review" });
+    expect(mockExecFileSync).toHaveBeenCalledTimes(2);
   });
 });
 
