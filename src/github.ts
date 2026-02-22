@@ -320,10 +320,11 @@ export function fetchProjectEnrichment(
   if (!owner) return new Map();
 
   const query = `
-    query($owner: String!, $projectNumber: Int!) {
+    query($owner: String!, $projectNumber: Int!, $cursor: String) {
       organization(login: $owner) {
         projectV2(number: $projectNumber) {
-          items(first: 100) {
+          items(first: 100, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
             nodes {
               content {
                 ... on Issue {
@@ -350,35 +351,44 @@ export function fetchProjectEnrichment(
   `;
 
   try {
-    const result = runGhJson<ProjectItemsResult>([
-      "api",
-      "graphql",
-      "-f",
-      `query=${query}`,
-      "-F",
-      `owner=${owner}`,
-      "-F",
-      `projectNumber=${String(projectNumber)}`,
-    ]);
-
-    const items = result?.data?.organization?.projectV2?.items?.nodes ?? [];
     const enrichMap = new Map<number, ProjectEnrichment>();
+    let cursor: string | null = null;
 
-    for (const item of items) {
-      if (!item?.content?.number) continue;
-      const enrichment: ProjectEnrichment = {};
-      const fieldValues = item.fieldValues?.nodes ?? [];
-      for (const fv of fieldValues) {
-        if (!fv) continue;
-        if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
-          enrichment.targetDate = fv.date;
+    do {
+      const args = [
+        "api",
+        "graphql",
+        "-f",
+        `query=${query}`,
+        "-F",
+        `owner=${owner}`,
+        "-F",
+        `projectNumber=${String(projectNumber)}`,
+      ];
+      if (cursor) args.push("-f", `cursor=${cursor}`);
+      const result = runGhJson<ProjectItemsResult>(args);
+      const page = result?.data?.organization?.projectV2?.items;
+      const nodes = page?.nodes ?? [];
+
+      for (const item of nodes) {
+        if (!item?.content?.number) continue;
+        const enrichment: ProjectEnrichment = {};
+        const fieldValues = item.fieldValues?.nodes ?? [];
+        for (const fv of fieldValues) {
+          if (!fv) continue;
+          if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
+            enrichment.targetDate = fv.date;
+          }
+          if ("name" in fv && fv.field?.name === "Status" && fv.name) {
+            enrichment.projectStatus = fv.name;
+          }
         }
-        if ("name" in fv && fv.field?.name === "Status" && fv.name) {
-          enrichment.projectStatus = fv.name;
-        }
+        enrichMap.set(item.content.number, enrichment);
       }
-      enrichMap.set(item.content.number, enrichment);
-    }
+
+      if (!page?.pageInfo?.hasNextPage) break;
+      cursor = page.pageInfo.endCursor ?? null;
+    } while (cursor);
 
     return enrichMap;
   } catch {
@@ -826,6 +836,7 @@ interface ProjectItemsResult {
     organization?: {
       projectV2?: {
         items?: {
+          pageInfo?: { hasNextPage: boolean; endCursor?: string };
           nodes?: (ProjectItemNode | null)[];
         };
       };
