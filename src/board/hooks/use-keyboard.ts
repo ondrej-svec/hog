@@ -41,6 +41,10 @@ interface UseKeyboardOptions {
     jumpTo: (idx: number) => void;
     count: number;
   };
+  statusNav: {
+    next: () => void;
+    prev: () => void;
+  } | null;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -53,6 +57,7 @@ export function useKeyboard({
   actions,
   onSearchEscape,
   tabNav,
+  statusNav,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -179,6 +184,14 @@ export function useKeyboard({
           return;
         }
         if (input === "s") {
+          statusNav?.next();
+          return;
+        }
+        if (input === "S") {
+          statusNav?.prev();
+          return;
+        }
+        if (input === "o") {
           handleSlack();
           return;
         }
@@ -273,6 +286,7 @@ export function useKeyboard({
       ui,
       nav,
       tabNav,
+      statusNav,
       exit,
       refresh,
       handleSlack,

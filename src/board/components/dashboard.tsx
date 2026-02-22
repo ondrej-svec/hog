@@ -26,6 +26,7 @@ import { HintBar } from "./hint-bar.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
+import { StatusTabBar } from "./status-tab-bar.js";
 import { TabBar } from "./tab-bar.js";
 import { ToastContainer } from "./toast-container.js";
 
@@ -187,7 +188,30 @@ function buildTabs(tree: BoardTree): Tab[] {
   return tabs;
 }
 
-function buildNavItemsForTab(tabId: string, tree: BoardTree): NavItem[] {
+// ── Status tab navigation ──
+
+interface StatusTab {
+  id: string; // BoardGroup.subId — e.g., "sub:aimee:Backlog"
+  label: string; // BoardGroup.label — e.g., "Backlog"
+  count: number; // BoardGroup.issues.length
+}
+
+function isRepoTab(tabId: string | null): boolean {
+  return tabId !== null && tabId !== "activity" && tabId !== "ticktick";
+}
+
+function buildStatusTabs(tabId: string | null, tree: BoardTree): StatusTab[] {
+  if (!isRepoTab(tabId)) return [];
+  const section = tree.sections.find((s) => s.sectionId === tabId);
+  if (!section) return [];
+  return section.groups.map((g) => ({ id: g.subId, label: g.label, count: g.issues.length }));
+}
+
+function buildNavItemsForTab(
+  tabId: string,
+  tree: BoardTree,
+  activeStatusId: string | null,
+): NavItem[] {
   if (tabId === "activity") return [];
   if (tabId === "ticktick")
     return tree.tasks.map((task) => ({
@@ -197,16 +221,20 @@ function buildNavItemsForTab(tabId: string, tree: BoardTree): NavItem[] {
     }));
   const section = tree.sections.find((s) => s.sectionId === tabId);
   if (!section) return [];
-  return section.groups.flatMap((group) =>
-    group.issues.map((issue) => ({
-      id: `gh:${section.repo.name}:${issue.number}`,
-      section: tabId,
-      type: "item" as const,
-    })),
-  );
+  const activeGroup = section.groups.find((g) => g.subId === activeStatusId) ?? section.groups[0];
+  if (!activeGroup) return [];
+  return activeGroup.issues.map((issue) => ({
+    id: `gh:${section.repo.name}:${issue.number}`,
+    section: tabId,
+    type: "item" as const,
+  }));
 }
 
-function buildFlatRowsForTab(tabId: string, tree: BoardTree): FlatRow[] {
+function buildFlatRowsForTab(
+  tabId: string,
+  tree: BoardTree,
+  activeStatusId: string | null,
+): FlatRow[] {
   if (tabId === "activity")
     return tree.activity.map((event, i) => ({
       type: "activity" as const,
@@ -229,30 +257,15 @@ function buildFlatRowsForTab(tabId: string, tree: BoardTree): FlatRow[] {
     return [
       { type: "subHeader" as const, key: `empty:${tabId}`, navId: null, text: "No open issues" },
     ];
-  const rows: FlatRow[] = [];
-  let isFirst = true;
-  for (const group of section.groups) {
-    if (!isFirst)
-      rows.push({ type: "gap" as const, key: `gap:${tabId}:${group.label}`, navId: null });
-    isFirst = false;
-    rows.push({
-      type: "subHeader" as const,
-      key: group.subId,
-      navId: null,
-      text: group.label,
-      count: group.issues.length,
-      isCollapsed: false,
-    });
-    for (const issue of group.issues)
-      rows.push({
-        type: "issue" as const,
-        key: `gh:${section.repo.name}:${issue.number}`,
-        navId: `gh:${section.repo.name}:${issue.number}`,
-        issue,
-        repoName: section.repo.name,
-      });
-  }
-  return rows;
+  const activeGroup = section.groups.find((g) => g.subId === activeStatusId) ?? section.groups[0];
+  if (!activeGroup) return [];
+  return activeGroup.issues.map((issue) => ({
+    type: "issue" as const,
+    key: `gh:${section.repo.name}:${issue.number}`,
+    navId: `gh:${section.repo.name}:${issue.number}`,
+    issue,
+    repoName: section.repo.name,
+  }));
 }
 
 function openInBrowser(url: string): void {
@@ -292,8 +305,10 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
 
 // ── Dashboard ──
 
-// Header (1) + tab bar (1) + sticky group header (1) + hint bar (1) + padding (2 top+bottom)
-const CHROME_ROWS = 6;
+// Header (1) + tab bar (1) + status sub-tab bar (1, repo tabs only) + hint bar (1) + padding (2 top+bottom)
+// Repo tabs: 6 rows (status sub-tab bar visible). Activity/Tasks: 5 rows (status bar hidden).
+const CHROME_ROWS_REPO = 6;
+const CHROME_ROWS_OTHER = 5;
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
 function Dashboard({ config, options, activeProfile }: DashboardProps) {
@@ -395,25 +410,54 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const nextTab = useCallback(() => {
     if (tabs.length === 0) return;
     setActiveTabId(tabs[(Math.max(activeTabIdx, 0) + 1) % tabs.length]?.id ?? null);
+    setActiveStatusId(null);
   }, [activeTabIdx, tabs]);
 
   const prevTab = useCallback(() => {
     if (tabs.length === 0) return;
     setActiveTabId(tabs[(Math.max(activeTabIdx, 0) - 1 + tabs.length) % tabs.length]?.id ?? null);
+    setActiveStatusId(null);
   }, [activeTabIdx, tabs]);
 
   const jumpToTab = useCallback(
     (idx: number) => {
       const tab = tabs[idx];
-      if (tab) setActiveTabId(tab.id);
+      if (tab) {
+        setActiveTabId(tab.id);
+        setActiveStatusId(null);
+      }
     },
     [tabs],
   );
 
+  // Status sub-tab navigation (second-level tabs within a repo tab)
+  const [activeStatusId, setActiveStatusId] = useState<string | null>(null);
+  const statusTabs = useMemo(
+    () => buildStatusTabs(effectiveTabId, boardTree),
+    [effectiveTabId, boardTree],
+  );
+  const effectiveStatusId = activeStatusId ?? statusTabs[0]?.id ?? null;
+  const activeStatusIdx = statusTabs.findIndex((t) => t.id === effectiveStatusId);
+
+  const nextStatus = useCallback(() => {
+    if (statusTabs.length === 0) return;
+    setActiveStatusId(
+      statusTabs[(Math.max(activeStatusIdx, 0) + 1) % statusTabs.length]?.id ?? null,
+    );
+  }, [activeStatusIdx, statusTabs]);
+
+  const prevStatus = useCallback(() => {
+    if (statusTabs.length === 0) return;
+    setActiveStatusId(
+      statusTabs[(Math.max(activeStatusIdx, 0) - 1 + statusTabs.length) % statusTabs.length]?.id ??
+        null,
+    );
+  }, [activeStatusIdx, statusTabs]);
+
   // Navigation — flat item list for active tab only
   const navItems = useMemo(
-    () => buildNavItemsForTab(effectiveTabId ?? "", boardTree),
-    [effectiveTabId, boardTree],
+    () => buildNavItemsForTab(effectiveTabId ?? "", boardTree, effectiveStatusId),
+    [effectiveTabId, boardTree, effectiveStatusId],
   );
   const nav = useNavigation(navItems);
 
@@ -599,15 +643,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const overlayBarRows = ui.state.mode === "search" || ui.state.mode === "overlay:comment" ? 1 : 0;
   const toastRows = toasts.length;
   const logPaneRows = logVisible ? 4 : 0;
+  const chromeRows = isRepoTab(effectiveTabId) ? CHROME_ROWS_REPO : CHROME_ROWS_OTHER;
   const viewportHeight = Math.max(
     5,
-    termSize.rows - CHROME_ROWS - overlayBarRows - toastRows - logPaneRows,
+    termSize.rows - chromeRows - overlayBarRows - toastRows - logPaneRows,
   );
 
   // Build flat rows for active tab
   const flatRows = useMemo(
-    () => buildFlatRowsForTab(effectiveTabId ?? "", boardTree),
-    [effectiveTabId, boardTree],
+    () => buildFlatRowsForTab(effectiveTabId ?? "", boardTree, effectiveStatusId),
+    [effectiveTabId, boardTree, effectiveStatusId],
   );
 
   // Scroll offset - tracks viewport position
@@ -623,16 +668,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     () => flatRows.findIndex((r) => r.navId === nav.selectedId),
     [flatRows, nav.selectedId],
   );
-
-  // Sticky group header: walk backward from selected row to nearest subHeader
-  const stickyHeader = useMemo((): { text: string; count: number | undefined } | null => {
-    if (selectedRowIdx < 0) return null;
-    for (let i = selectedRowIdx; i >= 0; i--) {
-      const row = flatRows[i];
-      if (row?.type === "subHeader") return { text: row.text, count: row.count };
-    }
-    return null;
-  }, [flatRows, selectedRowIdx]);
 
   // Adjust scroll to keep selected item visible
   if (selectedRowIdx >= 0) {
@@ -821,13 +856,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       // Switch to the tab that contains this item
       if (navId.startsWith("gh:")) {
         const parts = navId.split(":");
-        if (parts.length >= 3 && parts[1]) setActiveTabId(parts[1]);
+        const repoName = parts[1];
+        if (parts.length >= 3 && repoName) {
+          setActiveTabId(repoName);
+          // Jump to the status group containing this issue
+          const section = boardTree.sections.find((s) => s.sectionId === repoName);
+          const issueNum = parts[2] ? Number(parts[2]) : null;
+          const targetGroup = section?.groups.find((g) =>
+            g.issues.some((iss) => iss.number === issueNum),
+          );
+          setActiveStatusId(targetGroup?.subId ?? null);
+        }
       } else if (navId.startsWith("tt:")) {
         setActiveTabId("ticktick");
+        setActiveStatusId(null);
       }
       ui.exitToNormal();
     },
-    [nav, ui],
+    [nav, ui, boardTree],
   );
 
   // Keyboard input — all useInput handlers live in use-keyboard.ts
@@ -863,6 +909,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     },
     onSearchEscape,
     tabNav: { next: nextTab, prev: prevTab, jumpTo: jumpToTab, count: tabs.length },
+    statusNav: isRepoTab(effectiveTabId) ? { next: nextStatus, prev: prevStatus } : null,
   });
 
   // Loading state
@@ -965,20 +1012,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "focus" ? (
         <>
-          {/* Sticky group header — always renders 1 row; blank when no group selected */}
-          <Box>
-            {stickyHeader ? (
-              <>
-                <Text bold color="white">
-                  {" "}
-                  {stickyHeader.text}
-                </Text>
-                {stickyHeader.count != null ? (
-                  <Text color="gray"> ({stickyHeader.count})</Text>
-                ) : null}
-              </>
-            ) : null}
-          </Box>
+          {/* Status sub-tab bar — only on repo tabs */}
+          {isRepoTab(effectiveTabId) ? (
+            <StatusTabBar
+              tabs={statusTabs}
+              activeTabId={effectiveStatusId}
+              totalWidth={termSize.cols}
+            />
+          ) : null}
           <Box height={viewportHeight}>
             {/* Scrollable list */}
             <Box flexDirection="column" flexGrow={1}>

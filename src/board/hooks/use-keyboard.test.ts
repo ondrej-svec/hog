@@ -188,6 +188,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       actions: actions as unknown as Parameters<typeof useKeyboard>[0]["actions"],
       onSearchEscape,
       tabNav,
+      statusNav: null,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -422,9 +423,9 @@ describe("useKeyboard", () => {
       expect(actions.refresh).toHaveBeenCalledOnce();
     });
 
-    it("s calls handleSlack", () => {
+    it("o calls handleSlack", () => {
       const { actions, fire } = setup({ mode: "normal" });
-      fire("s");
+      fire("o");
       expect(actions.handleSlack).toHaveBeenCalledOnce();
     });
 
