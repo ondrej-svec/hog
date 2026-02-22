@@ -292,8 +292,8 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
 
 // ── Dashboard ──
 
-// Header (1) + tab bar (1) + status bar (1) + padding (2 top+bottom)
-const CHROME_ROWS = 5;
+// Header (1) + tab bar (1) + sticky group header (1) + hint bar (1) + padding (2 top+bottom)
+const CHROME_ROWS = 6;
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
 function Dashboard({ config, options, activeProfile }: DashboardProps) {
@@ -624,30 +624,22 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     [flatRows, nav.selectedId],
   );
 
+  // Sticky group header: walk backward from selected row to nearest subHeader
+  const stickyHeader = useMemo((): { text: string; count: number | undefined } | null => {
+    if (selectedRowIdx < 0) return null;
+    for (let i = selectedRowIdx; i >= 0; i--) {
+      const row = flatRows[i];
+      if (row?.type === "subHeader") return { text: row.text, count: row.count };
+    }
+    return null;
+  }, [flatRows, selectedRowIdx]);
+
   // Adjust scroll to keep selected item visible
   if (selectedRowIdx >= 0) {
     if (selectedRowIdx < scrollRef.current) {
       scrollRef.current = selectedRowIdx;
     } else if (selectedRowIdx >= scrollRef.current + viewportHeight) {
       scrollRef.current = selectedRowIdx - viewportHeight + 1;
-    }
-    // When the selected item lands at the very top of the viewport, search backward
-    // for the nearest subHeader (group label) and pull scroll back to include it,
-    // provided it fits within the same viewport. This keeps group headers visible
-    // when navigating up across status-group boundaries.
-    if (scrollRef.current > 0 && scrollRef.current === selectedRowIdx) {
-      let subIdx = -1;
-      for (let i = selectedRowIdx - 1; i >= 0; i--) {
-        const row = flatRows[i];
-        if (!row || row.type === "sectionHeader") break;
-        if (row.type === "subHeader") {
-          subIdx = i;
-          break;
-        }
-      }
-      if (subIdx >= 0 && selectedRowIdx - subIdx < viewportHeight) {
-        scrollRef.current = subIdx;
-      }
     }
   }
   const maxOffset = Math.max(0, flatRows.length - viewportHeight);
@@ -964,7 +956,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onPushEntry={pushEntry}
       />
 
-      {/* Main content: scrollable list + optional detail panel (hidden during full-screen overlays) */}
+      {/* Main content: sticky header + scrollable list + optional detail panel (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
       ui.state.mode !== "overlay:create" &&
@@ -972,52 +964,68 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "focus" ? (
-        <Box height={viewportHeight}>
-          {/* Scrollable list */}
-          <Box flexDirection="column" flexGrow={1}>
-            {hasMoreAbove ? (
-              <Text color="gray" dimColor>
-                {" "}
-                {"\u25B2"} {aboveCount} more above
-              </Text>
-            ) : null}
-
-            {visibleRows.map((row) => (
-              <RowRenderer
-                key={row.key}
-                row={row}
-                selectedId={nav.selectedId}
-                selfLogin={config.board.assignee}
-                isMultiSelected={
-                  ui.state.mode === "multiSelect" && row.navId
-                    ? multiSelect.isSelected(row.navId)
-                    : undefined
-                }
-              />
-            ))}
-
-            {hasMoreBelow ? (
-              <Text color="gray" dimColor>
-                {" "}
-                {"\u25BC"} {belowCount} more below
-              </Text>
+        <>
+          {/* Sticky group header — always renders 1 row; blank when no group selected */}
+          <Box>
+            {stickyHeader ? (
+              <>
+                <Text bold color="white">
+                  {" "}
+                  {stickyHeader.text}
+                </Text>
+                {stickyHeader.count != null ? (
+                  <Text color="gray"> ({stickyHeader.count})</Text>
+                ) : null}
+              </>
             ) : null}
           </Box>
+          <Box height={viewportHeight}>
+            {/* Scrollable list */}
+            <Box flexDirection="column" flexGrow={1}>
+              {hasMoreAbove ? (
+                <Text color="gray" dimColor>
+                  {" "}
+                  {"\u25B2"} {aboveCount} more above
+                </Text>
+              ) : null}
 
-          {/* Detail panel */}
-          {showDetailPanel ? (
-            <Box marginLeft={1} width={detailPanelWidth}>
-              <DetailPanel
-                issue={selectedItem.issue}
-                task={selectedItem.task}
-                width={detailPanelWidth}
-                issueRepo={selectedItem.repoName}
-                fetchComments={handleFetchComments}
-                commentsState={currentCommentsState}
-              />
+              {visibleRows.map((row) => (
+                <RowRenderer
+                  key={row.key}
+                  row={row}
+                  selectedId={nav.selectedId}
+                  selfLogin={config.board.assignee}
+                  isMultiSelected={
+                    ui.state.mode === "multiSelect" && row.navId
+                      ? multiSelect.isSelected(row.navId)
+                      : undefined
+                  }
+                />
+              ))}
+
+              {hasMoreBelow ? (
+                <Text color="gray" dimColor>
+                  {" "}
+                  {"\u25BC"} {belowCount} more below
+                </Text>
+              ) : null}
             </Box>
-          ) : null}
-        </Box>
+
+            {/* Detail panel */}
+            {showDetailPanel ? (
+              <Box marginLeft={1} width={detailPanelWidth}>
+                <DetailPanel
+                  issue={selectedItem.issue}
+                  task={selectedItem.task}
+                  width={detailPanelWidth}
+                  issueRepo={selectedItem.repoName}
+                  fetchComments={handleFetchComments}
+                  commentsState={currentCommentsState}
+                />
+              </Box>
+            ) : null}
+          </Box>
+        </>
       ) : null}
 
       {/* Toast notifications */}

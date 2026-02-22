@@ -761,3 +761,99 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 });
+
+describe("sticky group header", () => {
+  afterEach(() => {
+    mockFetchDashboard.mockReset();
+  });
+
+  it("shows current group label pinned above the scrollable list", async () => {
+    mockFetchDashboard.mockResolvedValue(
+      makeDashboardData({
+        repos: [
+          makeRepoData({
+            issues: [makeIssue({ number: 1, title: "Active issue", projectStatus: "In Progress" })],
+          }),
+        ],
+      }),
+    );
+    const instance = render(
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+    );
+    await delay(200);
+    // Sticky header shows "In Progress" for the selected issue's group
+    expect(instance.lastFrame()).toContain("In Progress");
+    instance.unmount();
+  });
+
+  it("sticky header stays visible after navigating through many issues in a group", async () => {
+    // Create 7 issues in "In Progress" to ensure we can navigate deep in the group.
+    // The sticky header always shows the current group label regardless of scroll position.
+    const issues = Array.from({ length: 7 }, (_, i) =>
+      makeIssue({ number: i + 1, title: `Issue ${i + 1}`, projectStatus: "In Progress" }),
+    );
+    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
+    const instance = render(
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+    );
+    await delay(200);
+    // Navigate down 5 positions (deep into the group)
+    for (let i = 0; i < 5; i++) {
+      instance.stdin.write("j");
+      await delay(20);
+    }
+    // Sticky header must show the group label regardless of whether
+    // the inline subHeader row has scrolled off the visible list
+    expect(instance.lastFrame()).toContain("In Progress");
+    instance.unmount();
+  });
+
+  it("sticky header updates immediately when cursor crosses a group boundary", async () => {
+    const issues: GitHubIssue[] = [
+      makeIssue({ number: 1, title: "WIP issue", projectStatus: "In Progress" }),
+      makeIssue({ number: 2, title: "Backlog #1", projectStatus: "Backlog" }),
+      makeIssue({ number: 3, title: "Backlog #2", projectStatus: "Backlog" }),
+    ];
+    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
+    const instance = render(
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+    );
+    await delay(200);
+    // Cursor starts on issue #1 — sticky header shows "In Progress"
+    expect(instance.lastFrame()).toContain("In Progress");
+    // Navigate j twice to move into Backlog group (j#1 → issue#2, j#2 → issue#3)
+    instance.stdin.write("j");
+    await delay(30);
+    instance.stdin.write("j");
+    await delay(30);
+    // Now on issue #3 (Backlog) — sticky header shows "Backlog"
+    expect(instance.lastFrame()).toContain("Backlog");
+    instance.unmount();
+  });
+
+  it("renders blank sticky header row on Activity tab (no status groups)", async () => {
+    mockFetchDashboard.mockResolvedValue(
+      makeDashboardData({
+        repos: [
+          makeRepoData({
+            issues: [makeIssue({ number: 1, title: "My issue", projectStatus: "In Progress" })],
+          }),
+        ],
+        activity: [makeActivityEvent()],
+      }),
+    );
+    const instance = render(
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+    );
+    await delay(200);
+    // Switch to Activity tab (Tab key)
+    instance.stdin.write("\t");
+    await delay(50);
+    const frame = instance.lastFrame()!;
+    // Activity tab is now active
+    expect(frame).toContain("Activity");
+    // No status group label in the sticky header row on Activity tab
+    expect(frame).not.toContain("In Progress");
+    instance.unmount();
+  });
+});
