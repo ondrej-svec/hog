@@ -968,6 +968,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           row={row}
           selectedId={nav.selectedId}
           selfLogin={config.board.assignee}
+          panelWidth={issuesPanelWidth}
           isMultiSelected={
             ui.state.mode === "multiSelect" && row.navId
               ? multiSelect.isSelected(row.navId)

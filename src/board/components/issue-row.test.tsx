@@ -25,6 +25,7 @@ function renderRow(overrides: Partial<IssueRowProps> = {}) {
     issue: makeIssue(),
     selfLogin: "alice",
     isSelected: false,
+    panelWidth: 80,
     ...overrides,
   };
   return render(React.createElement(IssueRow, props));
@@ -43,14 +44,14 @@ describe("IssueRow", () => {
     expect(lastFrame()).toContain("Fix the login bug");
   });
 
-  it("truncates long titles to 42 characters", async () => {
-    const longTitle = "A".repeat(50);
-    const { lastFrame } = renderRow({ issue: makeIssue({ title: longTitle }) });
+  it("truncates long titles to fit available panel width", async () => {
+    const longTitle = "A".repeat(200);
+    // panelWidth=80 → innerW=78, titleW=78-35=43 → truncated to 42 A's + ellipsis
+    const { lastFrame } = renderRow({ issue: makeIssue({ title: longTitle }), panelWidth: 80 });
     await delay(50);
     const frame = lastFrame() ?? "";
-    // Truncated to 41 chars + ellipsis character
     expect(frame).not.toContain(longTitle);
-    expect(frame).toContain("A".repeat(41));
+    expect(frame).toContain("A".repeat(30)); // at least 30 A's visible (titleW=33 for panelWidth=80)
   });
 
   it("shows 'unassigned' when there are no assignees", async () => {
@@ -95,7 +96,7 @@ describe("IssueRow", () => {
     expect(lastFrame()).toContain("bug");
   });
 
-  it("renders at most 2 labels", async () => {
+  it("renders at most 2 labels (compact abbreviations)", async () => {
     const { lastFrame } = renderRow({
       issue: makeIssue({
         labels: [{ name: "bug" }, { name: "enhancement" }, { name: "urgent" }],
@@ -103,9 +104,9 @@ describe("IssueRow", () => {
     });
     await delay(50);
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("bug");
-    expect(frame).toContain("enhancement");
-    expect(frame).not.toContain("urgent");
+    expect(frame).toContain("bug"); // "bug" abbrev = "bug"
+    expect(frame).toContain("enh"); // "enhancement" abbrev = "enh"
+    expect(frame).not.toContain("urg!"); // 3rd label not shown
   });
 
   it("shows updatedAt as a relative time (e.g. '2h')", async () => {

@@ -33,9 +33,17 @@ interface RowRendererProps {
   readonly selectedId: string | null;
   readonly selfLogin: string;
   readonly isMultiSelected?: boolean | undefined;
+  /** Outer issues panel width — passed to IssueRow for single-line truncation. */
+  readonly panelWidth?: number | undefined;
 }
 
-export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: RowRendererProps) {
+export function RowRenderer({
+  row,
+  selectedId,
+  selfLogin,
+  isMultiSelected,
+  panelWidth = 120,
+}: RowRendererProps) {
   switch (row.type) {
     case "sectionHeader": {
       const arrow = row.isCollapsed ? "\u25B6" : "\u25BC";
@@ -81,7 +89,12 @@ export function RowRenderer({ row, selectedId, selfLogin, isMultiSelected }: Row
       return (
         <Box>
           {checkbox ? <Text color={isMultiSelected ? "cyan" : "gray"}>{checkbox}</Text> : null}
-          <IssueRow issue={row.issue} selfLogin={selfLogin} isSelected={selectedId === row.navId} />
+          <IssueRow
+            issue={row.issue}
+            selfLogin={selfLogin}
+            isSelected={selectedId === row.navId}
+            panelWidth={panelWidth}
+          />
         </Box>
       );
     }
