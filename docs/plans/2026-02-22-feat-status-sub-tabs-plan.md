@@ -1,7 +1,7 @@
 ---
 title: "feat: Status sub-tabs two-level navigation"
 type: feat
-status: active
+status: completed
 date: 2026-02-22
 brainstorm: docs/brainstorms/2026-02-22-status-sub-tabs-brainstorm.md
 ---

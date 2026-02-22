@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.3](https://github.com/ondrej-svec/hog/compare/hog-v1.9.2...hog-v1.9.3) (2026-02-22)
+
+
+### Bug Fixes
+
+* **board:** sticky group header — always shows current status group ([#25](https://github.com/ondrej-svec/hog/issues/25)) ([4127257](https://github.com/ondrej-svec/hog/commit/41272571959915a8bc77928af2c8545c7a56b2c2))
+
+## [1.9.2](https://github.com/ondrej-svec/hog/compare/hog-v1.9.1...hog-v1.9.2) (2026-02-21)
+
+
+### Bug Fixes
+
+* **board:** keep status group header visible when navigating up ([138decd](https://github.com/ondrej-svec/hog/commit/138decd1dab469c514097e710c933e78104b67cc))
+
 ## [1.9.1](https://github.com/ondrej-svec/hog/compare/hog-v1.9.0...hog-v1.9.1) (2026-02-21)
 
 
