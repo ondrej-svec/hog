@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import { useEffect } from "react";
 import type { GitHubIssue, IssueComment } from "../../github.js";
+import { Panel } from "./panel.js";
 
 interface DetailPanelProps {
   readonly issue: GitHubIssue | null;
@@ -78,7 +79,6 @@ function formatCommentAge(createdAt: string): string {
   return `${days}d ago`;
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: conditional rendering for issue detail
 function DetailPanel({
   issue,
   width,
@@ -87,8 +87,6 @@ function DetailPanel({
   fetchComments,
   issueRepo,
 }: DetailPanelProps) {
-  const borderColor = isActive ? "cyan" : "gray";
-
   // Trigger lazy fetch when issue changes and panel is visible
   useEffect(() => {
     if (!(issue && fetchComments && issueRepo)) return;
@@ -98,32 +96,14 @@ function DetailPanel({
 
   if (!issue) {
     return (
-      <Box
-        width={width}
-        borderStyle="single"
-        borderColor={borderColor}
-        flexDirection="column"
-        paddingX={1}
-      >
-        <Text bold color={isActive ? "cyan" : "white"}>
-          [0] Detail
-        </Text>
+      <Panel title="[0] Detail" isActive={isActive} width={width}>
         <Text color="gray">No item selected</Text>
-      </Box>
+      </Panel>
     );
   }
 
   return (
-    <Box
-      width={width}
-      borderStyle="single"
-      borderColor={borderColor}
-      flexDirection="column"
-      paddingX={1}
-    >
-      <Text bold color={isActive ? "cyan" : "white"}>
-        [0] Detail
-      </Text>
+    <Panel title="[0] Detail" isActive={isActive} width={width}>
       <Text color="cyan" bold>
         #{issue.number} {issue.title}
       </Text>
@@ -214,7 +194,7 @@ function DetailPanel({
       <Text color="gray" dimColor>
         {issue.url}
       </Text>
-    </Box>
+    </Panel>
   );
 }
 

@@ -25,7 +25,14 @@ import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { HintBar } from "./hint-bar.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
-import { ACTIVITY_HEIGHT, getDetailWidth, getLayoutMode, PanelLayout } from "./panel-layout.js";
+import { Panel } from "./panel.js";
+import {
+  ACTIVITY_HEIGHT,
+  getDetailWidth,
+  getLayoutMode,
+  LEFT_COL_WIDTH,
+  PanelLayout,
+} from "./panel-layout.js";
 import { ReposPanel } from "./repos-panel.js";
 import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
@@ -615,6 +622,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     layoutMode === "wide" ? getDetailWidth(termSize.cols) : Math.floor(termSize.cols * 0.35);
   const showDetailPanel = layoutMode === "wide";
 
+  // Explicit widths for title-in-border rendering (usableWidth = cols - 2 for paddingX={1})
+  const usableWidth = termSize.cols - 2;
+  const issuesPanelWidth = Math.max(
+    20,
+    layoutMode === "wide"
+      ? usableWidth - LEFT_COL_WIDTH - getDetailWidth(termSize.cols)
+      : layoutMode === "medium"
+        ? usableWidth - LEFT_COL_WIDTH
+        : usableWidth,
+  );
+  const activityPanelWidth = usableWidth;
+
   const overlayBarRows = ui.state.mode === "search" || ui.state.mode === "overlay:comment" ? 1 : 0;
   const toastRows = toasts.length;
   const logPaneRows = logVisible ? 4 : 0;
@@ -914,6 +933,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       repos={reposData}
       selectedIdx={clampedRepoIdx}
       isActive={panelFocus.activePanelId === 1}
+      width={LEFT_COL_WIDTH}
     />
   );
 
@@ -922,24 +942,20 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       groups={statusesData}
       selectedIdx={clampedStatusIdx}
       isActive={panelFocus.activePanelId === 2}
+      width={LEFT_COL_WIDTH}
+      flexGrow={1}
     />
   );
 
-  const issuesBorderColor = panelFocus.activePanelId === 3 ? "cyan" : "gray";
+  const issuesPanelTitle = `[3] Issues${selectedSection ? ` — ${selectedSection.repo.shortName}` : ""}${selectedStatusGroup ? ` / ${selectedStatusGroup.label}` : ""}`;
 
   const issuesPanel = (
-    <Box
-      borderStyle="single"
-      borderColor={issuesBorderColor}
-      flexDirection="column"
+    <Panel
+      title={issuesPanelTitle}
+      isActive={panelFocus.activePanelId === 3}
+      width={issuesPanelWidth}
       flexGrow={1}
-      overflow="hidden"
     >
-      <Text bold color={panelFocus.activePanelId === 3 ? "cyan" : "white"}>
-        [3] Issues
-        {selectedSection ? ` — ${selectedSection.repo.shortName}` : ""}
-        {selectedStatusGroup ? ` / ${selectedStatusGroup.label}` : ""}
-      </Text>
       {hasMoreAbove ? (
         <Text color="gray" dimColor>
           {" "}
@@ -965,7 +981,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           {"\u25BC"} {belowCount} more below
         </Text>
       ) : null}
-    </Box>
+    </Panel>
   );
 
   const detailPanel = showDetailPanel ? (
@@ -985,6 +1001,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       selectedIdx={clampedActivityIdx}
       isActive={panelFocus.activePanelId === 4}
       height={ACTIVITY_HEIGHT}
+      width={activityPanelWidth}
     />
   );
 

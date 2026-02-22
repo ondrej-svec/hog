@@ -1,39 +1,39 @@
 import { Box, Text } from "ink";
+import { Panel } from "./panel.js";
 
-interface RepoItem {
+export interface RepoItem {
   name: string;
   openCount: number;
 }
 
-interface ReposPanelProps {
+export interface ReposPanelProps {
   readonly repos: RepoItem[];
   readonly selectedIdx: number;
   readonly isActive: boolean;
+  readonly width: number;
+  readonly flexGrow?: number;
 }
 
 function shortName(fullName: string): string {
-  // "owner/repo" → "repo", keeps full name if no slash
   return fullName.includes("/") ? (fullName.split("/")[1] ?? fullName) : fullName;
 }
 
-export function ReposPanel({ repos, selectedIdx, isActive }: ReposPanelProps) {
-  const borderColor = isActive ? "cyan" : "gray";
+export function ReposPanel({ repos, selectedIdx, isActive, width, flexGrow }: ReposPanelProps) {
+  // inner content width = total - 2 border chars - 2 padding chars from Box
+  const maxLabel = Math.max(4, width - 8); // leave room for "► " + " 99" + borders
 
   return (
-    <Box borderStyle="single" borderColor={borderColor} flexDirection="column" flexGrow={1}>
-      <Text bold color={isActive ? "cyan" : "white"}>
-        [1] Repos
-      </Text>
+    <Panel title="[1] Repos" isActive={isActive} width={width} flexGrow={flexGrow}>
       {repos.length === 0 ? (
-        <Text color="gray"> —</Text>
+        <Text color="gray">—</Text>
       ) : (
         repos.map((repo, i) => {
           const isSel = i === selectedIdx;
-          const label = shortName(repo.name);
+          const label = shortName(repo.name).slice(0, maxLabel);
           return (
             <Box key={repo.name}>
               <Text color={isSel ? "cyan" : isActive ? "white" : "gray"} bold={isSel}>
-                {isSel ? "\u25B6 " : "  "}
+                {isSel ? "► " : "  "}
                 {label}
               </Text>
               <Text color="gray"> {repo.openCount}</Text>
@@ -41,8 +41,6 @@ export function ReposPanel({ repos, selectedIdx, isActive }: ReposPanelProps) {
           );
         })
       )}
-    </Box>
+    </Panel>
   );
 }
-
-export type { RepoItem, ReposPanelProps };

@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 export const WIDE_THRESHOLD = 160; // full 5-panel layout
 export const MEDIUM_THRESHOLD = 100; // 2-column (left + issues), no detail
 export const LEFT_COL_WIDTH = 24;
-export const ACTIVITY_HEIGHT = 3;
+export const ACTIVITY_HEIGHT = 5;
 
 export type LayoutMode = "wide" | "medium" | "stacked";
 
