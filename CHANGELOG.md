@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/ondrej-svec/hog/compare/hog-v1.11.0...hog-v1.12.0) (2026-02-22)
+
+
+### Features
+
+* **board:** lazygit-style title-in-border panels ([#31](https://github.com/ondrej-svec/hog/issues/31)) ([2b18034](https://github.com/ondrej-svec/hog/commit/2b180340e581ba7cafa4a68ebbb27d5b2367658d))
+
 ## [1.11.0](https://github.com/ondrej-svec/hog/compare/hog-v1.10.0...hog-v1.11.0) (2026-02-22)
 
 
