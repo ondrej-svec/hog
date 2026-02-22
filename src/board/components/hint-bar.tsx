@@ -63,7 +63,7 @@ function HintBar({ uiMode, multiSelectCount, searchQuery, mineOnly, hasUndoable 
   return (
     <Box>
       <Text color="gray">
-        j/k:nav Tab:next-tab 1-9:jump Enter:open m:status c:comment F:find t:@me e:edit
+        j/k:nav Tab:repo s/S:status Enter:open m:status c:comment F:find t:@me e:edit
         {hasUndoable ? "  u:undo" : ""} ?:more q:quit
       </Text>
       {mineOnly ? <Text color="cyan"> filter:@me</Text> : null}

@@ -496,7 +496,7 @@ describe("Dashboard integration", () => {
     instance.unmount();
   });
 
-  it("should render status sub-headers as visual dividers (no collapse indicators)", async () => {
+  it("should show status sub-tab bar with group labels and only active group's issues", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "Active task", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Waiting task", projectStatus: "Backlog" }),
@@ -511,18 +511,20 @@ describe("Dashboard integration", () => {
     await delay(200);
 
     const frame = instance.lastFrame()!;
-    // Sub-headers visible as plain text dividers — issues always visible
+    // Status tab bar shows both group labels
     expect(frame).toContain("In Progress");
-    expect(frame).toContain("Active task");
     expect(frame).toContain("Backlog");
-    expect(frame).toContain("Waiting task");
-    // Status groups should NOT have ▼ collapse indicator before them
+    // Active group (In Progress) issues are visible
+    expect(frame).toContain("Active task");
+    // Backlog group issues are NOT visible (different status tab)
+    expect(frame).not.toContain("Waiting task");
+    // Status groups should NOT have ▼ collapse indicator
     expect(frame).not.toContain("\u25BC In Progress"); // no ▼ before group name
 
     instance.unmount();
   });
 
-  it("should always show all issues in the active tab (no collapse)", async () => {
+  it("should show only active status group's issues (s key cycles groups)", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "Active task", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Backlog task", projectStatus: "Backlog" }),
@@ -536,12 +538,19 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // All issues always visible — no collapse
+    // Default: first group (In Progress) is active
     const frame = instance.lastFrame()!;
     expect(frame).toContain("In Progress");
     expect(frame).toContain("Active task");
-    expect(frame).toContain("Backlog");
-    expect(frame).toContain("Backlog task");
+    expect(frame).toContain("Backlog"); // visible in status tab bar
+    expect(frame).not.toContain("Backlog task"); // Backlog tab not active
+
+    // Press s to switch to Backlog tab
+    instance.stdin.write("s");
+    await delay(50);
+    const frame2 = instance.lastFrame()!;
+    expect(frame2).toContain("Backlog task");
+    expect(frame2).not.toContain("Active task"); // In Progress tab not active
 
     instance.unmount();
   });
@@ -596,17 +605,26 @@ describe("Dashboard integration", () => {
 
     await delay(200);
 
-    // Sections start expanded by default — no Enter needed
+    // Default: first group (In Progress) is active
     const frame = instance.lastFrame()!;
-    // "In Progress" header visible
+    // Both group labels visible in status tab bar
     expect(frame).toContain("In Progress");
     // "Todo" used as merged header label (first status in "Todo,Backlog" group)
     expect(frame).toContain("Todo");
-    // Both tasks from merged group should be visible under "Todo"
-    expect(frame).toContain("Backlog task");
-    expect(frame).toContain("Todo task");
+    // Only In Progress issues visible by default
+    expect(frame).toContain("Active task");
+    expect(frame).not.toContain("Backlog task");
+    expect(frame).not.toContain("Todo task");
     // "Done" is terminal and should not appear as a header
     expect(frame).not.toContain("Done");
+
+    // Press s to switch to Todo (merged) tab
+    instance.stdin.write("s");
+    await delay(50);
+    const frame2 = instance.lastFrame()!;
+    // Both tasks from merged group visible under "Todo"
+    expect(frame2).toContain("Backlog task");
+    expect(frame2).toContain("Todo task");
 
     instance.unmount();
   });
@@ -786,9 +804,9 @@ describe("sticky group header", () => {
     instance.unmount();
   });
 
-  it("sticky header stays visible after navigating through many issues in a group", async () => {
+  it("status tab bar stays visible while navigating through many issues in a group", async () => {
     // Create 7 issues in "In Progress" to ensure we can navigate deep in the group.
-    // The sticky header always shows the current group label regardless of scroll position.
+    // The status tab bar always shows the current group label.
     const issues = Array.from({ length: 7 }, (_, i) =>
       makeIssue({ number: i + 1, title: `Issue ${i + 1}`, projectStatus: "In Progress" }),
     );
@@ -802,13 +820,12 @@ describe("sticky group header", () => {
       instance.stdin.write("j");
       await delay(20);
     }
-    // Sticky header must show the group label regardless of whether
-    // the inline subHeader row has scrolled off the visible list
+    // Status tab bar shows group label regardless of scroll position
     expect(instance.lastFrame()).toContain("In Progress");
     instance.unmount();
   });
 
-  it("sticky header updates immediately when cursor crosses a group boundary", async () => {
+  it("s key switches status tab and shows that group's issues", async () => {
     const issues: GitHubIssue[] = [
       makeIssue({ number: 1, title: "WIP issue", projectStatus: "In Progress" }),
       makeIssue({ number: 2, title: "Backlog #1", projectStatus: "Backlog" }),
@@ -819,19 +836,20 @@ describe("sticky group header", () => {
       React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
     );
     await delay(200);
-    // Cursor starts on issue #1 — sticky header shows "In Progress"
-    expect(instance.lastFrame()).toContain("In Progress");
-    // Navigate j twice to move into Backlog group (j#1 → issue#2, j#2 → issue#3)
-    instance.stdin.write("j");
+    // Default: In Progress tab active — only WIP issue visible
+    expect(instance.lastFrame()).toContain("WIP issue");
+    expect(instance.lastFrame()).not.toContain("Backlog #1");
+    // Press s to switch to Backlog tab
+    instance.stdin.write("s");
     await delay(30);
-    instance.stdin.write("j");
-    await delay(30);
-    // Now on issue #3 (Backlog) — sticky header shows "Backlog"
-    expect(instance.lastFrame()).toContain("Backlog");
+    // Now on Backlog tab — Backlog issues visible, WIP not visible
+    expect(instance.lastFrame()).toContain("Backlog #1");
+    expect(instance.lastFrame()).toContain("Backlog #2");
+    expect(instance.lastFrame()).not.toContain("WIP issue");
     instance.unmount();
   });
 
-  it("renders blank sticky header row on Activity tab (no status groups)", async () => {
+  it("status tab bar is hidden on Activity tab (no status groups)", async () => {
     mockFetchDashboard.mockResolvedValue(
       makeDashboardData({
         repos: [
@@ -852,8 +870,8 @@ describe("sticky group header", () => {
     const frame = instance.lastFrame()!;
     // Activity tab is now active
     expect(frame).toContain("Activity");
-    // No status group label in the sticky header row on Activity tab
-    expect(frame).not.toContain("In Progress");
+    // Status tab bar (with ► active indicator) is not rendered on Activity tab
+    expect(frame).not.toContain("[►");
     instance.unmount();
   });
 });

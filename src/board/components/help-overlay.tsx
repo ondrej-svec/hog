@@ -12,9 +12,10 @@ const SHORTCUTS = [
     items: [
       { key: "j / Down", desc: "Move down" },
       { key: "k / Up", desc: "Move up" },
-      { key: "Tab", desc: "Next tab" },
-      { key: "Shift+Tab", desc: "Previous tab" },
-      { key: "1-9", desc: "Jump to tab by number" },
+      { key: "Tab", desc: "Next repo tab" },
+      { key: "Shift+Tab", desc: "Previous repo tab" },
+      { key: "1-9", desc: "Jump to repo tab by number" },
+      { key: "s / S", desc: "Next / prev status tab" },
     ],
   },
   {
@@ -39,7 +40,7 @@ const SHORTCUTS = [
       { key: "c", desc: "Comment on issue" },
       { key: "m", desc: "Move status" },
       { key: "e", desc: "Edit issue in $EDITOR" },
-      { key: "s", desc: "Open Slack thread" },
+      { key: "o", desc: "Open Slack thread" },
       { key: "y", desc: "Copy issue link to clipboard" },
       { key: "n", desc: "Create new issue" },
       { key: "I", desc: "Natural-language issue create" },
