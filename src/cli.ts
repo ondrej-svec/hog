@@ -144,7 +144,7 @@ const program = new Command();
 program
   .name("hog")
   .description("Personal command deck — unified task dashboard for GitHub Projects + TickTick")
-  .version("1.13.0") // x-release-please-version
+  .version("1.14.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
   .hook("preAction", (thisCommand) => {
