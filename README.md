@@ -88,7 +88,9 @@ Labels are abbreviated automatically: `size:M` → `[M]`, `priority:high` → `[
 | Key | Action |
 |-----|--------|
 | `p` | Pick up issue — assign to yourself + optional TickTick task |
-| `a` / `u` | Assign / unassign collaborator |
+| `a` | Assign issue to yourself (no-op if already assigned to anyone) |
+| `u` | Undo last reversible action |
+| `e` | Edit issue in `$EDITOR` — change assignee, title, status, labels, body |
 | `m` | Change project status |
 | `l` | Add / remove labels |
 | `c` | Add comment |

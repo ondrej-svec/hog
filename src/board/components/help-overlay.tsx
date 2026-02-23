@@ -36,8 +36,9 @@ const SHORTCUTS = [
     category: "Actions",
     items: [
       { key: "p", desc: "Pick issue (assign + TickTick)" },
-      { key: "a", desc: "Assign to self" },
+      { key: "a", desc: "Assign to self (no-op if already assigned)" },
       { key: "u", desc: "Undo last reversible action" },
+      { key: "e", desc: "Edit issue in $EDITOR (title, assignee, status, labels)" },
       { key: "c", desc: "Comment on issue" },
       { key: "m", desc: "Move status" },
       { key: "e", desc: "Edit issue in $EDITOR" },
