@@ -2,7 +2,14 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
-import { CONFIG_DIR, loadFullConfig, saveFullConfig, saveLlmAuth } from "./config.js";
+import {
+  CONFIG_DIR,
+  findRepo,
+  loadFullConfig,
+  saveFullConfig,
+  saveLlmAuth,
+  validateRepoName,
+} from "./config.js";
 
 // ── gh CLI helpers ──
 
@@ -432,4 +439,167 @@ async function runWizard(opts: InitOptions): Promise<void> {
   console.log("  hog board --live    # Interactive dashboard");
   console.log("  hog task list       # List TickTick tasks");
   console.log("  hog config show     # View configuration\n");
+}
+
+// ── repos:add wizard ──
+
+export async function runReposAdd(initialRepoName?: string): Promise<void> {
+  try {
+    await runReposAddWizard(initialRepoName);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("User force closed")) {
+      console.log("\nCancelled. No changes were made.");
+      return;
+    }
+    throw error;
+  }
+}
+
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: interactive add-repo wizard with many steps
+async function runReposAddWizard(initialRepoName?: string): Promise<void> {
+  console.log("\n🐗 hog config repos:add\n");
+
+  const cfg = loadFullConfig();
+  let repoName = initialRepoName;
+
+  if (!repoName) {
+    console.log("Fetching repositories...");
+    const allRepos = listAllRepos();
+    const configuredNames = new Set(cfg.repos.map((r) => r.name));
+    const available = allRepos.filter((r) => !configuredNames.has(r.nameWithOwner));
+
+    if (available.length === 0) {
+      console.log(
+        "No more repositories available to add. All accessible repos are already tracked.",
+      );
+      return;
+    }
+
+    repoName = await select<string>({
+      message: "Select repository to add:",
+      choices: available.map((r) => ({ name: r.nameWithOwner, value: r.nameWithOwner })),
+    });
+  }
+
+  if (!validateRepoName(repoName)) {
+    console.error("Invalid repo name. Use owner/repo format (e.g. myorg/myrepo).");
+    process.exit(1);
+  }
+
+  if (findRepo(cfg, repoName)) {
+    console.error(`Repo "${repoName}" is already configured.`);
+    process.exit(1);
+  }
+
+  const [owner, name] = repoName.split("/") as [string, string];
+  console.log(`\nConfiguring ${repoName}...`);
+
+  // Detect projects
+  console.log("  Fetching GitHub Projects...");
+  const projects = listOrgProjects(owner);
+  let projectNumber: number;
+  if (projects.length === 0) {
+    console.log("  No GitHub Projects found. Enter project number manually.");
+    const num = await input({ message: `  Project number for ${repoName}:` });
+    projectNumber = Number.parseInt(num, 10);
+  } else {
+    projectNumber = await select<number>({
+      message: `  Select project for ${repoName}:`,
+      choices: projects.map((p) => ({ name: `#${p.number} — ${p.title}`, value: p.number })),
+    });
+  }
+
+  // Auto-detect status field
+  console.log("  Detecting status field...");
+  const statusInfo = detectStatusField(owner, projectNumber);
+  let statusFieldId: string;
+  if (statusInfo) {
+    statusFieldId = statusInfo.fieldId;
+    console.log(`  Found status field: ${statusFieldId}`);
+  } else {
+    console.log("  Could not auto-detect status field.");
+    statusFieldId = await input({ message: "  Enter status field ID manually:" });
+  }
+
+  // Detect due date field
+  console.log("  Detecting due date field...");
+  let dueDateFieldId: string | undefined;
+  const existingDateField = detectDateField(owner, projectNumber);
+  if (existingDateField) {
+    console.log(`  Found date field: "${existingDateField.name}" (${existingDateField.id})`);
+    const useDateField = await confirm({
+      message: `  Use "${existingDateField.name}" for due dates?`,
+      default: true,
+    });
+    if (useDateField) {
+      dueDateFieldId = existingDateField.id;
+    }
+  } else {
+    console.log("  No due date field found.");
+    const createField = await confirm({
+      message: '  Create a "Due Date" field for this project?',
+      default: false,
+    });
+    if (createField) {
+      console.log('  Creating "Due Date" field...');
+      const newFieldId = createDateField(owner, projectNumber, "Due Date");
+      if (newFieldId) {
+        dueDateFieldId = newFieldId;
+        console.log(`  Created "Due Date" field (${newFieldId})`);
+      } else {
+        console.log("  Could not create field — due dates will be stored in issue body.");
+      }
+    }
+  }
+
+  // Completion action
+  const completionType = await select<CompletionAction["type"]>({
+    message: "  When a task is completed, what should happen on GitHub?",
+    choices: [
+      { name: "Close the issue", value: "closeIssue" as const },
+      { name: "Add a label (e.g. review:pending)", value: "addLabel" as const },
+      { name: "Update project status column", value: "updateProjectStatus" as const },
+    ],
+  });
+
+  let completionAction: CompletionAction;
+  if (completionType === "addLabel") {
+    const label = await input({ message: "  Label to add:", default: "review:pending" });
+    completionAction = { type: "addLabel", label };
+  } else if (completionType === "updateProjectStatus") {
+    const statusOptions = statusInfo?.options ?? [];
+    let optionId: string;
+    if (statusOptions.length > 0) {
+      optionId = await select<string>({
+        message: "  Status to set when completed:",
+        choices: statusOptions.map((o) => ({ name: o.name, value: o.id })),
+      });
+    } else {
+      optionId = await input({ message: "  Status option ID to set:" });
+    }
+    completionAction = { type: "updateProjectStatus", optionId };
+  } else {
+    completionAction = { type: "closeIssue" };
+  }
+
+  // Short name
+  const shortName = await input({
+    message: `  Short name for ${repoName}:`,
+    default: name,
+  });
+
+  const newRepo: RepoConfig = {
+    name: repoName,
+    shortName,
+    projectNumber,
+    statusFieldId,
+    ...(dueDateFieldId ? { dueDateFieldId } : {}),
+    completionAction,
+  };
+
+  cfg.repos.push(newRepo);
+  saveFullConfig(cfg);
+
+  console.log(`\n  Added ${shortName} → ${repoName}`);
+  console.log("  Run: hog board --live\n");
 }

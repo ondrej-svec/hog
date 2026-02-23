@@ -358,6 +358,7 @@ export function useKeyboard({
       handleEnterEditIssue,
       handleUndo,
       handleToggleLog,
+      showDetailPanel,
     ],
   );
 

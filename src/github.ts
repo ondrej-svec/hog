@@ -238,6 +238,7 @@ export async function fetchIssueCommentsAsync(
   return result.comments ?? [];
 }
 
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub Project field types
 export function fetchProjectFields(
   repo: string,
   issueNumber: number,
@@ -348,6 +349,7 @@ export interface ProjectEnrichment {
  * Fetch target dates and project statuses for all issues in a project in one GraphQL call.
  * Returns a Map from issue number to enrichment data.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub Project field types across all items
 export function fetchProjectEnrichment(
   repo: string,
   projectNumber: number,

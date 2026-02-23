@@ -25,7 +25,7 @@ import {
   saveLlmAuth,
   validateRepoName,
 } from "./config.js";
-import { runInit } from "./init.js";
+import { runInit, runReposAdd } from "./init.js";
 import { getActionLog } from "./log-persistence.js";
 import {
   jsonOut,
@@ -413,9 +413,9 @@ program
 // -- Config commands --
 
 interface ConfigAddRepoOptions {
-  projectNumber: string;
-  statusFieldId: string;
-  completionType: string;
+  projectNumber?: string;
+  statusFieldId?: string;
+  completionType?: string;
   completionOptionId?: string;
   completionLabel?: string;
 }
@@ -463,17 +463,28 @@ config
   });
 
 config
-  .command("repos:add <name>")
-  .description("Add a repository to track (owner/repo format)")
-  .requiredOption("--project-number <n>", "GitHub project number")
-  .requiredOption("--status-field-id <id>", "Project status field ID")
-  .requiredOption(
+  .command("repos:add [name]")
+  .description("Add a repository to track (interactive wizard, or pass flags for scripted use)")
+  .option("--project-number <n>", "GitHub project number (skips interactive prompt)")
+  .option("--status-field-id <id>", "Project status field ID (skips interactive prompt)")
+  .option(
     "--completion-type <type>",
     "Completion action: addLabel, updateProjectStatus, closeIssue",
   )
   .option("--completion-option-id <id>", "Option ID for updateProjectStatus")
   .option("--completion-label <label>", "Label for addLabel")
-  .action((name: string, opts: ConfigAddRepoOptions) => {
+  .action(async (name: string | undefined, opts: ConfigAddRepoOptions) => {
+    // Interactive mode: no project-number or status-field-id provided
+    if (!(opts.projectNumber && opts.statusFieldId)) {
+      await runReposAdd(name);
+      return;
+    }
+
+    // Non-interactive (scripted) mode: all required flags provided
+    if (!name) {
+      console.error("Name argument required in non-interactive mode.");
+      process.exit(1);
+    }
     if (!validateRepoName(name)) {
       console.error("Invalid repo name. Use owner/repo format (e.g., myorg/myrepo)");
       process.exit(1);
@@ -486,6 +497,11 @@ config
     }
 
     const shortName = name.split("/")[1] ?? name;
+
+    if (!opts.completionType) {
+      console.error("--completion-type required in non-interactive mode");
+      process.exit(1);
+    }
 
     let completionAction: CompletionAction;
     switch (opts.completionType) {
