@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.1](https://github.com/ondrej-svec/hog/compare/hog-v1.14.0...hog-v1.14.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **board:** detail overlay Esc handling and correct width/height ([2f3b231](https://github.com/ondrej-svec/hog/commit/2f3b231ec2a902ae48ffc28beed5b3a711bdd662))
+
 ## [1.14.0](https://github.com/ondrej-svec/hog/compare/hog-v1.13.0...hog-v1.14.0) (2026-02-23)
 
 
