@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/ondrej-svec/hog/compare/hog-v1.16.0...hog-v1.16.1) (2026-02-23)
+
+
+### Bug Fixes
+
+* **board:** y/o/c/e shortcuts work from detail overlay (0 key) ([7d615c9](https://github.com/ondrej-svec/hog/commit/7d615c94cbe5fe45a46cb816b8b7848c79139c58))
+
 ## [1.16.0](https://github.com/ondrej-svec/hog/compare/hog-v1.15.0...hog-v1.16.0) (2026-02-23)
 
 
