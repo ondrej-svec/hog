@@ -60,6 +60,17 @@ function HintBar({
     );
   }
 
+  if (uiMode === "overlay:detail") {
+    return (
+      <Box>
+        <Text color="cyan" bold>
+          [DETAIL]
+        </Text>
+        <Text color="gray"> Esc:close e:edit c:comment y:copy-link ? help</Text>
+      </Box>
+    );
+  }
+
   if (uiMode.startsWith("overlay:")) {
     return (
       <Box>

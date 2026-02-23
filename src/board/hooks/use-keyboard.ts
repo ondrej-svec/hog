@@ -49,6 +49,8 @@ interface UseKeyboardOptions {
   onRepoEnter: () => void;
   onStatusEnter: () => void;
   onActivityEnter: () => void;
+  /** Whether the detail panel is visible as a side-by-side column (wide layout). */
+  showDetailPanel: boolean;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -67,6 +69,7 @@ export function useKeyboard({
   onRepoEnter,
   onStatusEnter,
   onActivityEnter,
+  showDetailPanel,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -192,10 +195,15 @@ export function useKeyboard({
 
       // Actions (only in normal mode)
       if (ui.canAct) {
-        // Digit 0-4: focus panel by number
+        // Digit 0-4: focus panel by number.
+        // On narrow layouts digit 0 opens the detail overlay (panel is not visible).
         const digit = parseInt(input, 10);
         if (!Number.isNaN(digit) && digit >= 0 && digit <= 4) {
-          panelFocus.focusPanel(digit as PanelId);
+          if (digit === 0 && !showDetailPanel) {
+            ui.enterDetail();
+          } else {
+            panelFocus.focusPanel(digit as PanelId);
+          }
           return;
         }
 

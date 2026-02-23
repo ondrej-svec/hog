@@ -15,6 +15,7 @@ export type UIMode =
   | "overlay:help"
   | "overlay:fuzzyPicker"
   | "overlay:editIssue"
+  | "overlay:detail"
   | "multiSelect"
   | "focus";
 
@@ -41,6 +42,7 @@ export type UIAction =
   | { type: "ENTER_FOCUS" }
   | { type: "ENTER_FUZZY_PICKER" }
   | { type: "ENTER_EDIT_ISSUE" }
+  | { type: "ENTER_DETAIL" }
   | { type: "TOGGLE_HELP" }
   | { type: "EXIT_OVERLAY" }
   | { type: "EXIT_TO_NORMAL" }
@@ -110,6 +112,10 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       if (state.mode !== "normal") return state;
       return { ...state, mode: "overlay:editIssue", previousMode: "normal" };
 
+    case "ENTER_DETAIL":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:detail", previousMode: "normal" };
+
     case "TOGGLE_HELP":
       // Help stacks on any mode
       return { ...state, helpVisible: !state.helpVisible };
@@ -169,6 +175,7 @@ export interface UseUIStateResult {
   enterFocus: () => void;
   enterFuzzyPicker: () => void;
   enterEditIssue: () => void;
+  enterDetail: () => void;
   toggleHelp: () => void;
   exitOverlay: () => void;
   exitToNormal: () => void;
@@ -195,6 +202,7 @@ export function useUIState(): UseUIStateResult {
     enterFocus: useCallback(() => dispatch({ type: "ENTER_FOCUS" }), []),
     enterFuzzyPicker: useCallback(() => dispatch({ type: "ENTER_FUZZY_PICKER" }), []),
     enterEditIssue: useCallback(() => dispatch({ type: "ENTER_EDIT_ISSUE" }), []),
+    enterDetail: useCallback(() => dispatch({ type: "ENTER_DETAIL" }), []),
     toggleHelp: useCallback(() => dispatch({ type: "TOGGLE_HELP" }), []),
     exitOverlay: useCallback(() => dispatch({ type: "EXIT_OVERLAY" }), []),
     exitToNormal: useCallback(() => dispatch({ type: "EXIT_TO_NORMAL" }), []),

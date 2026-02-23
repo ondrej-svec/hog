@@ -78,6 +78,7 @@ Labels are abbreviated automatically: `size:M` → `[M]`, `priority:high` → `[
 | `0`–`4` | Jump to panel |
 | `Space` | Toggle section collapse (on header) or enter multi-select (on issue) |
 | `Enter` | Open in browser (issue) or toggle collapse (section) |
+| `0` | Detail panel — full-screen overlay on narrow terminals, focus side panel on wide |
 | `C` | Collapse all sections |
 | `?` | Toggle help overlay |
 | `q` | Quit |

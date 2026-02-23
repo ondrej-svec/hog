@@ -896,6 +896,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     onRepoEnter,
     onStatusEnter,
     onActivityEnter,
+    showDetailPanel,
   });
 
   // Loading state
@@ -1078,6 +1079,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onPushEntry={pushEntry}
       />
 
+      {/* Detail overlay — full-screen on narrow layouts (no side panel) */}
+      {ui.state.mode === "overlay:detail" ? (
+        <DetailPanel
+          issue={selectedItem.issue}
+          width={termSize.cols}
+          isActive={true}
+          issueRepo={selectedItem.repoName}
+          fetchComments={handleFetchComments}
+          commentsState={currentCommentsState}
+        />
+      ) : null}
+
       {/* Main content: 5-panel layout (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
@@ -1085,6 +1098,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:createNl" &&
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
+      ui.state.mode !== "overlay:detail" &&
       ui.state.mode !== "focus" ? (
         <PanelLayout
           cols={termSize.cols}

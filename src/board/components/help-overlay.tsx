@@ -22,6 +22,7 @@ const SHORTCUTS = [
     category: "View",
     items: [
       { key: "Enter", desc: "Open issue in browser" },
+      { key: "0", desc: "Detail panel (full-screen on narrow terminals)" },
       { key: "Space", desc: "Multi-select item" },
       { key: "/", desc: "Search (inline filter)" },
       { key: "F", desc: "Fuzzy find issue (telescope-style)" },

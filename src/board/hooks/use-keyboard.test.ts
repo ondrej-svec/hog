@@ -69,6 +69,7 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
     enterFocus: vi.fn(),
     enterFuzzyPicker: vi.fn(),
     enterEditIssue: vi.fn(),
+    enterDetail: vi.fn(),
     toggleHelp: vi.fn(),
     exitOverlay: vi.fn(),
     exitToNormal: vi.fn(),
@@ -214,6 +215,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       onRepoEnter,
       onStatusEnter,
       onActivityEnter,
+      showDetailPanel: true,
     });
     // useInput is mocked — no real Ink output required
     return null;
