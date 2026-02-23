@@ -193,6 +193,31 @@ export function useKeyboard({
       }
       if (input === "r" && handleErrorAction("retry")) return;
 
+      // Issue actions that also work from the detail overlay
+      if (ui.canAct || ui.state.mode === "overlay:detail") {
+        if (input === "y") {
+          handleCopyLink();
+          return;
+        }
+        if (input === "o") {
+          handleSlack();
+          return;
+        }
+        if (input === "c") {
+          if (selectedIssue) {
+            multiSelect.clear();
+            ui.enterComment();
+          }
+          return;
+        }
+        if (input === "e") {
+          if (selectedIssue) {
+            handleEnterEditIssue();
+          }
+          return;
+        }
+      }
+
       // Actions (only in normal mode)
       if (ui.canAct) {
         // Digit 0-4: focus panel by number.
@@ -221,14 +246,6 @@ export function useKeyboard({
           refresh();
           return;
         }
-        if (input === "o") {
-          handleSlack();
-          return;
-        }
-        if (input === "y") {
-          handleCopyLink();
-          return;
-        }
         if (input === "p") {
           handlePick();
           return;
@@ -243,13 +260,6 @@ export function useKeyboard({
         }
         if (input === "L") {
           handleToggleLog();
-          return;
-        }
-        if (input === "c") {
-          if (selectedIssue) {
-            multiSelect.clear();
-            ui.enterComment();
-          }
           return;
         }
         if (input === "m") {
@@ -287,12 +297,6 @@ export function useKeyboard({
         }
         if (input === "F") {
           handleEnterFuzzyPicker();
-          return;
-        }
-        if (input === "e") {
-          if (selectedIssue) {
-            handleEnterEditIssue();
-          }
           return;
         }
 
