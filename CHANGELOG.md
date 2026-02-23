@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.15.0](https://github.com/ondrej-svec/hog/compare/hog-v1.14.1...hog-v1.15.0) (2026-02-23)
+
+
+### Features
+
+* **board:** fetch all GitHub Project custom fields and make them searchable ([f87cdb5](https://github.com/ondrej-svec/hog/commit/f87cdb59a2be0a1fd6ba07ad3bd6d364666e2af6))
+* **board:** smart multi-field search (labels, status, assignee, #num) ([ef93b37](https://github.com/ondrej-svec/hog/commit/ef93b372658fadf6abbbd4bb1d4826256752bbc5))
+
 ## [1.14.1](https://github.com/ondrej-svec/hog/compare/hog-v1.14.0...hog-v1.14.1) (2026-02-23)
 
 
