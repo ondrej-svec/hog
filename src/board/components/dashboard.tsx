@@ -323,6 +323,13 @@ function matchesSearch(issue: GitHubIssue, query: string): boolean {
     // Project status (e.g. "in progress", "backlog")
     if (issue.projectStatus?.toLowerCase().includes(token)) return true;
 
+    // Custom project fields (Workstream, Size, Priority, Iteration, etc.)
+    if (
+      issue.customFields &&
+      Object.values(issue.customFields).some((v) => v.toLowerCase().includes(token))
+    )
+      return true;
+
     // Assignee login without @ prefix
     if (assignees.some((a) => a.login.toLowerCase().includes(token))) return true;
 

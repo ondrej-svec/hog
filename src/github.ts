@@ -15,11 +15,19 @@ export interface GitHubIssue {
   readonly body?: string;
   readonly projectStatus?: string;
   readonly slackThreadUrl?: string;
+  /**
+   * All other GitHub Project custom field values keyed by field name.
+   * Includes single-select, text, number, and iteration fields — excluding
+   * Status (→ projectStatus) and date fields (→ targetDate).
+   * Example: { Workstream: "Platform", Size: "M", Priority: "High" }
+   */
+  readonly customFields?: Record<string, string>;
 }
 
 export interface ProjectFieldValues {
   targetDate?: string;
   status?: string;
+  customFields?: Record<string, string>;
 }
 
 export interface RepoProjectConfig {
@@ -253,6 +261,18 @@ export function fetchProjectFields(
                     field { ... on ProjectV2SingleSelectField { name } }
                     name
                   }
+                  ... on ProjectV2ItemFieldTextValue {
+                    field { ... on ProjectV2Field { name } }
+                    text
+                  }
+                  ... on ProjectV2ItemFieldNumberValue {
+                    field { ... on ProjectV2Field { name } }
+                    number
+                  }
+                  ... on ProjectV2ItemFieldIterationValue {
+                    field { ... on ProjectV2IterationField { name } }
+                    title
+                  }
                 }
               }
             }
@@ -289,11 +309,26 @@ export function fetchProjectFields(
 
     for (const fv of fieldValues) {
       if (!fv) continue;
-      if ("date" in fv && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
+      const fieldName = fv.field?.name ?? "";
+      if ("date" in fv && DATE_FIELD_NAME_RE.test(fieldName)) {
         fields.targetDate = fv.date;
-      }
-      if ("name" in fv && fv.field?.name === "Status") {
+      } else if ("name" in fv && fieldName === "Status") {
         fields.status = fv.name;
+      } else if (fieldName) {
+        const value =
+          "text" in fv && fv.text != null
+            ? fv.text
+            : "number" in fv && fv.number != null
+              ? String(fv.number)
+              : "name" in fv && fv.name != null
+                ? fv.name
+                : "title" in fv && fv.title != null
+                  ? fv.title
+                  : null;
+        if (value != null) {
+          if (!fields.customFields) fields.customFields = {};
+          fields.customFields[fieldName] = value;
+        }
       }
     }
 
@@ -306,6 +341,7 @@ export function fetchProjectFields(
 export interface ProjectEnrichment {
   targetDate?: string;
   projectStatus?: string;
+  customFields?: Record<string, string>;
 }
 
 /**
@@ -340,6 +376,18 @@ export function fetchProjectEnrichment(
                   ... on ProjectV2ItemFieldSingleSelectValue {
                     field { ... on ProjectV2SingleSelectField { name } }
                     name
+                  }
+                  ... on ProjectV2ItemFieldTextValue {
+                    field { ... on ProjectV2Field { name } }
+                    text
+                  }
+                  ... on ProjectV2ItemFieldNumberValue {
+                    field { ... on ProjectV2Field { name } }
+                    number
+                  }
+                  ... on ProjectV2ItemFieldIterationValue {
+                    field { ... on ProjectV2IterationField { name } }
+                    title
                   }
                 }
               }
@@ -376,11 +424,26 @@ export function fetchProjectEnrichment(
         const fieldValues = item.fieldValues?.nodes ?? [];
         for (const fv of fieldValues) {
           if (!fv) continue;
-          if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fv.field?.name ?? "")) {
+          const fieldName = fv.field?.name ?? "";
+          if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fieldName)) {
             enrichment.targetDate = fv.date;
-          }
-          if ("name" in fv && fv.field?.name === "Status" && fv.name) {
+          } else if ("name" in fv && fieldName === "Status" && fv.name) {
             enrichment.projectStatus = fv.name;
+          } else if (fieldName) {
+            const value =
+              "text" in fv && fv.text != null
+                ? fv.text
+                : "number" in fv && fv.number != null
+                  ? String(fv.number)
+                  : "name" in fv && fv.name != null
+                    ? fv.name
+                    : "title" in fv && fv.title != null
+                      ? fv.title
+                      : null;
+            if (value != null) {
+              if (!enrichment.customFields) enrichment.customFields = {};
+              enrichment.customFields[fieldName] = value;
+            }
           }
         }
         enrichMap.set(item.content.number, enrichment);
@@ -796,6 +859,9 @@ interface FieldValue {
   field?: { name?: string };
   date?: string;
   name?: string;
+  text?: string;
+  number?: number;
+  title?: string; // iteration field title
 }
 
 interface ProjectItem {

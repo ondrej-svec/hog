@@ -164,6 +164,7 @@ export async function fetchDashboard(
             ...issue,
             ...(e?.targetDate !== undefined ? { targetDate: e.targetDate } : {}),
             ...(e?.projectStatus !== undefined ? { projectStatus: e.projectStatus } : {}),
+            ...(e?.customFields !== undefined ? { customFields: e.customFields } : {}),
             ...(slackUrl ? { slackThreadUrl: slackUrl } : {}),
           };
         });

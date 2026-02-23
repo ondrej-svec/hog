@@ -92,6 +92,28 @@ describe("matchesSearch", () => {
     expect(matchesSearch(issue, "high feature")).toBe(false);
   });
 
+  it("matches custom project field values (Workstream, Size, etc.)", () => {
+    const issue = makeIssue({
+      customFields: { Workstream: "Platform", Size: "M", Priority: "High" },
+    });
+    expect(matchesSearch(issue, "Platform")).toBe(true);
+    expect(matchesSearch(issue, "platform")).toBe(true); // case-insensitive
+    expect(matchesSearch(issue, "M")).toBe(true);
+    expect(matchesSearch(issue, "High")).toBe(true);
+    expect(matchesSearch(issue, "Frontend")).toBe(false);
+  });
+
+  it("combines custom field + label + title tokens", () => {
+    const issue = makeIssue({
+      title: "auth timeout",
+      labels: [{ name: "bug" }],
+      customFields: { Workstream: "Platform" },
+    });
+    expect(matchesSearch(issue, "auth platform")).toBe(true);
+    expect(matchesSearch(issue, "auth frontend")).toBe(false);
+    expect(matchesSearch(issue, "bug platform")).toBe(true);
+  });
+
   it("combines assignee, label, and title tokens", () => {
     const issue = makeIssue({
       title: "dark mode",
