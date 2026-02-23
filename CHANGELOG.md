@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/ondrej-svec/hog/compare/hog-v1.13.0...hog-v1.14.0) (2026-02-23)
+
+
+### Features
+
+* **board:** detail panel overlay for narrow terminals (press 0) ([6fa4735](https://github.com/ondrej-svec/hog/commit/6fa4735efb4fabbc643236403cffe27da3da6322))
+
 ## [1.13.0](https://github.com/ondrej-svec/hog/compare/hog-v1.12.0...hog-v1.13.0) (2026-02-22)
 
 
