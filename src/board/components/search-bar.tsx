@@ -13,7 +13,7 @@ function SearchBar({ defaultValue, onChange, onSubmit }: SearchBarProps) {
       <Text color="yellow">/</Text>
       <TextInput
         defaultValue={defaultValue}
-        placeholder="search..."
+        placeholder="title, label, status, @user, #123, unassigned…"
         onChange={onChange}
         onSubmit={onSubmit}
       />

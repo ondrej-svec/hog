@@ -125,8 +125,8 @@ describe("OverlayRenderer", () => {
     });
     const { lastFrame } = renderOverlay(props);
     const frame = lastFrame() ?? "";
-    // SearchBar renders the /search placeholder
-    expect(frame).toContain("/search");
+    // SearchBar renders the / vim-prefix
+    expect(frame).toContain("/");
   });
 
   it("renders ConfirmPrompt when mode is overlay:confirmPick", () => {

@@ -26,7 +26,7 @@ describe("SearchBar", () => {
   it("renders placeholder text when no defaultValue is given", async () => {
     const { lastFrame } = renderSearchBar({ defaultValue: "" });
     await delay(50);
-    expect(lastFrame()).toContain("search...");
+    expect(lastFrame()).toContain("title, label");
   });
 
   it("renders the defaultValue when provided", async () => {
@@ -38,7 +38,7 @@ describe("SearchBar", () => {
   it("does not show placeholder when defaultValue is set", async () => {
     const { lastFrame } = renderSearchBar({ defaultValue: "something" });
     await delay(50);
-    expect(lastFrame()).not.toContain("search...");
+    expect(lastFrame()).not.toContain("title, label");
   });
 
   it("calls onChange as the user types", async () => {

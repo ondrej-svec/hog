@@ -280,6 +280,56 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
   return <Text color={refreshAgeColor(lastRefresh)}>Updated {timeAgo(lastRefresh)}</Text>;
 }
 
+// ── Smart search ──
+//
+// Tokens are split on whitespace and AND-ed together.
+// Each token matches if ANY of the following is true:
+//   #123       → exact issue number
+//   @alice     → assignee login substring (@ prefix optional)
+//   unassigned → no assignees
+//   assigned   → has at least one assignee
+//   <text>     → substring of title, any label name, projectStatus, or assignee login
+
+function matchesSearch(issue: GitHubIssue, query: string): boolean {
+  if (!query.trim()) return true;
+  const tokens = query.toLowerCase().trim().split(/\s+/);
+  const labels = issue.labels ?? [];
+  const assignees = issue.assignees ?? [];
+
+  return tokens.every((token) => {
+    // Issue number: #123
+    if (token.startsWith("#")) {
+      const num = parseInt(token.slice(1), 10);
+      return !Number.isNaN(num) && issue.number === num;
+    }
+
+    // Explicit assignee: @alice
+    if (token.startsWith("@")) {
+      const login = token.slice(1);
+      return assignees.some((a) => a.login.toLowerCase().includes(login));
+    }
+
+    // Special keywords
+    if (token === "unassigned") return assignees.length === 0;
+    if (token === "assigned") return assignees.length > 0;
+
+    // Title
+    if (issue.title.toLowerCase().includes(token)) return true;
+
+    // Labels — full name (e.g. "bug", "priority:high", "size:m")
+    // Substring match means "high" finds "priority:high", "m" finds "size:m", etc.
+    if (labels.some((l) => l.name.toLowerCase().includes(token))) return true;
+
+    // Project status (e.g. "in progress", "backlog")
+    if (issue.projectStatus?.toLowerCase().includes(token)) return true;
+
+    // Assignee login without @ prefix
+    if (assignees.some((a) => a.login.toLowerCase().includes(token))) return true;
+
+    return false;
+  });
+}
+
 // ── Issues panel box (scrollable list + detail) ──
 
 const CHROME_ROWS = 3; // header (1) + hintbar (1) + paddingX top/bottom (1)
@@ -356,9 +406,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         .filter((rd) => rd.issues.length > 0);
     }
     if (!searchQuery) return filtered;
-    const q = searchQuery.toLowerCase();
     return filtered
-      .map((rd) => ({ ...rd, issues: rd.issues.filter((i) => i.title.toLowerCase().includes(q)) }))
+      .map((rd) => ({ ...rd, issues: rd.issues.filter((i) => matchesSearch(i, searchQuery)) }))
       .filter((rd) => rd.issues.length > 0);
   }, [allRepos, searchQuery, mineOnly, config.board.assignee]);
 
@@ -1131,5 +1180,5 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   );
 }
 
-export { Dashboard };
+export { Dashboard, matchesSearch };
 export type { DashboardProps };
