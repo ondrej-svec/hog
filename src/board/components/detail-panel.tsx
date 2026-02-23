@@ -6,6 +6,7 @@ import { Panel } from "./panel.js";
 interface DetailPanelProps {
   readonly issue: GitHubIssue | null;
   readonly width: number;
+  readonly height?: number | undefined;
   readonly isActive: boolean;
   readonly commentsState?: IssueComment[] | "loading" | "error" | null;
   readonly fetchComments?: (repo: string, issueNumber: number) => void;
@@ -82,6 +83,7 @@ function formatCommentAge(createdAt: string): string {
 function DetailPanel({
   issue,
   width,
+  height,
   isActive,
   commentsState,
   fetchComments,
@@ -96,14 +98,14 @@ function DetailPanel({
 
   if (!issue) {
     return (
-      <Panel title="[0] Detail" isActive={isActive} width={width}>
+      <Panel title="[0] Detail" isActive={isActive} width={width} height={height}>
         <Text color="gray">No item selected</Text>
       </Panel>
     );
   }
 
   return (
-    <Panel title="[0] Detail" isActive={isActive} width={width}>
+    <Panel title="[0] Detail" isActive={isActive} width={width} height={height}>
       <Text color="cyan" bold>
         #{issue.number} {issue.title}
       </Text>

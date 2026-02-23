@@ -1083,7 +1083,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       {ui.state.mode === "overlay:detail" ? (
         <DetailPanel
           issue={selectedItem.issue}
-          width={termSize.cols}
+          width={usableWidth}
+          height={issuesPanelHeight + ACTIVITY_HEIGHT}
           isActive={true}
           issueRepo={selectedItem.repoName}
           fetchComments={handleFetchComments}

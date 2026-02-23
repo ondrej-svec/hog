@@ -361,9 +361,13 @@ export function useKeyboard({
     ],
   );
 
-  // Active when NOT in a text-input overlay
+  // Active when NOT in a text-input overlay.
+  // overlay:detail needs Escape to close, so it must remain active.
   const inputActive =
-    ui.state.mode === "normal" || ui.state.mode === "multiSelect" || ui.state.mode === "focus";
+    ui.state.mode === "normal" ||
+    ui.state.mode === "multiSelect" ||
+    ui.state.mode === "focus" ||
+    ui.state.mode === "overlay:detail";
   useInput(handleInput, { isActive: inputActive });
 
   // Search mode input handler
