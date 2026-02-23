@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/ondrej-svec/hog/compare/hog-v1.15.0...hog-v1.16.0) (2026-02-23)
+
+
+### Features
+
+* **config:** guided interactive wizard for repos:add ([49e4379](https://github.com/ondrej-svec/hog/commit/49e4379fb4c848561de5f49ff651745338828221))
+
 ## [1.15.0](https://github.com/ondrej-svec/hog/compare/hog-v1.14.1...hog-v1.15.0) (2026-02-23)
 
 
