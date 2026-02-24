@@ -128,6 +128,7 @@ function makeActions() {
     handleEnterEditIssue: vi.fn(),
     handleUndo: vi.fn(),
     handleToggleLog: vi.fn(),
+    handleLaunchClaude: vi.fn(),
   };
 }
 
@@ -624,12 +625,22 @@ describe("useKeyboard", () => {
       expect(panelFocus.focusPanel).not.toHaveBeenCalled();
     });
 
-    it("C does nothing (collapse-all removed)", () => {
+    it("C calls handleLaunchClaude", () => {
       const { actions, fire } = setup({ mode: "normal" });
       fire("C");
-      // C is no longer a bound key — nothing should be called
-      expect(actions.exit).not.toHaveBeenCalled();
-      expect(actions.refresh).not.toHaveBeenCalled();
+      expect(actions.handleLaunchClaude).toHaveBeenCalledOnce();
+    });
+
+    it("C calls handleLaunchClaude from overlay:detail mode", () => {
+      const { actions, fire } = setup({ mode: "overlay:detail" });
+      fire("C");
+      expect(actions.handleLaunchClaude).toHaveBeenCalledOnce();
+    });
+
+    it("c (lowercase) still enters comment mode — C does not affect it", () => {
+      const { ui, fire } = setup({ mode: "normal", selectedIssue: makeIssue() });
+      fire("c");
+      expect(ui.enterComment).toHaveBeenCalledOnce();
     });
 
     it("l enters label mode when an issue is selected", () => {
