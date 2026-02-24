@@ -70,7 +70,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, mode: "search", previousMode: "normal" };
 
     case "ENTER_COMMENT":
-      if (state.mode !== "normal") return state;
+      if (state.mode !== "normal" && state.mode !== "overlay:detail") return state;
       return { ...state, mode: "overlay:comment", previousMode: "normal" };
 
     case "ENTER_STATUS":
@@ -109,7 +109,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, mode: "overlay:fuzzyPicker", previousMode: "normal" };
 
     case "ENTER_EDIT_ISSUE":
-      if (state.mode !== "normal") return state;
+      if (state.mode !== "normal" && state.mode !== "overlay:detail") return state;
       return { ...state, mode: "overlay:editIssue", previousMode: "normal" };
 
     case "ENTER_DETAIL":
