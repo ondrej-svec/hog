@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/ondrej-svec/hog/compare/hog-v1.16.2...hog-v1.17.0) (2026-02-24)
+
+
+### Features
+
+* **board:** launch Claude Code from issue with C shortcut ([#45](https://github.com/ondrej-svec/hog/issues/45)) ([12bfcd8](https://github.com/ondrej-svec/hog/commit/12bfcd834d17d30ea39c5ecc5671fc9592027615))
+
 ## [1.16.2](https://github.com/ondrej-svec/hog/compare/hog-v1.16.1...hog-v1.16.2) (2026-02-24)
 
 
