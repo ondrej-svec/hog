@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, normalize } from "node:path";
 import { z } from "zod";
 
 export const CONFIG_DIR = join(homedir(), ".config", "hog");
@@ -24,6 +24,11 @@ const COMPLETION_ACTION_SCHEMA = z.discriminatedUnion("type", [
 
 const REPO_NAME_PATTERN = /^[\w.-]+\/[\w.-]+$/;
 
+const CLAUDE_START_COMMAND_SCHEMA = z.object({
+  command: z.string().min(1),
+  extraArgs: z.array(z.string()),
+});
+
 const REPO_CONFIG_SCHEMA = z.object({
   name: z.string().regex(REPO_NAME_PATTERN, "Must be owner/repo format"),
   shortName: z.string().min(1),
@@ -32,6 +37,15 @@ const REPO_CONFIG_SCHEMA = z.object({
   dueDateFieldId: z.string().optional(),
   completionAction: COMPLETION_ACTION_SCHEMA,
   statusGroups: z.array(z.string()).optional(),
+  localPath: z
+    .string()
+    .refine((p) => isAbsolute(p), { message: "localPath must be an absolute path" })
+    .refine((p) => normalize(p) === p, {
+      message: "localPath must be normalized (no .. segments)",
+    })
+    .refine((p) => !p.includes("\0"), { message: "localPath must not contain null bytes" })
+    .optional(),
+  claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
 });
 
 const BOARD_CONFIG_SCHEMA = z.object({
@@ -39,6 +53,11 @@ const BOARD_CONFIG_SCHEMA = z.object({
   backlogLimit: z.number().int().min(1).default(20),
   assignee: z.string().min(1),
   focusDuration: z.number().int().min(60).default(1500),
+  claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
+  claudeLaunchMode: z.enum(["auto", "tmux", "terminal"]).optional(),
+  claudeTerminalApp: z
+    .enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"])
+    .optional(),
 });
 
 const TICKTICK_CONFIG_SCHEMA = z.object({

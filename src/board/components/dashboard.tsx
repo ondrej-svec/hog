@@ -18,6 +18,7 @@ import { useNavigation } from "../hooks/use-navigation.js";
 import { usePanelFocus } from "../hooks/use-panel-focus.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
+import { launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
@@ -816,6 +817,36 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     }
   }, [repos, nav.selectedId, config.repos, toast]);
 
+  const handleLaunchClaude = useCallback(() => {
+    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+    if (!found) return; // cursor on header / empty row → silent no-op
+
+    const rc = config.repos.find((r) => r.name === found.repoName);
+    if (!rc?.localPath) {
+      toast.info(
+        `Set localPath for ${rc?.shortName ?? found.repoName} in ~/.config/hog/config.json to enable Claude Code launch`,
+      );
+      return;
+    }
+
+    const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+    const result = launchClaude({
+      localPath: rc.localPath,
+      issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
+      ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+      launchMode: config.board.claudeLaunchMode ?? "auto",
+      ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
+      repoFullName: found.repoName,
+    });
+
+    if (!result.ok) {
+      toast.error(result.error.message);
+      return;
+    }
+
+    toast.info(`Claude Code session opened in ${rc.shortName ?? found.repoName}`);
+  }, [repos, nav.selectedId, config.repos, config.board, toast]);
+
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = useMemo((): "github" | "ticktick" | "mixed" => {
     for (const id of multiSelect.selected) {
@@ -943,6 +974,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleEnterEditIssue: ui.enterEditIssue,
       handleUndo: undoLast,
       handleToggleLog: () => setLogVisible((v) => !v),
+      handleLaunchClaude,
     },
     onSearchEscape,
     panelFocus,

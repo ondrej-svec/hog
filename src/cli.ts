@@ -410,6 +410,82 @@ program
     }
   });
 
+// -- Launch command --
+
+interface LaunchOptions {
+  dryRun?: true;
+}
+
+program
+  .command("launch <issueRef>")
+  .description("Launch Claude Code for an issue in its local repo directory")
+  .option("--dry-run", "Print resolved config without spawning")
+  .action(async (issueRef: string, opts: LaunchOptions) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const rc = ref.repo;
+
+    if (!rc.localPath) {
+      errorOut(
+        `Set localPath for ${rc.shortName} in ~/.config/hog/config.json to enable Claude Code launch`,
+        { repo: rc.shortName },
+      );
+    }
+
+    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
+    const terminalApp = cfg.board.claudeTerminalApp;
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          would: {
+            localPath: rc.localPath,
+            command: startCommand?.command ?? "claude",
+            extraArgs: startCommand?.extraArgs ?? [],
+            launchMode,
+            terminalApp: terminalApp ?? null,
+            issueNumber: ref.issueNumber,
+            repo: rc.shortName,
+          },
+        });
+      } else {
+        console.log(`[dry-run] Would launch Claude Code for ${rc.shortName}#${ref.issueNumber}`);
+        console.log(`  localPath:  ${rc.localPath}`);
+        console.log(`  command:    ${startCommand?.command ?? "claude"}`);
+        console.log(`  launchMode: ${launchMode}`);
+        if (terminalApp) console.log(`  terminalApp: ${terminalApp}`);
+      }
+      return;
+    }
+
+    const { launchClaude } = await import("./board/launch-claude.js");
+    const { fetchIssueAsync } = await import("./github.js");
+
+    const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
+
+    const result = launchClaude({
+      localPath: rc.localPath,
+      issue: { number: issue.number, title: issue.title, url: issue.url },
+      ...(startCommand ? { startCommand } : {}),
+      launchMode,
+      ...(terminalApp ? { terminalApp } : {}),
+      repoFullName: rc.name,
+    });
+
+    if (!result.ok) {
+      errorOut(result.error.message, { kind: result.error.kind });
+    }
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { repo: rc.shortName, issue: ref.issueNumber } });
+    } else {
+      console.log(`Claude Code session opened in ${rc.shortName}#${ref.issueNumber}`);
+    }
+  });
+
 // -- Config commands --
 
 interface ConfigAddRepoOptions {
