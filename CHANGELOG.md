@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.2](https://github.com/ondrej-svec/hog/compare/hog-v1.16.1...hog-v1.16.2) (2026-02-24)
+
+
+### Bug Fixes
+
+* **board:** allow e/c transitions from overlay:detail in state machine ([fcbd10d](https://github.com/ondrej-svec/hog/commit/fcbd10d1376c7d2c0a45937532272c5e85804950))
+
 ## [1.16.1](https://github.com/ondrej-svec/hog/compare/hog-v1.16.0...hog-v1.16.1) (2026-02-23)
 
 
