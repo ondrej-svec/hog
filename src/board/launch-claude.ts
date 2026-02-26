@@ -28,12 +28,22 @@ export interface LaunchClaudeOptions {
   readonly launchMode?: "auto" | "tmux" | "terminal" | undefined;
   readonly terminalApp?: string | undefined;
   readonly repoFullName?: string | undefined;
+  readonly promptTemplate?: string | undefined;
 }
 
 // ── Helpers ──
 
-export function buildPrompt(issue: Pick<BoardIssue, "number" | "title" | "url">): string {
-  return `Issue #${issue.number}: ${issue.title}\nURL: ${issue.url}`;
+export function buildPrompt(
+  issue: Pick<BoardIssue, "number" | "title" | "url">,
+  template?: string | undefined,
+): string {
+  if (!template) {
+    return `Issue #${issue.number}: ${issue.title}\nURL: ${issue.url}`;
+  }
+  return template
+    .replace(/\{number\}/g, String(issue.number))
+    .replace(/\{title\}/g, issue.title)
+    .replace(/\{url\}/g, issue.url);
 }
 
 function isClaudeInPath(): boolean {
@@ -64,7 +74,7 @@ function resolveCommand(opts: LaunchClaudeOptions): {
 function launchViaTmux(opts: LaunchClaudeOptions): LaunchResult {
   const { localPath, issue, repoFullName } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue);
+  const prompt = buildPrompt(issue, opts.promptTemplate);
 
   const windowName = `claude-${issue.number}`;
   const tmuxArgs = [
@@ -93,7 +103,7 @@ function launchViaTmux(opts: LaunchClaudeOptions): LaunchResult {
 function launchViaTerminalApp(terminalApp: string, opts: LaunchClaudeOptions): LaunchResult {
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue);
+  const prompt = buildPrompt(issue, opts.promptTemplate);
 
   const fullCmd = [command, ...extraArgs, "--", prompt].join(" ");
 
@@ -218,7 +228,7 @@ function launchViaDetectedTerminal(opts: LaunchClaudeOptions): LaunchResult {
   // Linux: try xdg-terminal-exec or gnome-terminal
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue);
+  const prompt = buildPrompt(issue, opts.promptTemplate);
 
   const child = spawn(
     "xdg-terminal-exec",

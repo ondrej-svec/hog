@@ -46,6 +46,7 @@ const REPO_CONFIG_SCHEMA = z.object({
     .refine((p) => !p.includes("\0"), { message: "localPath must not contain null bytes" })
     .optional(),
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
+  claudePrompt: z.string().optional(),
 });
 
 const BOARD_CONFIG_SCHEMA = z.object({
@@ -54,6 +55,7 @@ const BOARD_CONFIG_SCHEMA = z.object({
   assignee: z.string().min(1),
   focusDuration: z.number().int().min(60).default(1500),
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
+  claudePrompt: z.string().optional(),
   claudeLaunchMode: z.enum(["auto", "tmux", "terminal"]).optional(),
   claudeTerminalApp: z
     .enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"])

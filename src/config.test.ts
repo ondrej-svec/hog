@@ -383,6 +383,95 @@ describe("loadFullConfig with no config file", () => {
   });
 });
 
+describe("claudePrompt config field", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("claudePrompt is undefined when absent from config", () => {
+    const v3Config = {
+      version: 3,
+      repos: [
+        {
+          name: "owner/repo",
+          shortName: "repo",
+          projectNumber: 1,
+          statusFieldId: "SF_1",
+          completionAction: { type: "closeIssue" },
+        },
+      ],
+      board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
+      ticktick: { enabled: true },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+
+    const result = loadFullConfig();
+
+    expect(result.board.claudePrompt).toBeUndefined();
+    expect(result.repos[0]?.claudePrompt).toBeUndefined();
+  });
+
+  it("claudePrompt is parsed when present in board config", () => {
+    const v3Config = {
+      version: 3,
+      repos: [],
+      board: {
+        refreshInterval: 60,
+        backlogLimit: 20,
+        assignee: "ondrej",
+        claudePrompt: "Work on #{number}: {title}",
+      },
+      ticktick: { enabled: true },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+
+    const result = loadFullConfig();
+
+    expect(result.board.claudePrompt).toBe("Work on #{number}: {title}");
+  });
+
+  it("claudePrompt is parsed when present in repo config", () => {
+    const v3Config = {
+      version: 3,
+      repos: [
+        {
+          name: "owner/repo",
+          shortName: "repo",
+          projectNumber: 1,
+          statusFieldId: "SF_1",
+          completionAction: { type: "closeIssue" },
+          claudePrompt: "/brainstorm\n\n{title}",
+        },
+      ],
+      board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
+      ticktick: { enabled: true },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+
+    const result = loadFullConfig();
+
+    expect(result.repos[0]?.claudePrompt).toBe("/brainstorm\n\n{title}");
+  });
+});
+
 describe("findRepo", () => {
   const baseConfig: HogConfig = {
     version: 3,

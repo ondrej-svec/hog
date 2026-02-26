@@ -97,6 +97,40 @@ describe("buildPrompt", () => {
     const prompt = buildPrompt(issue);
     expect(prompt).toContain("--dangerously-skip-permissions");
   });
+
+  it("uses default format when template is undefined", () => {
+    const issue = makeIssue({ number: 7, title: "Bug", url: "https://example.com/7" });
+    expect(buildPrompt(issue, undefined)).toBe("Issue #7: Bug\nURL: https://example.com/7");
+  });
+
+  it("uses default format when template is empty string", () => {
+    const issue = makeIssue({ number: 7, title: "Bug", url: "https://example.com/7" });
+    expect(buildPrompt(issue, "")).toBe("Issue #7: Bug\nURL: https://example.com/7");
+  });
+
+  it("interpolates {number}, {title}, {url} placeholders in template", () => {
+    const issue = makeIssue({
+      number: 99,
+      title: "Add auth",
+      url: "https://github.com/x/y/issues/99",
+    });
+    const template = "Work on #{number}: {title}\n{url}";
+    expect(buildPrompt(issue, template)).toBe(
+      "Work on #99: Add auth\nhttps://github.com/x/y/issues/99",
+    );
+  });
+
+  it("replaces multiple occurrences of the same placeholder", () => {
+    const issue = makeIssue({ number: 5, title: "Fix", url: "https://example.com/5" });
+    const template = "#{number} - {title} (#{number})";
+    expect(buildPrompt(issue, template)).toBe("#5 - Fix (#5)");
+  });
+
+  it("preserves template text with no placeholders", () => {
+    const issue = makeIssue();
+    const template = "Just do it";
+    expect(buildPrompt(issue, template)).toBe("Just do it");
+  });
 });
 
 describe("launchClaude — guard clauses", () => {
@@ -219,6 +253,27 @@ describe("launchClaude — tmux path", () => {
     const [, args] = mockSpawnFn.mock.calls[0] as [string, string[]];
     expect(args).toContain("my-claude");
     expect(args).toContain("--append-system-prompt");
+  });
+
+  it("uses promptTemplate for the prompt when provided", () => {
+    const issue = makeIssue({
+      number: 10,
+      title: "Add search",
+      url: "https://github.com/a/b/issues/10",
+    });
+    const result = launchClaude(
+      makeOpts({
+        launchMode: "tmux",
+        issue,
+        promptTemplate: "/brainstorm\n\nIssue #{number}: {title}\n{url}",
+      }),
+    );
+    expect(result.ok).toBe(true);
+    const [, args] = mockSpawnFn.mock.calls[0] as [string, string[]];
+    const dashDashIdx = args.indexOf("--");
+    expect(args[dashDashIdx + 1]).toBe(
+      "/brainstorm\n\nIssue #10: Add search\nhttps://github.com/a/b/issues/10",
+    );
   });
 
   it("auto mode uses tmux when TMUX env is set", () => {

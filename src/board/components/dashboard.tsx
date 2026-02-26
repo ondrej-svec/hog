@@ -830,10 +830,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     }
 
     const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+    const resolvedPromptTemplate = rc.claudePrompt ?? config.board.claudePrompt;
     const result = launchClaude({
       localPath: rc.localPath,
       issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
       ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+      ...(resolvedPromptTemplate ? { promptTemplate: resolvedPromptTemplate } : {}),
       launchMode: config.board.claudeLaunchMode ?? "auto",
       ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
       repoFullName: found.repoName,
