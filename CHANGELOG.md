@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/ondrej-svec/hog/compare/hog-v1.17.0...hog-v1.18.0) (2026-02-26)
+
+
+### Features
+
+* **board:** Enter opens detail panel, g opens issue in browser ([fe8590a](https://github.com/ondrej-svec/hog/commit/fe8590a69fbb94d29fe7c5865072f06e7dee902e))
+
 ## [1.17.0](https://github.com/ondrej-svec/hog/compare/hog-v1.16.2...hog-v1.17.0) (2026-02-24)
 
 
