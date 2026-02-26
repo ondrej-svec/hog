@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/ondrej-svec/hog/compare/hog-v1.18.0...hog-v1.19.0) (2026-02-26)
+
+
+### Features
+
+* **board:** add configurable claudePrompt template for Claude launch ([8c21400](https://github.com/ondrej-svec/hog/commit/8c2140073833d31e9c8c2182901183558ce0617b))
+
 ## [1.18.0](https://github.com/ondrej-svec/hog/compare/hog-v1.17.0...hog-v1.18.0) (2026-02-26)
 
 
