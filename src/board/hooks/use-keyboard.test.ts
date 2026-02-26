@@ -152,6 +152,7 @@ interface HarnessOptions {
   selectedRepoStatusOptionsLength?: number;
   multiSelectCount?: number;
   activePanelId?: PanelId;
+  showDetailPanel?: boolean;
 }
 
 interface Harness {
@@ -181,6 +182,7 @@ function setup(opts: HarnessOptions = {}): Harness {
     selectedRepoStatusOptionsLength = 3,
     multiSelectCount = 0,
     activePanelId = 3,
+    showDetailPanel = true,
   } = opts;
 
   // Clear captured handlers before each render
@@ -216,7 +218,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       onRepoEnter,
       onStatusEnter,
       onActivityEnter,
-      showDetailPanel: true,
+      showDetailPanel,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -674,6 +676,18 @@ describe("useKeyboard", () => {
       expect(actions.handleEnterFuzzyPicker).toHaveBeenCalledOnce();
     });
 
+    it("g calls handleOpen (open in browser)", () => {
+      const { actions, fire } = setup({ mode: "normal" });
+      fire("g");
+      expect(actions.handleOpen).toHaveBeenCalledOnce();
+    });
+
+    it("g calls handleOpen from overlay:detail mode", () => {
+      const { actions, fire } = setup({ mode: "overlay:detail" });
+      fire("g");
+      expect(actions.handleOpen).toHaveBeenCalledOnce();
+    });
+
     it("e calls handleEnterEditIssue when issue is selected", () => {
       const { actions, fire } = setup({ mode: "normal", selectedIssue: makeIssue() });
       fire("e");
@@ -714,16 +728,28 @@ describe("useKeyboard", () => {
   // ── Enter routing by panel ──
 
   describe("Enter key — routing by active panel", () => {
-    it("panel 3: calls handleOpen", () => {
-      const { actions, onRepoEnter, onStatusEnter, onActivityEnter, fire } = setup({
+    it("panel 3 (wide layout): focuses detail panel", () => {
+      const { panelFocus, ui, actions, fire } = setup({
         mode: "normal",
         activePanelId: 3,
+        showDetailPanel: true,
       });
       fire("", { return: true });
-      expect(actions.handleOpen).toHaveBeenCalledOnce();
-      expect(onRepoEnter).not.toHaveBeenCalled();
-      expect(onStatusEnter).not.toHaveBeenCalled();
-      expect(onActivityEnter).not.toHaveBeenCalled();
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(0);
+      expect(ui.enterDetail).not.toHaveBeenCalled();
+      expect(actions.handleOpen).not.toHaveBeenCalled();
+    });
+
+    it("panel 3 (narrow layout): opens detail overlay", () => {
+      const { panelFocus, ui, actions, fire } = setup({
+        mode: "normal",
+        activePanelId: 3,
+        showDetailPanel: false,
+      });
+      fire("", { return: true });
+      expect(ui.enterDetail).toHaveBeenCalledOnce();
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
+      expect(actions.handleOpen).not.toHaveBeenCalled();
     });
 
     it("panel 1: calls onRepoEnter", () => {

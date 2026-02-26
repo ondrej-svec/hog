@@ -222,6 +222,10 @@ export function useKeyboard({
           handleLaunchClaude();
           return;
         }
+        if (input === "g") {
+          handleOpen();
+          return;
+        }
       }
 
       // Actions (only in normal mode)
@@ -325,7 +329,11 @@ export function useKeyboard({
               onStatusEnter();
               break;
             case 3:
-              handleOpen();
+              if (showDetailPanel) {
+                panelFocus.focusPanel(0);
+              } else {
+                ui.enterDetail();
+              }
               break;
             case 4:
               onActivityEnter();

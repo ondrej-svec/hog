@@ -21,7 +21,7 @@ const SHORTCUTS = [
   {
     category: "View",
     items: [
-      { key: "Enter", desc: "Open issue in browser" },
+      { key: "Enter", desc: "Open detail panel" },
       { key: "0", desc: "Detail panel (full-screen on narrow terminals)" },
       { key: "Space", desc: "Multi-select item" },
       { key: "/", desc: "Search (inline filter)" },
@@ -41,7 +41,7 @@ const SHORTCUTS = [
       { key: "e", desc: "Edit issue in $EDITOR (title, assignee, status, labels)" },
       { key: "c", desc: "Comment on issue" },
       { key: "m", desc: "Move status" },
-      { key: "e", desc: "Edit issue in $EDITOR" },
+      { key: "g", desc: "Open issue in browser" },
       { key: "o", desc: "Open Slack thread" },
       { key: "y", desc: "Copy issue link to clipboard" },
       { key: "n", desc: "Create new issue" },
