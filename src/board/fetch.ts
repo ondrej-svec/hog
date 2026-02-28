@@ -6,7 +6,7 @@ import type { GitHubIssue, StatusOption } from "../github.js";
 import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
 import type { Task } from "../types.js";
 import { TaskStatus } from "../types.js";
-import { formatError } from "./constants.js";
+import { formatError } from "../utils.js";
 
 export interface RepoData {
   repo: RepoConfig;

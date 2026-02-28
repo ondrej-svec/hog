@@ -1,5 +1,4 @@
 import { TickTickClient } from "./api.js";
-import { formatError } from "./utils.js";
 import type { HogConfig, RepoConfig } from "./config.js";
 import { loadFullConfig, requireAuth } from "./config.js";
 import type { GitHubIssue, ProjectEnrichment } from "./github.js";
@@ -19,6 +18,7 @@ import {
 } from "./sync-state.js";
 import type { CreateTaskInput, UpdateTaskInput } from "./types.js";
 import { Priority, TaskStatus } from "./types.js";
+import { formatError } from "./utils.js";
 
 export interface SyncResult {
   created: string[];

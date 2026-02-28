@@ -26,6 +26,3 @@ export function timeAgo(date: Date): string {
 
 /** 0=Detail, 1=Repos, 2=Statuses, 3=Issues, 4=Activity */
 export type PanelId = 0 | 1 | 2 | 3 | 4;
-
-// Re-export from shared utils to maintain backward-compatible imports
-export { formatError } from "../utils.js";

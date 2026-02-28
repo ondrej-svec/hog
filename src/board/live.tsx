@@ -1,6 +1,6 @@
 import { render } from "ink";
-import { Component } from "react";
 import type { ReactNode } from "react";
+import { Component } from "react";
 import type { HogConfig } from "../config.js";
 import { Dashboard } from "./components/dashboard.js";
 import type { FetchOptions } from "./fetch.js";

@@ -18,7 +18,8 @@ import {
   updateProjectItemStatusAsync,
 } from "../../github.js";
 import { pickIssue } from "../../pick.js";
-import { TERMINAL_STATUS_RE, formatError } from "../constants.js";
+import { formatError } from "../../utils.js";
+import { TERMINAL_STATUS_RE } from "../constants.js";
 import type { DashboardData, RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "./use-action-log.js";
 import { nextEntryId } from "./use-action-log.js";
@@ -96,11 +97,7 @@ function findIssueContext(
 }
 
 /** Returns true if the issue is already assigned and a toast was shown. */
-function checkAlreadyAssigned(
-  issue: GitHubIssue,
-  selfLogin: string,
-  toast: ToastAPI,
-): boolean {
+function checkAlreadyAssigned(issue: GitHubIssue, selfLogin: string, toast: ToastAPI): boolean {
   const assignees = issue.assignees ?? [];
   if (assignees.some((a) => a.login === selfLogin)) {
     toast.info(`Already assigned to @${selfLogin}`);

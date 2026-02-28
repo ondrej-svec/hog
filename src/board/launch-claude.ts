@@ -239,11 +239,11 @@ function launchViaDetectedTerminal(opts: LaunchClaudeOptions): LaunchResult {
   const { command, extraArgs } = resolveCommand(opts);
   const prompt = buildPrompt(issue, opts.promptTemplate);
 
-  const child = spawn(
-    "xdg-terminal-exec",
-    [command, ...extraArgs, "--", prompt],
-    { stdio: "ignore", detached: true, cwd: localPath },
-  );
+  const child = spawn("xdg-terminal-exec", [command, ...extraArgs, "--", prompt], {
+    stdio: "ignore",
+    detached: true,
+    cwd: localPath,
+  });
   child.unref();
   return { ok: true, value: undefined };
 }

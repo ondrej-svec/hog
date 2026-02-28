@@ -26,11 +26,9 @@ vi.mock("../api.js", () => ({
 }));
 
 const mockRequireAuth = vi.fn();
-const mockGetConfig = vi.fn();
 
 vi.mock("../config.js", () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
-  getConfig: (...args: unknown[]) => mockGetConfig(...args),
 }));
 
 import { execFileSync } from "node:child_process";
@@ -59,6 +57,7 @@ function makeConfig(overrides: Partial<HogConfig> = {}): HogConfig {
     repos: [makeRepo()],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "test-user", focusDuration: 1500 },
     ticktick: { enabled: true },
+    defaultProjectId: "proj-1",
     profiles: {},
     ...overrides,
   };
@@ -116,7 +115,6 @@ describe("fetchDashboard", () => {
       clientId: "cid",
       clientSecret: "csec",
     });
-    mockGetConfig.mockReturnValue({ defaultProjectId: "proj-1" });
     mockListTasks.mockResolvedValue([]);
   });
 
@@ -324,9 +322,7 @@ describe("fetchDashboard", () => {
   });
 
   it("returns empty ticktick when no defaultProjectId is configured", async () => {
-    mockGetConfig.mockReturnValue({});
-
-    const config = makeConfig();
+    const config = makeConfig({ defaultProjectId: undefined });
     const result = await fetchDashboard(config);
 
     expect(result.ticktick).toHaveLength(0);

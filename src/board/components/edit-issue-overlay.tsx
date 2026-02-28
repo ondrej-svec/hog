@@ -3,7 +3,6 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Box, Text, useStdin } from "ink";
-import { resolveEditor } from "../editor.js";
 import { useEffect, useRef, useState } from "react";
 import type { RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
@@ -16,6 +15,7 @@ import {
   updateLabelsAsync,
   updateProjectItemStatusAsync,
 } from "../../github.js";
+import { resolveEditor } from "../editor.js";
 import type { ActionLogEntry } from "../hooks/use-action-log.js";
 import { nextEntryId } from "../hooks/use-action-log.js";
 import { getInkInstance } from "../ink-instance.js";

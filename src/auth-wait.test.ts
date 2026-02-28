@@ -39,9 +39,10 @@ class FakeServer extends EventEmitter {
     this.handler = handler;
   }
 
-  listen(_port: number, cb?: () => void) {
+  listen(_port: number, _hostOrCb?: string | (() => void), cb?: () => void) {
     // Call the listen callback asynchronously to match Node.js behaviour
-    setImmediate(() => cb?.());
+    const callback = typeof _hostOrCb === "function" ? _hostOrCb : cb;
+    setImmediate(() => callback?.());
     return this;
   }
 
