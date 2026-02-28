@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -6,6 +6,7 @@ import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
+import type { PanelId } from "../constants.js";
 import { isHeaderId, isTerminalStatus, timeAgo } from "../constants.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
@@ -15,7 +16,6 @@ import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
-import { usePanelFocus } from "../hooks/use-panel-focus.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { launchClaude } from "../launch-claude.js";
@@ -247,11 +247,12 @@ function buildFlatRowsForRepo(
 }
 
 function openInBrowser(url: string): void {
-  if (!(url.startsWith("https://") || url.startsWith("http://"))) return;
   try {
-    execFileSync("open", [url], { stdio: "ignore" });
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return;
+    execFile("open", [parsed.href], () => {});
   } catch {
-    // Silently ignore
+    // Silently ignore invalid URLs
   }
 }
 
@@ -370,7 +371,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const ui = useUIState();
 
   // Panel focus state — default to Issues panel [3]
-  const panelFocus = usePanelFocus(3);
+  const [activePanelId, setActivePanelId] = useState<PanelId>(3);
+  const focusPanel = useCallback((id: PanelId) => setActivePanelId(id), []);
+  const panelFocus = useMemo(() => ({ activePanelId, focusPanel }), [activePanelId, focusPanel]);
 
   // Search state (managed separately — search query persists across mode changes)
   const [searchQuery, setSearchQuery] = useState("");

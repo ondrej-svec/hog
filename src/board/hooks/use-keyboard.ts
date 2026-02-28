@@ -3,7 +3,7 @@ import { useCallback } from "react";
 import type { GitHubIssue } from "../../github.js";
 import type { UseMultiSelectResult } from "./use-multi-select.js";
 import type { UseNavigationResult } from "./use-navigation.js";
-import type { PanelId } from "./use-panel-focus.js";
+import type { PanelId } from "../constants.js";
 import type { UseUIStateResult } from "./use-ui-state.js";
 
 // ── Types ──

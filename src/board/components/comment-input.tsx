@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { TextInput } from "@inkjs/ui";
 import { Box, Text, useInput, useStdin } from "ink";
 import { useEffect, useRef, useState } from "react";
+import { resolveEditor } from "../editor.js";
 import { getInkInstance } from "../ink-instance.js";
 
 interface CommentInputProps {
@@ -51,10 +52,8 @@ function CommentInput({
   useEffect(() => {
     if (!editing) return;
 
-    const editorEnv = process.env["VISUAL"] ?? process.env["EDITOR"] ?? "vi";
-    // Split to handle "code --wait" style editors
-    const [cmd, ...extraArgs] = editorEnv.split(" ").filter(Boolean);
-    if (!cmd) {
+    const editor = resolveEditor();
+    if (!editor) {
       setEditing(false);
       return;
     }
@@ -76,7 +75,7 @@ function CommentInput({
       inkInstance?.clear();
       setRawMode(false);
 
-      spawnSync(cmd, [...extraArgs, tmpFile], { stdio: "inherit" });
+      spawnSync(editor.cmd, [...editor.args, tmpFile], { stdio: "inherit" });
 
       // Read back the file content
       const content = readFileSync(tmpFile, "utf-8").trim();

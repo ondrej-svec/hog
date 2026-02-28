@@ -566,9 +566,9 @@ async function getProjectNodeId(owner: string, projectNumber: number): Promise<s
   if (cached !== undefined) return cached;
 
   const projectQuery = `
-    query($owner: String!) {
+    query($owner: String!, $projectNumber: Int!) {
       organization(login: $owner) {
-        projectV2(number: ${projectNumber}) {
+        projectV2(number: $projectNumber) {
           id
         }
       }
@@ -582,6 +582,8 @@ async function getProjectNodeId(owner: string, projectNumber: number): Promise<s
     `query=${projectQuery}`,
     "-F",
     `owner=${owner}`,
+    "-F",
+    `projectNumber=${String(projectNumber)}`,
   ]);
 
   const projectId = projectResult?.data?.organization?.projectV2?.id;
@@ -635,9 +637,9 @@ export function updateProjectItemStatus(
 
   // Get the project ID
   const projectQuery = `
-    query($owner: String!) {
+    query($owner: String!, $projectNumber: Int!) {
       organization(login: $owner) {
-        projectV2(number: ${projectNumber}) {
+        projectV2(number: $projectNumber) {
           id
         }
       }
@@ -651,6 +653,8 @@ export function updateProjectItemStatus(
     `query=${projectQuery}`,
     "-F",
     `owner=${owner}`,
+    "-F",
+    `projectNumber=${String(projectNumber)}`,
   ]);
 
   const projectId = projectResult?.data?.organization?.projectV2?.id;

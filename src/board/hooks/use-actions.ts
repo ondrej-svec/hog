@@ -18,7 +18,7 @@ import {
   updateProjectItemStatusAsync,
 } from "../../github.js";
 import { pickIssue } from "../../pick.js";
-import { TERMINAL_STATUS_RE } from "../constants.js";
+import { TERMINAL_STATUS_RE, formatError } from "../constants.js";
 import type { DashboardData, RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "./use-action-log.js";
 import { nextEntryId } from "./use-action-log.js";
@@ -93,6 +93,25 @@ function findIssueContext(
     }
   }
   return { issue: null, repoName: null, repoConfig: null, statusOptions: [] };
+}
+
+/** Returns true if the issue is already assigned and a toast was shown. */
+function checkAlreadyAssigned(
+  issue: GitHubIssue,
+  selfLogin: string,
+  toast: ToastAPI,
+): boolean {
+  const assignees = issue.assignees ?? [];
+  if (assignees.some((a) => a.login === selfLogin)) {
+    toast.info(`Already assigned to @${selfLogin}`);
+    return true;
+  }
+  const firstAssignee = assignees[0];
+  if (firstAssignee) {
+    toast.info(`Already assigned to @${firstAssignee.login}`);
+    return true;
+  }
+  return false;
 }
 
 // ── Hook ──
@@ -226,16 +245,7 @@ export function useActions({
     if (!(ctx.issue && ctx.repoConfig)) return;
 
     const { issue, repoConfig } = ctx;
-    const assignees = issue.assignees ?? [];
-    if (assignees.some((a) => a.login === configRef.current.board.assignee)) {
-      toast.info(`Already assigned to @${configRef.current.board.assignee}`);
-      return;
-    }
-    const firstAssignee = assignees[0];
-    if (firstAssignee) {
-      toast.info(`Already assigned to @${firstAssignee.login}`);
-      return;
-    }
+    if (checkAlreadyAssigned(issue, configRef.current.board.assignee, toast)) return;
 
     const t = toast.loading(`Picking ${repoConfig.shortName}#${issue.number}...`);
     pickIssue(configRef.current, { repo: repoConfig, issueNumber: issue.number })
@@ -245,7 +255,7 @@ export function useActions({
         refresh();
       })
       .catch((err) => {
-        t.reject(`Pick failed: ${err instanceof Error ? err.message : String(err)}`);
+        t.reject(`Pick failed: ${formatError(err)}`);
       });
   }, [toast, refresh]);
 
@@ -272,7 +282,7 @@ export function useActions({
           onOverlayDone();
         })
         .catch((err) => {
-          t.reject(`Comment failed: ${err instanceof Error ? err.message : String(err)}`);
+          t.reject(`Comment failed: ${formatError(err)}`);
           pushEntryRef.current?.({
             id: nextEntryId(),
             description: `comment on #${issue.number} failed`,
@@ -361,7 +371,7 @@ export function useActions({
           // Do NOT refresh here — GitHub Projects v2 GraphQL is eventually consistent
         })
         .catch((err) => {
-          t.reject(`Status change failed: ${err instanceof Error ? err.message : String(err)}`);
+          t.reject(`Status change failed: ${formatError(err)}`);
           pushEntryRef.current?.({
             id: nextEntryId(),
             description: `#${issue.number} status change failed`,
@@ -384,16 +394,7 @@ export function useActions({
     if (!(ctx.issue && ctx.repoName)) return;
 
     const { issue, repoName } = ctx;
-    const assignees = issue.assignees ?? [];
-    if (assignees.some((a) => a.login === configRef.current.board.assignee)) {
-      toast.info(`Already assigned to @${configRef.current.board.assignee}`);
-      return;
-    }
-    const firstAssignee = assignees[0];
-    if (firstAssignee) {
-      toast.info(`Already assigned to @${firstAssignee.login}`);
-      return;
-    }
+    if (checkAlreadyAssigned(issue, configRef.current.board.assignee, toast)) return;
 
     const t = toast.loading("Assigning...");
     assignIssueAsync(repoName, issue.number)
@@ -411,7 +412,7 @@ export function useActions({
         refresh();
       })
       .catch((err) => {
-        t.reject(`Assign failed: ${err instanceof Error ? err.message : String(err)}`);
+        t.reject(`Assign failed: ${formatError(err)}`);
         pushEntryRef.current?.({
           id: nextEntryId(),
           description: `#${issue.number} assign failed`,
@@ -463,7 +464,7 @@ export function useActions({
         onOverlayDone();
         return issueNumber > 0 ? { repo, issueNumber } : null;
       } catch (err) {
-        t.reject(`Create failed: ${err instanceof Error ? err.message : String(err)}`);
+        t.reject(`Create failed: ${formatError(err)}`);
         onOverlayDone();
         return null;
       }
@@ -485,7 +486,7 @@ export function useActions({
           onOverlayDone();
         })
         .catch((err) => {
-          t.reject(`Label update failed: ${err instanceof Error ? err.message : String(err)}`);
+          t.reject(`Label update failed: ${formatError(err)}`);
           onOverlayDone();
         });
     },

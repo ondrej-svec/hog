@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import type { PanelId } from "../hooks/use-panel-focus.js";
+import type { PanelId } from "../constants.js";
 import type { UIMode } from "../hooks/use-ui-state.js";
 
 interface HintBarProps {

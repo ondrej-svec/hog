@@ -40,10 +40,6 @@ function repoShortName(repo: string): string {
   return repo.split("/")[1] ?? repo;
 }
 
-function issueTaskTitle(issue: GitHubIssue): string {
-  return issue.title;
-}
-
 function issueTaskContent(
   issue: GitHubIssue,
   projectFields: { targetDate?: string; status?: string },
@@ -68,7 +64,7 @@ function buildCreateInput(
   projectFields: { targetDate?: string; status?: string },
 ): CreateTaskInput {
   const input: CreateTaskInput = {
-    title: issueTaskTitle(issue),
+    title: issue.title,
     content: issueTaskContent(issue, projectFields),
     priority: mapPriority(issue.labels),
     tags: ["github", repoShortName(repo)],
@@ -89,7 +85,7 @@ function buildUpdateInput(
   const input: UpdateTaskInput = {
     id: mapping.ticktickTaskId,
     projectId: mapping.ticktickProjectId,
-    title: issueTaskTitle(issue),
+    title: issue.title,
     content: issueTaskContent(issue, projectFields),
     priority: mapPriority(issue.labels),
     tags: ["github", repoShortName(repo)],

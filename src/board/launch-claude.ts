@@ -100,18 +100,26 @@ function launchViaTmux(opts: LaunchClaudeOptions): LaunchResult {
   return { ok: true, value: undefined };
 }
 
+/** Shell-quote a single argument (POSIX single-quote wrapping). */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 function launchViaTerminalApp(terminalApp: string, opts: LaunchClaudeOptions): LaunchResult {
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
   const prompt = buildPrompt(issue, opts.promptTemplate);
 
-  const fullCmd = [command, ...extraArgs, "--", prompt].join(" ");
-
   switch (terminalApp) {
     case "iTerm": {
-      // iTerm2: use AppleScript to open a new window with the correct cwd
+      // iTerm2: use AppleScript to create window, then send properly-quoted command
+      // Each argument is individually shell-quoted to prevent injection.
+      const quotedArgs = [command, ...extraArgs, "--", prompt].map(shellQuote).join(" ");
       const script = `tell application "iTerm"
-  create window with default profile command "bash -c 'cd ${localPath} && ${fullCmd}'"
+  create window with default profile
+  tell current session of current window
+    write text "cd " & ${JSON.stringify(shellQuote(localPath))} & " && " & ${JSON.stringify(quotedArgs)}
+  end tell
 end tell`;
       const result = spawnSync("osascript", ["-e", script], { stdio: "ignore" });
       if (result.status !== 0) {
@@ -168,9 +176,10 @@ end tell`;
     }
 
     case "Alacritty": {
+      // Alacritty: use --working-directory for cwd, pass command as separate argv elements
       const child = spawn(
         "alacritty",
-        ["--command", "bash", "-c", `cd ${localPath} && ${fullCmd}`],
+        ["--working-directory", localPath, "--command", command, ...extraArgs, "--", prompt],
         { stdio: "ignore", detached: true },
       );
       child.unref();
@@ -225,15 +234,15 @@ function launchViaDetectedTerminal(opts: LaunchClaudeOptions): LaunchResult {
     return launchViaTerminalApp("Terminal", opts);
   }
 
-  // Linux: try xdg-terminal-exec or gnome-terminal
+  // Linux: try xdg-terminal-exec with cwd via spawn option + safe argv
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
   const prompt = buildPrompt(issue, opts.promptTemplate);
 
   const child = spawn(
     "xdg-terminal-exec",
-    ["bash", "-c", `cd ${localPath} && ${[command, ...extraArgs, "--", prompt].join(" ")}`],
-    { stdio: "ignore", detached: true },
+    [command, ...extraArgs, "--", prompt],
+    { stdio: "ignore", detached: true, cwd: localPath },
   );
   child.unref();
   return { ok: true, value: undefined };

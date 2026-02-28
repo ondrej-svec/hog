@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Box, Text, useStdin } from "ink";
+import { resolveEditor } from "../editor.js";
 import { useEffect, useRef, useState } from "react";
 import type { RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
@@ -165,10 +166,8 @@ function EditIssueOverlay({
   useEffect(() => {
     if (!editing) return;
 
-    // Use falsy check (not ??) to handle VISUAL="" properly
-    const editorEnv = process.env["VISUAL"] || process.env["EDITOR"] || "vi";
-    const [cmd, ...extraArgs] = editorEnv.split(" ").filter(Boolean);
-    if (!cmd) {
+    const editor = resolveEditor();
+    if (!editor) {
       onDoneRef.current();
       return;
     }
@@ -203,7 +202,7 @@ function EditIssueOverlay({
       // Reopen loop — repeat on validation errors
       while (true) {
         writeFileSync(tmpFile, currentContent);
-        const result = spawnSync(cmd, [...extraArgs, tmpFile], { stdio: "inherit" });
+        const result = spawnSync(editor.cmd, [...editor.args, tmpFile], { stdio: "inherit" });
 
         // Non-zero exit or signal = editor crashed/cancelled
         if (result.status !== 0 || result.signal !== null || result.error) {

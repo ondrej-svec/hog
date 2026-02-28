@@ -53,8 +53,8 @@ export async function waitForAuthCode(expectedState: string): Promise<string> {
       }
     });
 
-    server.listen(8080, () => {
-      // Server ready, waiting for redirect
+    server.listen(8080, "127.0.0.1", () => {
+      // Server ready, waiting for redirect on localhost only
     });
 
     server.on("error", reject);

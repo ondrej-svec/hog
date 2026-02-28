@@ -9,6 +9,7 @@ import type { ParsedIssue } from "../../ai.js";
 import { extractIssueFields } from "../../ai.js";
 import type { RepoConfig } from "../../config.js";
 import type { LabelOption } from "../../github.js";
+import { resolveEditor } from "../editor.js";
 import { getInkInstance } from "../ink-instance.js";
 
 type Step = "input" | "body";
@@ -116,9 +117,8 @@ function NlCreateOverlay({
   useEffect(() => {
     if (!editingBody) return;
 
-    const editorEnv = process.env["VISUAL"] ?? process.env["EDITOR"] ?? "vi";
-    const [cmd, ...extraArgs] = editorEnv.split(" ").filter(Boolean);
-    if (!cmd) {
+    const editor = resolveEditor();
+    if (!editor) {
       setEditingBody(false);
       return;
     }
@@ -136,7 +136,7 @@ function NlCreateOverlay({
       inkInstance?.clear();
       setRawMode(false);
 
-      spawnSync(cmd, [...extraArgs, tmpFile], { stdio: "inherit" });
+      spawnSync(editor.cmd, [...editor.args, tmpFile], { stdio: "inherit" });
 
       const content = readFileSync(tmpFile, "utf-8");
       setRawMode(true);
