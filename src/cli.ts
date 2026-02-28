@@ -28,6 +28,7 @@ import {
 import { runInit, runReposAdd } from "./init.js";
 import { getActionLog } from "./log-persistence.js";
 import {
+  errorOut,
   jsonOut,
   printProjects,
   printSuccess,
@@ -94,18 +95,8 @@ async function resolveRef(
   try {
     return parseIssueRef(ref, config);
   } catch (err) {
-    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
+    errorOut(err instanceof Error ? err.message : String(err));
   }
-}
-
-function errorOut(message: string, data?: Record<string, unknown>): never {
-  if (useJson()) {
-    jsonOut({ ok: false, error: message, ...(data ? { data } : {}) });
-  } else {
-    console.error(`Error: ${message}`);
-  }
-  process.exit(1);
 }
 
 const PRIORITY_MAP: Record<string, Priority | undefined> = {
@@ -133,8 +124,7 @@ function resolveProjectId(projectId?: string): string {
   if (projectId) return projectId;
   const config = getConfig();
   if (config.defaultProjectId) return config.defaultProjectId;
-  console.error("No project selected. Run `hog task use-project <id>` or pass --project.");
-  process.exit(1);
+  errorOut("No project selected. Run `hog task use-project <id>` or pass --project.");
 }
 
 // -- Program --
@@ -558,40 +548,34 @@ config
 
     // Non-interactive (scripted) mode: all required flags provided
     if (!name) {
-      console.error("Name argument required in non-interactive mode.");
-      process.exit(1);
+      errorOut("Name argument required in non-interactive mode.");
     }
     if (!validateRepoName(name)) {
-      console.error("Invalid repo name. Use owner/repo format (e.g., myorg/myrepo)");
-      process.exit(1);
+      errorOut("Invalid repo name. Use owner/repo format (e.g., myorg/myrepo)");
     }
 
     const cfg = loadFullConfig();
     if (findRepo(cfg, name)) {
-      console.error(`Repo "${name}" is already configured.`);
-      process.exit(1);
+      errorOut(`Repo "${name}" is already configured.`);
     }
 
     const shortName = name.split("/")[1] ?? name;
 
     if (!opts.completionType) {
-      console.error("--completion-type required in non-interactive mode");
-      process.exit(1);
+      errorOut("--completion-type required in non-interactive mode");
     }
 
     let completionAction: CompletionAction;
     switch (opts.completionType) {
       case "addLabel":
         if (!opts.completionLabel) {
-          console.error("--completion-label required for addLabel type");
-          process.exit(1);
+          errorOut("--completion-label required for addLabel type");
         }
         completionAction = { type: "addLabel", label: opts.completionLabel };
         break;
       case "updateProjectStatus":
         if (!opts.completionOptionId) {
-          console.error("--completion-option-id required for updateProjectStatus type");
-          process.exit(1);
+          errorOut("--completion-option-id required for updateProjectStatus type");
         }
         completionAction = { type: "updateProjectStatus", optionId: opts.completionOptionId };
         break;
@@ -599,10 +583,9 @@ config
         completionAction = { type: "closeIssue" };
         break;
       default:
-        console.error(
+        errorOut(
           `Unknown completion type: ${opts.completionType}. Use: addLabel, updateProjectStatus, closeIssue`,
         );
-        process.exit(1);
     }
 
     const newRepo: RepoConfig = {
@@ -630,12 +613,11 @@ config
     const cfg = loadFullConfig();
     const idx = cfg.repos.findIndex((r) => r.shortName === name || r.name === name);
     if (idx === -1) {
-      console.error(`Repo "${name}" not found. Run: hog config repos`);
-      process.exit(1);
+      errorOut(`Repo "${name}" not found. Run: hog config repos`);
     }
     const [removed] = cfg.repos.splice(idx, 1);
     if (!removed) {
-      process.exit(1);
+      errorOut(`Repo "${name}" not found.`);
     }
     saveFullConfig(cfg);
 
@@ -680,8 +662,7 @@ config
   .description("Store an OpenRouter API key for AI-enhanced issue creation (I key on board)")
   .action((key: string) => {
     if (!key.startsWith("sk-or-")) {
-      console.error('Error: key must start with "sk-or-". Get one at https://openrouter.ai/keys');
-      process.exit(1);
+      errorOut('key must start with "sk-or-". Get one at https://openrouter.ai/keys');
     }
     saveLlmAuth(key);
     if (useJson()) {
@@ -755,8 +736,7 @@ config
   .action((name: string) => {
     const cfg = loadFullConfig();
     if (cfg.profiles[name]) {
-      console.error(`Profile "${name}" already exists.`);
-      process.exit(1);
+      errorOut(`Profile "${name}" already exists.`);
     }
 
     cfg.profiles[name] = {
@@ -779,10 +759,9 @@ config
   .action((name: string) => {
     const cfg = loadFullConfig();
     if (!cfg.profiles[name]) {
-      console.error(
+      errorOut(
         `Profile "${name}" not found. Available: ${Object.keys(cfg.profiles).join(", ") || "(none)"}`,
       );
-      process.exit(1);
     }
 
     delete cfg.profiles[name];
@@ -827,10 +806,9 @@ config
     }
 
     if (!cfg.profiles[name]) {
-      console.error(
+      errorOut(
         `Profile "${name}" not found. Available: ${Object.keys(cfg.profiles).join(", ") || "(none)"}`,
       );
-      process.exit(1);
     }
 
     cfg.defaultProfile = name;
@@ -894,62 +872,70 @@ issueCommand
     const config = loadFullConfig();
     const repo = opts.repo ?? config.repos[0]?.name;
     if (!repo) {
-      console.error(
-        "Error: no repo specified. Use --repo owner/name or configure repos in hog init.",
-      );
-      process.exit(1);
+      errorOut("No repo specified. Use --repo owner/name or configure repos in hog init.");
     }
 
-    if (hasLlmApiKey()) {
+    const json = useJson();
+
+    if (!json && hasLlmApiKey()) {
       console.error("[info] LLM parsing enabled");
     }
 
     const parsed = await extractIssueFields(text, {
-      onLlmFallback: (msg) => console.error(`[warn] ${msg}`),
+      onLlmFallback: json ? undefined : (msg) => console.error(`[warn] ${msg}`),
     });
 
     if (!parsed) {
-      console.error(
-        "Error: could not parse a title from input. Ensure your text has a non-empty title.",
-      );
-      process.exit(1);
+      errorOut("Could not parse a title from input. Ensure your text has a non-empty title.");
     }
 
     const labels = [...parsed.labels];
     if (parsed.dueDate) labels.push(`due:${parsed.dueDate}`);
 
-    // Show parsed fields
-    console.error(`Title:    ${parsed.title}`);
-    if (labels.length > 0) console.error(`Labels:   ${labels.join(", ")}`);
-    if (parsed.assignee) console.error(`Assignee: @${parsed.assignee}`);
-    if (parsed.dueDate) console.error(`Due:      ${parsed.dueDate}`);
-    console.error(`Repo:     ${repo}`);
+    // Show parsed fields (only in human mode)
+    if (!json) {
+      console.error(`Title:    ${parsed.title}`);
+      if (labels.length > 0) console.error(`Labels:   ${labels.join(", ")}`);
+      if (parsed.assignee) console.error(`Assignee: @${parsed.assignee}`);
+      if (parsed.dueDate) console.error(`Due:      ${parsed.dueDate}`);
+      console.error(`Repo:     ${repo}`);
+    }
 
     if (opts.dryRun) {
-      console.error("[dry-run] Skipping issue creation.");
+      if (json) {
+        jsonOut({
+          ok: true,
+          dryRun: true,
+          parsed: {
+            title: parsed.title,
+            labels,
+            assignee: parsed.assignee,
+            dueDate: parsed.dueDate,
+            repo,
+          },
+        });
+      } else {
+        console.error("[dry-run] Skipping issue creation.");
+      }
       return;
     }
 
-    const args = ["issue", "create", "--repo", repo, "--title", parsed.title, "--body", ""];
+    const ghArgs = ["issue", "create", "--repo", repo, "--title", parsed.title, "--body", ""];
     for (const label of labels) {
-      args.push("--label", label);
+      ghArgs.push("--label", label);
     }
 
-    const repoArg = repo;
     try {
-      if (useJson()) {
-        const output = await execFileAsync("gh", args, { encoding: "utf-8", timeout: 60_000 });
+      if (json) {
+        const output = await execFileAsync("gh", ghArgs, { encoding: "utf-8", timeout: 60_000 });
         const url = output.stdout.trim();
         const issueNumber = Number.parseInt(url.split("/").pop() ?? "0", 10);
-        jsonOut({ ok: true, data: { url, issueNumber, repo: repoArg } });
+        jsonOut({ ok: true, data: { url, issueNumber, repo } });
       } else {
-        execFileSync("gh", args, { stdio: "inherit" });
+        execFileSync("gh", ghArgs, { stdio: "inherit" });
       }
     } catch (err) {
-      console.error(
-        `Error: gh issue create failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      process.exit(1);
+      errorOut(`gh issue create failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   });
 
@@ -976,6 +962,34 @@ issueCommand
         console.log(issue.body);
       }
     }
+  });
+
+issueCommand
+  .command("close <issueRef>")
+  .description("Close a GitHub issue")
+  .action(async (issueRef: string) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const { closeIssueAsync } = await import("./github.js");
+    await closeIssueAsync(ref.repo.name, ref.issueNumber);
+    printSuccess(`Closed ${ref.repo.shortName}#${ref.issueNumber}`, {
+      repo: ref.repo.name,
+      issueNumber: ref.issueNumber,
+    });
+  });
+
+issueCommand
+  .command("reopen <issueRef>")
+  .description("Reopen a closed GitHub issue")
+  .action(async (issueRef: string) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const { reopenIssueAsync } = await import("./github.js");
+    await reopenIssueAsync(ref.repo.name, ref.issueNumber);
+    printSuccess(`Reopened ${ref.repo.shortName}#${ref.issueNumber}`, {
+      repo: ref.repo.name,
+      issueNumber: ref.issueNumber,
+    });
   });
 
 issueCommand

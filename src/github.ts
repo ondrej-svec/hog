@@ -149,6 +149,10 @@ export async function closeIssueAsync(repo: string, issueNumber: number): Promis
   await runGhAsync(["issue", "close", String(issueNumber), "--repo", repo]);
 }
 
+export async function reopenIssueAsync(repo: string, issueNumber: number): Promise<void> {
+  await runGhAsync(["issue", "reopen", String(issueNumber), "--repo", repo]);
+}
+
 export async function createIssueAsync(
   repo: string,
   title: string,

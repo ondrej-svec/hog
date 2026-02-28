@@ -96,6 +96,15 @@ export function printProjects(projects: Project[]): void {
   }
 }
 
+export function errorOut(message: string, data?: Record<string, unknown>): never {
+  if (useJson()) {
+    jsonOut({ ok: false, error: message, ...(data ? { data } : {}) });
+  } else {
+    console.error(`Error: ${message}`);
+  }
+  process.exit(1);
+}
+
 export function printSuccess(message: string, data?: Record<string, unknown> | object): void {
   if (useJson()) {
     jsonOut({ ok: true, message, ...data });
