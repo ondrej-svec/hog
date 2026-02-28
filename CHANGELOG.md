@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.20.0](https://github.com/ondrej-svec/hog/compare/hog-v1.19.0...hog-v1.20.0) (2026-02-28)
+
+
+### Features
+
+* **cli:** add errorOut, issue close/reopen, fix JSON mode contamination ([8bec058](https://github.com/ondrej-svec/hog/commit/8bec0584a653e1c5e7a43d679dac21499e915fd0))
+
+
+### Bug Fixes
+
+* repair test failures from quality sweep refactors ([7cfe505](https://github.com/ondrej-svec/hog/commit/7cfe505bf508dd94adea2b5012d6fa9d697c1ad2))
+
 ## [1.19.0](https://github.com/ondrej-svec/hog/compare/hog-v1.18.0...hog-v1.19.0) (2026-02-26)
 
 
