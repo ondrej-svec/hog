@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 export interface Toast {
   id: string;
@@ -82,45 +82,48 @@ export function useToast(): UseToastResult {
     [removeToast, clearTimer],
   );
 
-  const toast: ToastAPI = {
-    info: useCallback(
-      (message: string) => {
-        addToast({ type: "info", message });
-      },
-      [addToast],
-    ),
+  const infoFn = useCallback(
+    (message: string) => {
+      addToast({ type: "info", message });
+    },
+    [addToast],
+  );
 
-    success: useCallback(
-      (message: string) => {
-        addToast({ type: "success", message });
-      },
-      [addToast],
-    ),
+  const successFn = useCallback(
+    (message: string) => {
+      addToast({ type: "success", message });
+    },
+    [addToast],
+  );
 
-    error: useCallback(
-      (message: string, retry?: () => void) => {
-        addToast(retry ? { type: "error", message, retry } : { type: "error", message });
-      },
-      [addToast],
-    ),
+  const errorFn = useCallback(
+    (message: string, retry?: () => void) => {
+      addToast(retry ? { type: "error", message, retry } : { type: "error", message });
+    },
+    [addToast],
+  );
 
-    loading: useCallback(
-      (message: string) => {
-        const id = addToast({ type: "loading", message });
-        return {
-          resolve: (msg: string) => {
-            removeToast(id);
-            addToast({ type: "success", message: msg });
-          },
-          reject: (msg: string) => {
-            removeToast(id);
-            addToast({ type: "error", message: msg });
-          },
-        };
-      },
-      [addToast, removeToast],
-    ),
-  };
+  const loadingFn = useCallback(
+    (message: string) => {
+      const id = addToast({ type: "loading", message });
+      return {
+        resolve: (msg: string) => {
+          removeToast(id);
+          addToast({ type: "success", message: msg });
+        },
+        reject: (msg: string) => {
+          removeToast(id);
+          addToast({ type: "error", message: msg });
+        },
+      };
+    },
+    [addToast, removeToast],
+  );
+
+  const toast: ToastAPI = useMemo(
+    () => ({ info: infoFn, success: successFn, error: errorFn, loading: loadingFn }),
+    [infoFn, successFn, errorFn, loadingFn],
+  );
 
   const handleErrorAction = useCallback(
     (action: "dismiss" | "retry"): boolean => {

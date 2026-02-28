@@ -5,13 +5,13 @@ export type FocusEndAction = "restart" | "break" | "done" | "exit";
 
 interface FocusModeProps {
   /** Label to show (e.g. "aibility#142 — Fix login bug") */
-  label: string;
+  readonly label: string;
   /** Duration in seconds (default 1500 = 25 min) */
-  durationSec: number;
+  readonly durationSec: number;
   /** Called when user exits focus mode */
-  onExit: () => void;
+  readonly onExit: () => void;
   /** Called when timer ends and user picks an action */
-  onEndAction: (action: FocusEndAction) => void;
+  readonly onEndAction: (action: FocusEndAction) => void;
 }
 
 function formatTime(secs: number): string {

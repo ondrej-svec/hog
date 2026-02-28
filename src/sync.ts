@@ -1,5 +1,5 @@
 import { TickTickClient } from "./api.js";
-import { formatError } from "./board/constants.js";
+import { formatError } from "./utils.js";
 import type { HogConfig, RepoConfig } from "./config.js";
 import { loadFullConfig, requireAuth } from "./config.js";
 import type { GitHubIssue, ProjectEnrichment } from "./github.js";

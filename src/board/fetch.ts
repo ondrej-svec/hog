@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { TickTickClient } from "../api.js";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { getConfig, requireAuth } from "../config.js";
+import { requireAuth } from "../config.js";
 import type { GitHubIssue, StatusOption } from "../github.js";
 import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
 import type { Task } from "../types.js";
@@ -195,9 +195,8 @@ export async function fetchDashboard(
     try {
       const auth = requireAuth();
       const api = new TickTickClient(auth.accessToken);
-      const cfg = getConfig();
-      if (cfg.defaultProjectId) {
-        const tasks = await api.listTasks(cfg.defaultProjectId);
+      if (config.defaultProjectId) {
+        const tasks = await api.listTasks(config.defaultProjectId);
         ticktick = tasks.filter((t) => t.status !== TaskStatus.Completed);
       }
     } catch (err) {

@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -275,7 +275,7 @@ function findSelectedIssueWithRepo(
 function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
   const [, setTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 10_000);
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
   if (!lastRefresh) return null;
@@ -806,15 +806,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         toast.info(`${label} — ${found.issue.url}`);
         return;
       }
-      const result = spawnSync(cmd, args, {
-        input: found.issue.url,
-        stdio: ["pipe", "pipe", "pipe"],
+      const child = spawn(cmd, args, { stdio: ["pipe", "pipe", "pipe"] });
+      child.stdin.end(found.issue.url);
+      child.on("close", (code) => {
+        if (code === 0) {
+          toast.success(`Copied ${label} to clipboard`);
+        } else {
+          toast.info(`${label} — ${found.issue.url}`);
+        }
       });
-      if (result.status === 0) {
-        toast.success(`Copied ${label} to clipboard`);
-      } else {
-        toast.info(`${label} — ${found.issue.url}`);
-      }
     } else {
       toast.info(`${label} — ${found.issue.url}`);
     }

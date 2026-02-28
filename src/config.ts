@@ -7,12 +7,14 @@ export const CONFIG_DIR = join(homedir(), ".config", "hog");
 const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
-interface AuthData {
-  accessToken: string;
-  clientId: string;
-  clientSecret: string;
-  openrouterApiKey?: string;
-}
+const AUTH_SCHEMA = z.object({
+  accessToken: z.string(),
+  clientId: z.string(),
+  clientSecret: z.string(),
+  openrouterApiKey: z.string().optional(),
+});
+
+type AuthData = z.infer<typeof AUTH_SCHEMA>;
 
 // ── Config Schema (Zod) ──
 
@@ -208,7 +210,9 @@ function ensureDir(): void {
 export function getAuth(): AuthData | null {
   if (!existsSync(AUTH_FILE)) return null;
   try {
-    return JSON.parse(readFileSync(AUTH_FILE, "utf-8"));
+    const raw: unknown = JSON.parse(readFileSync(AUTH_FILE, "utf-8"));
+    const result = AUTH_SCHEMA.safeParse(raw);
+    return result.success ? result.data : null;
   } catch {
     return null;
   }

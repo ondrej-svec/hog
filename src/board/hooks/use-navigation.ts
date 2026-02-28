@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
 export type SectionId = string;
 
@@ -193,14 +193,10 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     allItems: [],
   });
 
-  // Sync items into reducer when they change (by reference comparison).
-  // Dispatching during render is safe here: the ref prevents re-dispatch
-  // on the subsequent re-render since allItems will be the same reference.
-  const prevItemsRef = useRef<NavItem[] | null>(null);
-  if (allItems !== prevItemsRef.current) {
-    prevItemsRef.current = allItems;
+  // Sync items into reducer when they change.
+  useEffect(() => {
     dispatch({ type: "SET_ITEMS", items: allItems });
-  }
+  }, [allItems]);
 
   const visibleItems = useMemo(
     () => getVisibleItems(allItems, state.collapsedSections),

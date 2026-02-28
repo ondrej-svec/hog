@@ -150,12 +150,12 @@ export function useData(
       }
 
       if (msg.type === "success" && msg.data) {
-        // Revive Date objects (structured clone preserves them, but defensive)
-        const raw = msg.data;
-        raw.fetchedAt = new Date(raw.fetchedAt);
-        for (const ev of raw.activity) {
-          ev.timestamp = new Date(ev.timestamp);
-        }
+        // Clone and revive Date objects (avoid mutating the worker message)
+        const raw = {
+          ...msg.data,
+          fetchedAt: new Date(msg.data.fetchedAt),
+          activity: msg.data.activity.map((ev) => ({ ...ev, timestamp: new Date(ev.timestamp) })),
+        };
         // Apply any pending optimistic overrides so a refresh triggered by
         // an unrelated action (e.g. assign) doesn't revert a status change
         // that GitHub Projects v2 hasn't propagated yet.
