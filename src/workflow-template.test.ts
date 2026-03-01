@@ -113,12 +113,12 @@ describe("BUILTIN_TEMPLATES", () => {
   });
 
   it("full template should validate", () => {
-    const result = validateTemplate(BUILTIN_TEMPLATES.full);
+    const result = validateTemplate(BUILTIN_TEMPLATES["full"]);
     expect(result).not.toHaveProperty("error");
   });
 
   it("minimal template should validate", () => {
-    const result = validateTemplate(BUILTIN_TEMPLATES.minimal);
+    const result = validateTemplate(BUILTIN_TEMPLATES["minimal"]);
     expect(result).not.toHaveProperty("error");
   });
 });
@@ -129,7 +129,12 @@ describe("exportTemplate", () => {
   it("should export from a repo with workflow config", () => {
     const template = exportTemplate("My Template", REPO_WITH_WORKFLOW, {
       ...MINIMAL_BOARD,
-      workflow: { staleness: { warningDays: 5, criticalDays: 10 } },
+      workflow: {
+        defaultMode: "suggested",
+        defaultPhases: ["brainstorm", "plan", "implement", "review"],
+        maxConcurrentAgents: 3,
+        staleness: { warningDays: 5, criticalDays: 10 },
+      },
     });
 
     expect(template.name).toBe("My Template");
@@ -203,7 +208,7 @@ describe("importTemplate", () => {
 
 describe("applyTemplateToRepo", () => {
   it("should apply workflow from template", () => {
-    const template = BUILTIN_TEMPLATES.full;
+    const template = BUILTIN_TEMPLATES["full"];
     if (!template) throw new Error("full template not found");
 
     const updated = applyTemplateToRepo(template, MINIMAL_REPO);
@@ -214,7 +219,7 @@ describe("applyTemplateToRepo", () => {
   });
 
   it("should apply autoStatus triggers from template", () => {
-    const template = BUILTIN_TEMPLATES.full;
+    const template = BUILTIN_TEMPLATES["full"];
     if (!template) throw new Error("full template not found");
 
     const updated = applyTemplateToRepo(template, MINIMAL_REPO);
@@ -225,7 +230,7 @@ describe("applyTemplateToRepo", () => {
   });
 
   it("should preserve existing autoStatus.enabled", () => {
-    const template = BUILTIN_TEMPLATES.full;
+    const template = BUILTIN_TEMPLATES["full"];
     if (!template) throw new Error("full template not found");
 
     const repo: RepoConfig = {
@@ -241,7 +246,7 @@ describe("applyTemplateToRepo", () => {
 
 describe("applyTemplateToBoard", () => {
   it("should apply workflow defaults to board config", () => {
-    const template = BUILTIN_TEMPLATES.full;
+    const template = BUILTIN_TEMPLATES["full"];
     if (!template) throw new Error("full template not found");
 
     const updated = applyTemplateToBoard(template, MINIMAL_BOARD);
@@ -251,24 +256,33 @@ describe("applyTemplateToBoard", () => {
   });
 
   it("should preserve existing board notifications", () => {
-    const template = BUILTIN_TEMPLATES.minimal;
+    const template = BUILTIN_TEMPLATES["minimal"];
     if (!template) throw new Error("minimal template not found");
 
     const board: BoardConfig = {
       ...MINIMAL_BOARD,
-      workflow: { notifications: { os: true, sound: false } },
+      workflow: {
+        defaultMode: "suggested",
+        defaultPhases: ["brainstorm", "plan", "implement", "review"],
+        maxConcurrentAgents: 3,
+        notifications: { os: true, sound: false },
+      },
     };
     const updated = applyTemplateToBoard(template, board);
     expect(updated.workflow?.notifications).toEqual({ os: true, sound: false });
   });
 
   it("should preserve maxConcurrentAgents if set", () => {
-    const template = BUILTIN_TEMPLATES.minimal;
+    const template = BUILTIN_TEMPLATES["minimal"];
     if (!template) throw new Error("minimal template not found");
 
     const board: BoardConfig = {
       ...MINIMAL_BOARD,
-      workflow: { maxConcurrentAgents: 5 },
+      workflow: {
+        defaultMode: "suggested",
+        defaultPhases: ["brainstorm", "plan", "implement", "review"],
+        maxConcurrentAgents: 5,
+      },
     };
     const updated = applyTemplateToBoard(template, board);
     expect(updated.workflow?.maxConcurrentAgents).toBe(5);

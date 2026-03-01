@@ -1376,6 +1376,153 @@ workflowCommand
     }
   });
 
+workflowCommand
+  .command("show")
+  .description("Show current workflow config for a repo")
+  .argument("[repo]", "Repo short name or owner/repo")
+  .action(async (repoRef?: string) => {
+    const cfg = loadFullConfig();
+
+    if (repoRef) {
+      const repo = findRepo(cfg, repoRef);
+      if (!repo) {
+        errorOut(`Repo "${repoRef}" not found in config`);
+      }
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          data: {
+            repo: repo.name,
+            workflow: repo.workflow,
+            autoStatus: repo.autoStatus,
+            boardWorkflow: cfg.board.workflow,
+          },
+        });
+      } else {
+        console.log(`Workflow config for ${repo.name}:\n`);
+        console.log(`  Repo-level workflow:`);
+        console.log(`    ${JSON.stringify(repo.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`);
+        console.log(`\n  Auto-status:`);
+        console.log(
+          `    ${JSON.stringify(repo.autoStatus ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+        );
+        console.log(`\n  Board-level workflow:`);
+        console.log(
+          `    ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+        );
+      }
+    } else if (useJson()) {
+      // Show board-level workflow config
+      jsonOut({ ok: true, data: { boardWorkflow: cfg.board.workflow } });
+    } else {
+      console.log("Board-level workflow config:\n");
+      console.log(`  ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
+    }
+  });
+
+workflowCommand
+  .command("export")
+  .description("Export workflow config as a shareable template")
+  .argument("<repo>", "Repo short name or owner/repo")
+  .option("-o, --output <file>", "Write to file instead of stdout")
+  .option("-n, --name <name>", "Template name", "Exported Workflow")
+  .action(async (repoRef: string, opts: { output?: string; name?: string }) => {
+    const cfg = loadFullConfig();
+    const repo = findRepo(cfg, repoRef);
+    if (!repo) {
+      errorOut(`Repo "${repoRef}" not found in config`);
+    }
+
+    const { exportTemplate } = await import("./workflow-template.js");
+    const template = exportTemplate(opts.name ?? "Exported Workflow", repo, cfg.board);
+
+    if (opts.output) {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(opts.output, `${JSON.stringify(template, null, 2)}\n`);
+      if (useJson()) {
+        jsonOut({ ok: true, data: { file: opts.output, template } });
+      } else {
+        printSuccess(`Template exported to ${opts.output}`);
+      }
+    } else if (useJson()) {
+      jsonOut({ ok: true, data: template });
+    } else {
+      console.log(JSON.stringify(template, null, 2));
+    }
+  });
+
+workflowCommand
+  .command("import")
+  .description("Import a workflow template into config")
+  .argument("<file>", "Path to template JSON file")
+  .option("-r, --repo <name>", "Apply to specific repo (otherwise board-level only)")
+  .option("--dry-run", "Show what would change without modifying config")
+  .action(async (file: string, opts: { repo?: string; dryRun?: true }) => {
+    const { importTemplate, applyTemplateToBoard, applyTemplateToRepo } = await import(
+      "./workflow-template.js"
+    );
+
+    const result = importTemplate(file);
+    if ("error" in result) {
+      errorOut(result.error);
+    }
+
+    const cfg = loadFullConfig();
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({ ok: true, data: { dryRun: true, template: result } });
+      } else {
+        console.log("Template validated successfully:\n");
+        console.log(`  Name: ${result.name}`);
+        if (result.description) console.log(`  Description: ${result.description}`);
+        console.log(`  Phases: ${result.workflow.phases.join(", ")}`);
+        console.log(`  Mode: ${result.workflow.mode}`);
+        if (result.staleness) {
+          console.log(
+            `  Staleness: warning ${result.staleness.warningDays}d, critical ${result.staleness.criticalDays}d`,
+          );
+        }
+        if (result.autoStatus) {
+          console.log(`  Auto-status triggers: ${Object.keys(result.autoStatus).join(", ")}`);
+        }
+        console.log("\nRun without --dry-run to apply.");
+      }
+      return;
+    }
+
+    // Apply to board config
+    const updatedBoard = applyTemplateToBoard(result, cfg.board);
+    const updatedConfig = { ...cfg, board: updatedBoard };
+
+    // Optionally apply to a specific repo
+    if (opts.repo) {
+      const repoIdx = updatedConfig.repos.findIndex(
+        (r) => r.shortName === opts.repo || r.name === opts.repo,
+      );
+      if (repoIdx < 0) {
+        errorOut(`Repo "${opts.repo}" not found in config`);
+      }
+      const existingRepo = updatedConfig.repos[repoIdx];
+      if (existingRepo) {
+        updatedConfig.repos = [...updatedConfig.repos];
+        updatedConfig.repos[repoIdx] = applyTemplateToRepo(result, existingRepo);
+      }
+    }
+
+    saveFullConfig(updatedConfig);
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { imported: result.name, repo: opts.repo ?? null } });
+    } else {
+      printSuccess(`Imported template "${result.name}"`);
+      if (opts.repo) {
+        console.log(`  Applied to repo: ${opts.repo}`);
+      }
+      console.log("  Applied to board-level workflow config.");
+    }
+  });
+
 // -- Run --
 
 program.parseAsync().catch((err: unknown) => {
