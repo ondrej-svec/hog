@@ -18,7 +18,12 @@ vi.mock("../github.js", () => ({
 
 import { execFileSync } from "node:child_process";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { fetchDashboard, fetchRecentActivity } from "./fetch.js";
+import {
+  extractIssueNumbersFromBranch,
+  extractLinkedIssueNumbers,
+  fetchDashboard,
+  fetchRecentActivity,
+} from "./fetch.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
 
@@ -447,16 +452,109 @@ describe("fetchRecentActivity", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("skips non-IssueCommentEvent and non-IssuesEvent event types", () => {
+  it("parses PullRequestEvent opened", () => {
     const nowMs = Date.now();
     const line = JSON.stringify({
       type: "PullRequestEvent",
       actor: "grace",
       action: "opened",
       number: 12,
+      title: "Fix #42 auth bug",
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    // Linked issue #42 from title
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("pr_opened");
+    expect(events[0]?.issueNumber).toBe(42);
+    expect(events[0]?.prNumber).toBe(12);
+  });
+
+  it("parses PullRequestEvent merged", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "PullRequestEvent",
+      actor: "grace",
+      action: "closed",
+      number: 15,
+      title: "Add feature",
+      body: "Closes #7",
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: true,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("pr_merged");
+    expect(events[0]?.issueNumber).toBe(7);
+    expect(events[0]?.prNumber).toBe(15);
+  });
+
+  it("parses CreateEvent branch with issue number", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "CreateEvent",
+      actor: "bob",
+      action: null,
+      number: null,
       title: null,
       body: null,
       created_at: new Date(nowMs - 1000).toISOString(),
+      ref: "feat/42-add-auth",
+      ref_type: "branch",
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("branch_created");
+    expect(events[0]?.issueNumber).toBe(42);
+    expect(events[0]?.branchName).toBe("feat/42-add-auth");
+  });
+
+  it("skips CreateEvent for tags", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "CreateEvent",
+      actor: "bob",
+      action: null,
+      number: null,
+      title: null,
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: "v1.0.0",
+      ref_type: "tag",
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips unknown event types", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "WatchEvent",
+      actor: "grace",
+      action: "started",
+      number: null,
+      title: null,
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: null,
     });
     mockExecFileSync.mockReturnValue(line);
 
@@ -554,5 +652,59 @@ describe("fetchRecentActivity", () => {
     expect(events[0]?.summary).toContain("commented on #7");
     // No body preview appended
     expect(events[0]?.summary).not.toContain('"');
+  });
+});
+
+describe("extractIssueNumbersFromBranch", () => {
+  it("extracts issue number from typical branch names", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-add-auth")).toEqual([42]);
+    expect(extractIssueNumbersFromBranch("fix/123-broken-login")).toEqual([123]);
+    expect(extractIssueNumbersFromBranch("issue-7-bugfix")).toEqual([7]);
+  });
+
+  it("extracts multiple issue numbers", () => {
+    const result = extractIssueNumbersFromBranch("feat/42-and-43");
+    expect(result).toContain(42);
+    expect(result).toContain(43);
+  });
+
+  it("deduplicates issue numbers", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-issue-42")).toEqual([42]);
+  });
+
+  it("returns empty for branches without numbers", () => {
+    expect(extractIssueNumbersFromBranch("main")).toEqual([]);
+    expect(extractIssueNumbersFromBranch("feat/add-auth")).toEqual([]);
+  });
+
+  it("uses custom pattern when provided", () => {
+    expect(extractIssueNumbersFromBranch("feat/PROJ-42", "PROJ-(\\d+)")).toEqual([42]);
+  });
+
+  it("falls back to default when custom pattern is invalid", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-fix", "[invalid")).toEqual([42]);
+  });
+});
+
+describe("extractLinkedIssueNumbers", () => {
+  it("extracts issue numbers from title", () => {
+    expect(extractLinkedIssueNumbers("Fix #42 auth bug", null)).toEqual([42]);
+  });
+
+  it("extracts issue numbers from body", () => {
+    expect(extractLinkedIssueNumbers(null, "Closes #7 and fixes #12")).toEqual([7, 12]);
+  });
+
+  it("extracts from both title and body", () => {
+    expect(extractLinkedIssueNumbers("PR for #5", "Also fixes #10")).toEqual([5, 10]);
+  });
+
+  it("deduplicates", () => {
+    expect(extractLinkedIssueNumbers("Fix #42", "Closes #42")).toEqual([42]);
+  });
+
+  it("returns empty when no issue references", () => {
+    expect(extractLinkedIssueNumbers("Add feature", "No issues here")).toEqual([]);
+    expect(extractLinkedIssueNumbers(null, null)).toEqual([]);
   });
 });
