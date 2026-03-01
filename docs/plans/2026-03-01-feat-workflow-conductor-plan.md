@@ -525,20 +525,20 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Create `src/board/hooks/use-nudges.ts` — daily nudge overlay, staleness detection, snooze tracking
-- [ ] Create `src/board/hooks/use-nudges.test.ts`
-- [ ] Daily nudge overlay: on board open, if `lastDailyNudge` < today, show summary of stale issues (dismissable/snoozeable)
-- [ ] Create `src/board/components/nudge-overlay.tsx`
-- [ ] Ready-issue suggestions: issues in first status group (backlog/ready) for >7 days get a subtle "Quick brainstorm?" indicator
-- [ ] Completion assistance: new action in workflow overlay — "Check what's left" launches background agent that reads plan, diffs branch, runs tests, reports status
-- [ ] Completion agent prompt template: "Check the status of Issue #{number}. Read the plan doc if it exists. Run `git diff main...HEAD --stat`. Run tests. Report: what's done, what's remaining, what's blocking."
-- [ ] Add `hog workflow triage` CLI subcommand:
+- [x] Create `src/board/hooks/use-nudges.ts` — daily nudge overlay, staleness detection, snooze tracking
+- [x] Create `src/board/hooks/use-nudges.test.ts`
+- [x] Daily nudge overlay: on board open, if `lastDailyNudge` < today, show summary of stale issues (dismissable/snoozeable)
+- [x] Create `src/board/components/nudge-overlay.tsx`
+- [x] Ready-issue suggestions: issues in first status group (backlog/ready) for >7 days get a subtle "Quick brainstorm?" indicator
+- [x] Completion assistance: new action in workflow overlay — "Check what's left" launches background agent that reads plan, diffs branch, runs tests, reports status
+- [x] Completion agent prompt template: "Check the status of Issue #{number}. Read the plan doc if it exists. Run `git diff main...HEAD --stat`. Run tests. Report: what's done, what's remaining, what's blocking."
+- [x] Add `hog workflow triage` CLI subcommand:
   - List all Ready/stale issues across repos (or `--repo` filter)
   - Interactive selection with checkboxes
   - Launch background agents for selected issues (detached for overnight, tracked for board-open)
   - `--phase` flag to specify which phase to run (default: research for Ready, review for In Progress)
-- [ ] Wire `[T]` key on board for triage overlay (same selection UI as CLI, but agents tracked)
-- [ ] Snooze mechanism: `snoozedIssues` in enrichment.json, snooze for 1d/3d/7d, snoozed issues hidden from nudges
+- [x] Wire `[T]` key on board for triage overlay (same selection UI as CLI, but agents tracked)
+- [x] Snooze mechanism: `snoozedIssues` in enrichment.json, snooze for 1d/3d/7d, snoozed issues hidden from nudges
 
 **Files created:** `src/board/hooks/use-nudges.ts`, `src/board/hooks/use-nudges.test.ts`, `src/board/components/nudge-overlay.tsx`
 
