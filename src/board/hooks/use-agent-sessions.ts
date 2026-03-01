@@ -1,6 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
+import { notify } from "../../notify.js";
 import type { AgentMonitor, SpawnAgentOptions, StreamEvent } from "../spawn-agent.js";
 import {
   attachStreamMonitor,
@@ -62,6 +63,9 @@ export function useAgentSessions(
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
+  const configRef = useRef(config);
+  configRef.current = config;
+
   const maxConcurrent = config.board.workflow?.maxConcurrentAgents ?? 3;
 
   // ── Reconcile unprocessed result files on mount ──
@@ -110,6 +114,10 @@ export function useAgentSessions(
           toastRef.current.info(
             `Background agent for #${session.issueNumber} (${session.phase}) exited`,
           );
+          notify(configRef.current.board.workflow?.notifications, {
+            title: "Agent exited",
+            body: `${session.phase} for #${session.issueNumber} exited`,
+          });
         }
       }
     }, PID_POLL_INTERVAL_MS);
@@ -185,10 +193,18 @@ export function useAgentSessions(
 
         if (exitCode === 0) {
           toastRef.current.success(`Agent completed: ${opts.phase} for #${opts.issueNumber}`);
+          notify(configRef.current.board.workflow?.notifications, {
+            title: "Agent completed",
+            body: `${opts.phase} for #${opts.issueNumber} completed successfully`,
+          });
         } else {
           toastRef.current.error(
             `Agent failed (exit ${exitCode}): ${opts.phase} for #${opts.issueNumber}`,
           );
+          notify(configRef.current.board.workflow?.notifications, {
+            title: "Agent failed",
+            body: `${opts.phase} for #${opts.issueNumber} failed (exit ${exitCode})`,
+          });
         }
       };
 
