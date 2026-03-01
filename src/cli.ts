@@ -1206,6 +1206,77 @@ logCommand
     }
   });
 
+// -- Workflow commands --
+
+const workflowCommand = program.command("workflow").description("Workflow orchestration commands");
+
+workflowCommand
+  .command("status [issueRef]")
+  .description("Show workflow session history for an issue or all tracked issues")
+  .action(async (issueRef?: string) => {
+    const { loadEnrichment, findSessions } = await import("./enrichment.js");
+    const enrichment = loadEnrichment();
+
+    if (issueRef) {
+      const cfg = loadFullConfig();
+      const ref = await resolveRef(issueRef, cfg);
+      const sessions = findSessions(enrichment, ref.repo.name, ref.issueNumber);
+
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          data: {
+            repo: ref.repo.name,
+            issueNumber: ref.issueNumber,
+            sessions,
+          },
+        });
+      } else {
+        if (sessions.length === 0) {
+          console.log(`No workflow sessions for ${ref.repo.shortName}#${ref.issueNumber}`);
+          return;
+        }
+        console.log(`Workflow sessions for ${ref.repo.shortName}#${ref.issueNumber}:\n`);
+        for (const s of sessions) {
+          const status = s.exitedAt ? `exited (code ${s.exitCode ?? "?"})` : "active";
+          const started = new Date(s.startedAt).toLocaleString();
+          console.log(`  ${s.phase} [${s.mode}] — ${status}`);
+          console.log(`    started: ${started}`);
+          if (s.exitedAt) console.log(`    exited:  ${new Date(s.exitedAt).toLocaleString()}`);
+          if (s.claudeSessionId) console.log(`    session: ${s.claudeSessionId}`);
+          console.log();
+        }
+      }
+    } else {
+      // Show all sessions grouped by issue
+      if (useJson()) {
+        jsonOut({ ok: true, data: { sessions: enrichment.sessions } });
+      } else {
+        if (enrichment.sessions.length === 0) {
+          console.log("No workflow sessions recorded.");
+          return;
+        }
+
+        const grouped = new Map<string, typeof enrichment.sessions>();
+        for (const s of enrichment.sessions) {
+          const key = `${s.repo}#${s.issueNumber}`;
+          const list = grouped.get(key) ?? [];
+          list.push(s);
+          grouped.set(key, list);
+        }
+
+        for (const [key, sessions] of grouped) {
+          console.log(`${key}:`);
+          for (const s of sessions) {
+            const status = s.exitedAt ? `exited (code ${s.exitCode ?? "?"})` : "active";
+            console.log(`  ${s.phase} [${s.mode}] — ${status} — ${new Date(s.startedAt).toLocaleString()}`);
+          }
+          console.log();
+        }
+      }
+    }
+  });
+
 // -- Run --
 
 program.parseAsync().catch((err: unknown) => {
