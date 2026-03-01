@@ -151,8 +151,7 @@ function IssueRow({
   const dateStr = date.text.padStart(DATE_W);
 
   // Age suffix — only shown when stale (above warning threshold)
-  const ageColorVal =
-    statusAgeDays != null ? ageColor(statusAgeDays, stalenessConfig) : undefined;
+  const ageColorVal = statusAgeDays != null ? ageColor(statusAgeDays, stalenessConfig) : undefined;
 
   return (
     <Box>
@@ -202,16 +201,11 @@ function IssueRow({
       <Text color={date.color}>{dateStr}</Text>
 
       {/* Phase indicator — appended after date, only when present */}
-      {phaseIndicator ? (
-        <Text color="magenta"> {abbreviatePhase(phaseIndicator)}</Text>
-      ) : null}
+      {phaseIndicator ? <Text color="magenta"> {abbreviatePhase(phaseIndicator)}</Text> : null}
 
       {/* Age suffix — only shown when stale (above warning threshold) */}
       {ageColorVal && statusAgeDays != null ? (
-        <Text color={ageColorVal}>
-          {" "}
-          [{String(statusAgeDays)}d]
-        </Text>
+        <Text color={ageColorVal}> [{String(statusAgeDays)}d]</Text>
       ) : null}
     </Box>
   );

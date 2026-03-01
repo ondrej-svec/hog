@@ -76,16 +76,11 @@ export function extractIssueNumbersFromBranch(
 }
 
 /** Extract issue numbers linked in PR title/body (e.g. "Fixes #42" → [42]) */
-export function extractLinkedIssueNumbers(
-  title: string | null,
-  body: string | null,
-): number[] {
+export function extractLinkedIssueNumbers(title: string | null, body: string | null): number[] {
   const text = `${title ?? ""} ${body ?? ""}`;
   const matches = text.match(/#(\d{1,5})\b/g);
   if (!matches) return [];
-  return [
-    ...new Set(matches.map((m) => parseInt(m.slice(1), 10)).filter((n) => n > 0)),
-  ];
+  return [...new Set(matches.map((m) => parseInt(m.slice(1), 10)).filter((n) => n > 0))];
 }
 
 /** Fetch recent activity events for a repo (last 24h, max 30 events) */

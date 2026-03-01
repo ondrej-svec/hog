@@ -3,7 +3,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import type { GitHubIssue } from "../../github.js";
 import type { IssueRowProps } from "./issue-row.js";
-import { IssueRow, abbreviatePhase, ageColor } from "./issue-row.js";
+import { abbreviatePhase, ageColor, IssueRow } from "./issue-row.js";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

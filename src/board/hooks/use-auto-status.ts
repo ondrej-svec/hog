@@ -38,10 +38,7 @@ export interface UseAutoStatusResult {
 // ── Helpers ──
 
 /** Match an activity event to an auto-status trigger for a repo config. */
-export function matchTrigger(
-  event: ActivityEvent,
-  repoConfig: RepoConfig,
-): string | undefined {
+export function matchTrigger(event: ActivityEvent, repoConfig: RepoConfig): string | undefined {
   const autoStatus = repoConfig.autoStatus;
   if (!autoStatus?.enabled) return undefined;
 
@@ -86,10 +83,7 @@ function findRepoForEvent(
 }
 
 /** Find an issue's current status from the repo data. */
-function findCurrentStatus(
-  repoData: RepoData,
-  issueNumber: number,
-): string | undefined {
+function findCurrentStatus(repoData: RepoData, issueNumber: number): string | undefined {
   return repoData.issues.find((i) => i.number === issueNumber)?.projectStatus;
 }
 
@@ -131,10 +125,7 @@ export function useAutoStatus({
         const targetStatusName = matchTrigger(event, repoConfig);
         if (!targetStatusName) continue;
 
-        const targetOptionId = resolveStatusOptionId(
-          targetStatusName,
-          repoData.statusOptions,
-        );
+        const targetOptionId = resolveStatusOptionId(targetStatusName, repoData.statusOptions);
         if (!targetOptionId) continue;
 
         // Guard: skip if issue already in the target status
