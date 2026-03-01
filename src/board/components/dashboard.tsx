@@ -397,13 +397,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     if (last?.status === "error") setLogVisible(true);
   }, [logEntries]);
 
-  // After data loads, surface TickTick errors
-  useEffect(() => {
-    if (data?.ticktickError) {
-      toast.error(`TickTick sync failed: ${data.ticktickError}`);
-    }
-  }, [data?.ticktickError, toast.error]);
-
   // Filter by search query and/or mineOnly
   const repos = useMemo(() => {
     let filtered = allRepos;
@@ -591,7 +584,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     import("../../pick.js").then(({ pickIssue }) =>
       pickIssue(config, { repo: rc, issueNumber: pending.issueNumber })
         .then((result) => {
-          const msg = `Picked ${rc.shortName}#${pending.issueNumber} — assigned + synced to TickTick`;
+          const msg = `Picked ${rc.shortName}#${pending.issueNumber} — assigned on GitHub`;
           t.resolve(result.warning ? `${msg} (${result.warning})` : msg);
           refresh();
         })
@@ -853,12 +846,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, [repos, nav.selectedId, config.repos, config.board, toast]);
 
   // Multi-select selection type (for bulk action menu)
-  const multiSelectType = useMemo((): "github" | "ticktick" | "mixed" => {
-    for (const id of multiSelect.selected) {
-      if (id.startsWith("tt:")) return "ticktick";
-    }
-    return "github";
-  }, [multiSelect.selected]);
+  const multiSelectType = "github" as const;
 
   // Bulk action handler (called from BulkActionMenu)
   const handleBulkAction = useCallback(

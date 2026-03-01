@@ -247,7 +247,7 @@ export function useActions({
     const t = toast.loading(`Picking ${repoConfig.shortName}#${issue.number}...`);
     pickIssue(configRef.current, { repo: repoConfig, issueNumber: issue.number })
       .then((result) => {
-        const msg = `Picked ${repoConfig.shortName}#${issue.number} — assigned + synced to TickTick`;
+        const msg = `Picked ${repoConfig.shortName}#${issue.number} — assigned on GitHub`;
         t.resolve(result.warning ? `${msg} (${result.warning})` : msg);
         refresh();
       })

@@ -1,11 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { TickTickClient } from "../api.js";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { requireAuth } from "../config.js";
 import type { GitHubIssue, StatusOption } from "../github.js";
 import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
-import type { Task } from "../types.js";
-import { TaskStatus } from "../types.js";
 import { formatError } from "../utils.js";
 
 export interface RepoData {
@@ -26,8 +22,6 @@ export interface ActivityEvent {
 
 export interface DashboardData {
   repos: RepoData[];
-  ticktick: Task[];
-  ticktickError: string | null;
   activity: ActivityEvent[];
   fetchedAt: Date;
 }
@@ -188,22 +182,6 @@ export async function fetchDashboard(
     }
   });
 
-  // TickTick: async (uses HTTP API) — skip when disabled in config
-  let ticktick: Task[] = [];
-  let ticktickError: string | null = null;
-  if (config.ticktick.enabled) {
-    try {
-      const auth = requireAuth();
-      const api = new TickTickClient(auth.accessToken);
-      if (config.defaultProjectId) {
-        const tasks = await api.listTasks(config.defaultProjectId);
-        ticktick = tasks.filter((t) => t.status !== TaskStatus.Completed);
-      }
-    } catch (err) {
-      ticktickError = formatError(err);
-    }
-  }
-
   // Activity: fetch recent events from all repos (non-blocking, best-effort)
   const activity: ActivityEvent[] = [];
   for (const repo of repos) {
@@ -215,8 +193,6 @@ export async function fetchDashboard(
 
   return {
     repos: repoData,
-    ticktick,
-    ticktickError,
     activity: activity.slice(0, 15),
     fetchedAt: new Date(),
   };

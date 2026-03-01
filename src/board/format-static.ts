@@ -1,6 +1,4 @@
 import type { GitHubIssue } from "../github.js";
-import type { Task } from "../types.js";
-import { Priority } from "../types.js";
 import type { DashboardData, RepoData } from "./fetch.js";
 import { getTheme } from "./theme.js";
 
@@ -24,30 +22,6 @@ function formatIssueLine(issue: GitHubIssue, selfLogin: string, maxTitle: number
   const title = truncate(issue.title, maxTitle);
   const assignee = issueAssignee(issue, selfLogin);
   return `  ${num} ${title.padEnd(maxTitle)} ${assignee}`;
-}
-
-function formatTaskLine(task: Task, maxTitle: number): string {
-  const pri =
-    task.priority === Priority.High
-      ? theme.priority.high("[!]")
-      : task.priority === Priority.Medium
-        ? theme.priority.medium("[~]")
-        : "   ";
-  const title = truncate(task.title, maxTitle);
-  const due = task.dueDate ? formatDueDate(task.dueDate) : "";
-  return `  ${pri} ${title.padEnd(maxTitle)} ${theme.text.secondary(due)}`;
-}
-
-function formatDueDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  const now = new Date();
-  const days = Math.ceil((d.getTime() - now.getTime()) / 86_400_000);
-
-  if (days < 0) return theme.text.error(`${Math.abs(days)}d overdue`);
-  if (days === 0) return theme.text.warning("today");
-  if (days === 1) return "tomorrow";
-  if (days <= 7) return `in ${days}d`;
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function printSection(title: string, content: string): void {
@@ -90,27 +64,6 @@ function renderRepoSection(data: RepoData, selfLogin: string, backlogOnly: boole
   return lines.join("\n");
 }
 
-function renderTickTickSection(tasks: Task[], error: string | null): string {
-  if (error) {
-    return `  ${theme.text.error(`Error: ${error}`)}`;
-  }
-
-  if (tasks.length === 0) {
-    return `  ${theme.text.muted("No active tasks")}`;
-  }
-
-  const maxTitle = 45;
-  const sorted = [...tasks].sort((a, b) => {
-    // Overdue first, then by due date, then by priority
-    if (a.dueDate && !b.dueDate) return -1;
-    if (!a.dueDate && b.dueDate) return 1;
-    if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-    return b.priority - a.priority;
-  });
-
-  return sorted.map((t) => formatTaskLine(t, maxTitle)).join("\n");
-}
-
 export function renderStaticBoard(
   data: DashboardData,
   selfLogin: string,
@@ -133,21 +86,6 @@ export function renderStaticBoard(
     const issueCount = rd.issues.length;
     const label = `${rd.repo.shortName} ${theme.text.muted(`(${issueCount} issues)`)}`;
     printSection(label, renderRepoSection(rd, selfLogin, backlogOnly));
-  }
-
-  // TickTick
-  if (!backlogOnly) {
-    const taskCount = data.ticktick.length;
-    const dueToday = data.ticktick.filter((t) => {
-      if (!t.dueDate) return false;
-      const days = Math.ceil((new Date(t.dueDate).getTime() - Date.now()) / 86_400_000);
-      return days <= 0;
-    }).length;
-    const label =
-      dueToday > 0
-        ? `Personal (TickTick) ${theme.text.warning(`${dueToday} due today`)} / ${taskCount} total`
-        : `Personal (TickTick) ${theme.text.muted(`${taskCount} tasks`)}`;
-    printSection(label, renderTickTickSection(data.ticktick, data.ticktickError));
   }
 
   console.log("");
@@ -176,16 +114,6 @@ export function renderBoardJson(data: DashboardData, selfLogin: string): Record<
           targetDate: i.targetDate ?? null,
         })),
       })),
-      ticktick: {
-        error: data.ticktickError,
-        tasks: data.ticktick.map((t) => ({
-          id: t.id,
-          title: t.title,
-          priority: t.priority,
-          dueDate: t.dueDate,
-          tags: t.tags,
-        })),
-      },
       activity: data.activity,
       fetchedAt: data.fetchedAt.toISOString(),
     },

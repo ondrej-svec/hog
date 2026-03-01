@@ -369,15 +369,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
     });
   }
 
-  // Step 6: TickTick integration (disabled by default, enable with `hog config ticktick:enable`)
-  const ticktickAlreadyEnabled = existsSync(`${CONFIG_DIR}/auth.json`);
-  let ticktickAuth = false;
-  if (ticktickAlreadyEnabled) {
-    ticktickAuth = true;
-    console.log("TickTick auth found — integration enabled.");
-  }
-
-  // Step 7: Board defaults
+  // Step 6: Board defaults
   console.log("\nBoard settings:");
   const refreshInterval = await input({
     message: "  Refresh interval (seconds):",
@@ -416,12 +408,10 @@ async function runWizard(opts: InitOptions): Promise<void> {
     console.log("  Skipped. You can add it later: hog config ai:set-key");
   }
 
-  // Step 9: Build and write config
+  // Step 8: Build and write config
   const existingConfig = configExists ? loadFullConfig() : undefined;
   const config: HogConfig = {
-    version: 3,
-    defaultProjectId: existingConfig?.defaultProjectId,
-    defaultProjectName: existingConfig?.defaultProjectName,
+    version: 4,
     repos,
     board: {
       refreshInterval: Number.parseInt(refreshInterval, 10) || 60,
@@ -429,7 +419,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
       assignee: login,
       focusDuration: Number.parseInt(focusDuration, 10) || 1500,
     },
-    ticktick: { enabled: ticktickAuth },
     profiles: existingConfig?.profiles ?? {},
   };
 
@@ -437,7 +426,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
   console.log(`\nConfig written to ${CONFIG_DIR}/config.json`);
   console.log("\nSetup complete! Try:\n");
   console.log("  hog board --live    # Interactive dashboard");
-  console.log("  hog task list       # List TickTick tasks");
   console.log("  hog config show     # View configuration\n");
 }
 

@@ -10,38 +10,20 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
-import { TickTickClient } from "./api.js";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
   clearLlmAuth,
   findRepo,
-  getConfig,
   getLlmAuth,
   loadFullConfig,
-  requireAuth,
   resolveProfile,
-  saveConfig,
   saveFullConfig,
   saveLlmAuth,
   validateRepoName,
 } from "./config.js";
 import { runInit, runReposAdd } from "./init.js";
 import { getActionLog } from "./log-persistence.js";
-import {
-  errorOut,
-  jsonOut,
-  printProjects,
-  printSuccess,
-  printSyncResult,
-  printSyncStatus,
-  printTask,
-  printTasks,
-  setFormat,
-  useJson,
-} from "./output.js";
-import { getSyncStatus, runSync } from "./sync.js";
-import type { CreateTaskInput, UpdateTaskInput } from "./types.js";
-import { Priority } from "./types.js";
+import { errorOut, jsonOut, printSuccess, setFormat, useJson } from "./output.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,35 +36,6 @@ interface GlobalOptions {
 
 interface InitOptions {
   force?: true;
-}
-
-interface AddOptions {
-  priority?: string;
-  date?: string;
-  start?: string;
-  content?: string;
-  tags?: string;
-  allDay?: true;
-  project?: string;
-}
-
-interface ListOptions {
-  project?: string;
-  all?: true;
-  priority?: string;
-  tag?: string;
-}
-
-interface ProjectScopedOptions {
-  project?: string;
-}
-
-interface UpdateOptions extends ProjectScopedOptions {
-  title?: string;
-  priority?: string;
-  date?: string;
-  content?: string;
-  tags?: string;
 }
 
 // -- Helpers --
@@ -99,41 +52,13 @@ async function resolveRef(
   }
 }
 
-const PRIORITY_MAP: Record<string, Priority | undefined> = {
-  none: Priority.None,
-  low: Priority.Low,
-  medium: Priority.Medium,
-  med: Priority.Medium,
-  high: Priority.High,
-};
-
-function parsePriority(value: string): Priority {
-  const p = PRIORITY_MAP[value.toLowerCase()];
-  if (p === undefined) {
-    errorOut(`Invalid priority: "${value}". Valid values: none, low, medium, high`);
-  }
-  return p;
-}
-
-function createClient(): TickTickClient {
-  const auth = requireAuth();
-  return new TickTickClient(auth.accessToken);
-}
-
-function resolveProjectId(projectId?: string): string {
-  if (projectId) return projectId;
-  const config = getConfig();
-  if (config.defaultProjectId) return config.defaultProjectId;
-  errorOut("No project selected. Run `hog task use-project <id>` or pass --project.");
-}
-
 // -- Program --
 
 const program = new Command();
 
 program
   .name("hog")
-  .description("Personal command deck — unified task dashboard for GitHub Projects + TickTick")
+  .description("Personal command deck — GitHub Projects dashboard with workflow orchestration")
   .version("1.20.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
@@ -151,175 +76,6 @@ program
   .option("--force", "Overwrite existing config without prompt")
   .action(async (opts: InitOptions) => {
     await runInit({ force: opts.force ?? false });
-  });
-
-// -- Task commands --
-
-const task = program.command("task").description("Manage TickTick tasks");
-
-task
-  .command("add <title>")
-  .description("Create a new task")
-  .option("-p, --priority <level>", "Priority: none, low, medium, high")
-  .option("-d, --date <date>", "Due date (ISO 8601)")
-  .option("--start <date>", "Start date (ISO 8601)")
-  .option("-c, --content <text>", "Task description/content")
-  .option("-t, --tags <tags>", "Comma-separated tags")
-  .option("--all-day", "Mark as all-day task")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (title: string, opts: AddOptions) => {
-    const api = createClient();
-    const input: CreateTaskInput = {
-      title,
-      projectId: resolveProjectId(opts.project),
-    };
-
-    if (opts.priority) input.priority = parsePriority(opts.priority);
-    if (opts.date) input.dueDate = opts.date;
-    if (opts.start) input.startDate = opts.start;
-    if (opts.content) input.content = opts.content;
-    if (opts.tags) input.tags = opts.tags.split(",").map((t) => t.trim());
-    if (opts.allDay) input.isAllDay = true;
-
-    const created = await api.createTask(input);
-    printSuccess(`Created: ${created.title}`, { task: created });
-  });
-
-task
-  .command("list")
-  .description("List tasks in a project")
-  .option("--project <id>", "Project ID (overrides default)")
-  .option("--all", "Include completed tasks")
-  .option("-p, --priority <level>", "Filter by minimum priority")
-  .option("-t, --tag <tag>", "Filter by tag")
-  .action(async (opts: ListOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    let tasks = await api.listTasks(projectId);
-
-    if (!opts.all) {
-      tasks = tasks.filter((t) => t.status !== 2);
-    }
-    if (opts.priority) {
-      const minPri = parsePriority(opts.priority);
-      tasks = tasks.filter((t) => t.priority >= minPri);
-    }
-    if (opts.tag) {
-      const tag = opts.tag;
-      tasks = tasks.filter((t) => t.tags.includes(tag));
-    }
-
-    printTasks(tasks);
-  });
-
-task
-  .command("show <taskId>")
-  .description("Show task details")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    const t = await api.getTask(projectId, taskId);
-    printTask(t);
-  });
-
-task
-  .command("complete <taskId>")
-  .description("Mark a task as completed")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    await api.completeTask(projectId, taskId);
-    printSuccess(`Completed task ${taskId}`, { taskId });
-  });
-
-task
-  .command("update <taskId>")
-  .description("Update a task")
-  .option("--title <title>", "New title")
-  .option("-p, --priority <level>", "New priority")
-  .option("-d, --date <date>", "New due date (ISO 8601)")
-  .option("-c, --content <text>", "New content")
-  .option("-t, --tags <tags>", "New comma-separated tags")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: UpdateOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    const input: UpdateTaskInput = { id: taskId, projectId };
-
-    if (opts.title) input.title = opts.title;
-    if (opts.priority) input.priority = parsePriority(opts.priority);
-    if (opts.date) input.dueDate = opts.date;
-    if (opts.content) input.content = opts.content;
-    if (opts.tags) input.tags = opts.tags.split(",").map((t) => t.trim());
-
-    const updated = await api.updateTask(input);
-    printSuccess(`Updated: ${updated.title}`, { task: updated });
-  });
-
-task
-  .command("delete <taskId>")
-  .description("Delete a task")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    await api.deleteTask(projectId, taskId);
-    printSuccess(`Deleted task ${taskId}`, { taskId });
-  });
-
-task
-  .command("projects")
-  .description("List all projects")
-  .action(async () => {
-    const api = createClient();
-    const projects = await api.listProjects();
-    printProjects(projects);
-  });
-
-task
-  .command("use-project <projectId>")
-  .description("Set the default project for task commands")
-  .action(async (projectId: string) => {
-    const api = createClient();
-    try {
-      const project = await api.getProject(projectId);
-      saveConfig({ defaultProjectId: project.id, defaultProjectName: project.name });
-      printSuccess(`Default project: ${project.name} (${project.id})`, {
-        projectId: project.id,
-        projectName: project.name,
-      });
-    } catch {
-      saveConfig({ defaultProjectId: projectId });
-      printSuccess(`Default project: ${projectId}`, { projectId });
-    }
-  });
-
-// -- Sync commands --
-
-interface SyncRunOptions {
-  dryRun?: true;
-}
-
-const sync = program.command("sync").description("Sync GitHub issues with TickTick");
-
-sync
-  .command("run", { isDefault: true })
-  .description("Run GitHub-TickTick sync")
-  .option("--dry-run", "Preview changes without applying them")
-  .action(async (opts: SyncRunOptions) => {
-    const dryRun = opts.dryRun ?? false;
-    const result = await runSync({ dryRun });
-    printSyncResult(result, dryRun);
-  });
-
-sync
-  .command("status")
-  .description("Show sync status and mappings")
-  .action(() => {
-    const { state, repos } = getSyncStatus();
-    printSyncStatus(state, repos);
   });
 
 // -- Board command --
@@ -372,7 +128,7 @@ program
 
 program
   .command("pick <issueRef>")
-  .description("Pick up an issue: assign to self + sync to TickTick (e.g., hog pick aibility/145)")
+  .description("Pick up an issue: assign to self on GitHub (e.g., hog pick myrepo/145)")
   .action(async (issueRef: string) => {
     const cfg = loadFullConfig();
     const { parseIssueRef, pickIssue } = await import("./pick.js");
@@ -384,16 +140,12 @@ program
         ok: result.success,
         data: {
           issue: result.issue,
-          ticktickTask: result.ticktickTask ?? null,
           warning: result.warning ?? null,
         },
       });
     } else {
       console.log(`Picked ${ref.repo.shortName}#${ref.issueNumber}: ${result.issue.title}`);
       console.log(`  GitHub: assigned to @me`);
-      if (result.ticktickTask) {
-        console.log(`  TickTick: task created`);
-      }
       if (result.warning) {
         console.log(`  Warning: ${result.warning}`);
       }
@@ -497,11 +249,9 @@ config
       jsonOut({ ok: true, data: cfg });
     } else {
       console.log("Version:", cfg.version);
-      console.log("Default project:", cfg.defaultProjectId ?? "(none)");
       console.log("Assignee:", cfg.board.assignee);
       console.log("Refresh interval:", `${cfg.board.refreshInterval}s`);
       console.log("Backlog limit:", cfg.board.backlogLimit);
-      console.log("TickTick:", cfg.ticktick.enabled ? "enabled" : "disabled");
       console.log("\nRepos:");
       for (const repo of cfg.repos) {
         console.log(`  ${repo.shortName} → ${repo.name} (project #${repo.projectNumber})`);
@@ -625,35 +375,6 @@ config
       jsonOut({ ok: true, message: `Removed ${removed.name}`, data: removed });
     } else {
       console.log(`Removed ${removed.shortName} → ${removed.name}`);
-      console.log("Note: Existing sync mappings for this repo remain in sync-state.json.");
-    }
-  });
-
-config
-  .command("ticktick:enable")
-  .description("Enable TickTick integration in the board")
-  .action(() => {
-    const cfg = loadFullConfig();
-    cfg.ticktick = { enabled: true };
-    saveFullConfig(cfg);
-    if (useJson()) {
-      jsonOut({ ok: true, message: "TickTick enabled" });
-    } else {
-      printSuccess("TickTick integration enabled.");
-    }
-  });
-
-config
-  .command("ticktick:disable")
-  .description("Disable TickTick integration in the board")
-  .action(() => {
-    const cfg = loadFullConfig();
-    cfg.ticktick = { enabled: false };
-    saveFullConfig(cfg);
-    if (useJson()) {
-      jsonOut({ ok: true, message: "TickTick disabled" });
-    } else {
-      printSuccess("TickTick integration disabled. Board will no longer show TickTick tasks.");
     }
   });
 
@@ -742,7 +463,6 @@ config
     cfg.profiles[name] = {
       repos: [...cfg.repos],
       board: { ...cfg.board },
-      ticktick: { ...cfg.ticktick },
     };
     saveFullConfig(cfg);
 
