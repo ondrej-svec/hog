@@ -19,9 +19,11 @@ import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
+import { useAgentSessions } from "../hooks/use-agent-sessions.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
+import { AgentActivityPanel } from "./agent-activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
@@ -375,6 +377,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // Workflow state (enrichment.json)
   const workflowState = useWorkflowState(config);
 
+  // Toast notification system (replaces old statusMessage) — declared early for agent sessions
+  const { toasts, toast, handleErrorAction } = useToast();
+
+  // Background agent sessions
+  const agentSessions = useAgentSessions(config, workflowState, toast);
+
   // Panel focus state — default to Issues panel [3]
   const [activePanelId, setActivePanelId] = useState<PanelId>(3);
   const focusPanel = useCallback((id: PanelId) => setActivePanelId(id), []);
@@ -388,9 +396,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const handleToggleMine = useCallback(() => {
     setMineOnly((prev) => !prev);
   }, []);
-
-  // Toast notification system (replaces old statusMessage)
-  const { toasts, toast, handleErrorAction } = useToast();
 
   // Action log
   const [logVisible, setLogVisible] = useState(false);
@@ -911,6 +916,30 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
 
+      if (action.mode === "background") {
+        // Background agent: spawn headless claude process
+        const agentResult = agentSessions.launchAgent({
+          localPath: rc.localPath,
+          repoFullName: found.repoName,
+          issueNumber: found.issue.number,
+          issueTitle: found.issue.title,
+          issueUrl: found.issue.url,
+          phase: action.phase,
+          promptTemplate: template,
+          promptVariables: { slug, phase: action.phase, repo: found.repoName },
+          ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+        });
+
+        if (typeof agentResult === "object" && "error" in agentResult) {
+          toast.error(agentResult.error);
+        } else {
+          toast.info(`Background agent started: ${action.phase} for #${found.issue.number}`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
+      // Interactive: launch in terminal/tmux
       const result = launchClaude({
         localPath: rc.localPath,
         issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
@@ -932,19 +961,19 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         return;
       }
 
-      // Record session in enrichment
+      // Record interactive session in enrichment
       workflowState.recordSession({
         repo: found.repoName,
         issueNumber: found.issue.number,
         phase: action.phase,
-        mode: action.mode,
+        mode: "interactive",
         startedAt: new Date().toISOString(),
       });
 
       toast.info(`${action.phase} session opened for #${found.issue.number}`);
       ui.exitOverlay();
     },
-    [repos, nav.selectedId, config, ui, toast, workflowState],
+    [repos, nav.selectedId, config, ui, toast, workflowState, agentSessions],
   );
 
   // Multi-select selection type (for bulk action menu)
@@ -1182,13 +1211,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   ) : null;
 
   const activityPanel = (
-    <ActivityPanel
-      events={boardTree.activity}
-      selectedIdx={clampedActivityIdx}
-      isActive={panelFocus.activePanelId === 4}
-      height={ACTIVITY_HEIGHT}
-      width={activityPanelWidth}
-    />
+    <Box flexDirection="column">
+      {agentSessions.agents.length > 0 ? (
+        <AgentActivityPanel agents={agentSessions.agents} maxHeight={2} />
+      ) : null}
+      <ActivityPanel
+        events={boardTree.activity}
+        selectedIdx={clampedActivityIdx}
+        isActive={panelFocus.activePanelId === 4}
+        height={agentSessions.agents.length > 0 ? Math.max(1, ACTIVITY_HEIGHT - 2) : ACTIVITY_HEIGHT}
+        width={activityPanelWidth}
+      />
+    </Box>
   );
 
   return (
@@ -1217,6 +1251,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         )}
         {autoRefreshPaused ? (
           <Text color="yellow"> Auto-refresh paused — press r to retry</Text>
+        ) : null}
+        {agentSessions.runningCount > 0 ? (
+          <Text color="magenta">
+            {" "}
+            [{agentSessions.runningCount} agent{agentSessions.runningCount > 1 ? "s" : ""}]
+          </Text>
         ) : null}
       </Box>
 
