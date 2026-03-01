@@ -496,20 +496,20 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Create `src/board/hooks/use-auto-status.ts` — on each data refresh, compare current activity events against trigger table; fire `updateProjectItemStatusAsync()` for matching events
-- [ ] Create `src/board/hooks/use-auto-status.test.ts`
-- [ ] Status name → option ID resolution: use `fetchProjectStatusOptions()` (already in github.ts), cache per refresh cycle
-- [ ] Branch detection: parse `CreateEvent` (ref_type: "branch") from activity events, match branch name against issue number pattern
-- [ ] PR detection: parse `PullRequestEvent` from activity events, match PR body/title for `#issueNumber`
-- [ ] Guard against duplicate updates: skip if issue already in target status
-- [ ] Guard against race: if user manually changed status since last refresh, skip auto-update
-- [ ] Add `autoStatus` config field to `REPO_CONFIG_SCHEMA` with `enabled`, `triggers`, `branchPattern`
-- [ ] Extend `src/board/components/issue-row.tsx` — add phase indicator badge and age suffix
-- [ ] Phase indicator: derive from enrichment.json sessions + artifact detection (check if brainstorm/plan docs exist in repo)
-- [ ] Age calculation: time since issue entered current GitHub Project status (use `updatedAt` or project field dates)
-- [ ] Color coding: no indicator (<7d), 🟡 (7-14d), 🔴 (14d+), thresholds from config
-- [ ] Add `autoStatus` section to `hog init` wizard — prompt for trigger status names
-- [ ] Show auto-status activity in action log
+- [x] Create `src/board/hooks/use-auto-status.ts` — on each data refresh, compare current activity events against trigger table; fire `updateProjectItemStatusAsync()` for matching events
+- [x] Create `src/board/hooks/use-auto-status.test.ts`
+- [x] Status name → option ID resolution: use `fetchProjectStatusOptions()` (already in github.ts), cache per refresh cycle
+- [x] Branch detection: parse `CreateEvent` (ref_type: "branch") from activity events, match branch name against issue number pattern
+- [x] PR detection: parse `PullRequestEvent` from activity events, match PR body/title for `#issueNumber`
+- [x] Guard against duplicate updates: skip if issue already in target status
+- [x] Guard against race: if user manually changed status since last refresh, skip auto-update
+- [x] Add `autoStatus` config field to `REPO_CONFIG_SCHEMA` with `enabled`, `triggers`, `branchPattern`
+- [x] Extend `src/board/components/issue-row.tsx` — add phase indicator badge and age suffix
+- [x] Phase indicator: derive from enrichment.json sessions + artifact detection (check if brainstorm/plan docs exist in repo)
+- [x] Age calculation: time since issue entered current GitHub Project status (use `updatedAt` or project field dates)
+- [x] Color coding: no indicator (<7d), 🟡 (7-14d), 🔴 (14d+), thresholds from config
+- [x] Add `autoStatus` section to `hog init` wizard — prompt for trigger status names
+- [x] Show auto-status activity in action log
 
 **Files created:** `src/board/hooks/use-auto-status.ts`, `src/board/hooks/use-auto-status.test.ts`
 
