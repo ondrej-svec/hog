@@ -175,6 +175,57 @@ function createDateField(owner: string, projectNumber: number, fieldName: string
   }
 }
 
+// ── Auto-Status setup ──
+
+async function promptAutoStatus(
+  statusOptions: GhProjectFieldOption[],
+): Promise<RepoConfig["autoStatus"]> {
+  const enableAutoStatus = await confirm({
+    message: "  Enable auto-status updates (move issues on branch/PR events)?",
+    default: false,
+  });
+  if (!enableAutoStatus) return undefined;
+
+  if (statusOptions.length === 0) {
+    console.log("  No status options detected — skipping trigger configuration.");
+    return { enabled: true };
+  }
+
+  const noChange = "__none__";
+  const choices = [
+    { name: "(no auto-change)", value: noChange },
+    ...statusOptions.map((o) => ({ name: o.name, value: o.name })),
+  ];
+
+  const branchCreated = await select<string>({
+    message: "  When a branch is created → move to:",
+    choices,
+    default: statusOptions.find((o) => /in.?progress/i.test(o.name))?.name ?? noChange,
+  });
+
+  const prOpened = await select<string>({
+    message: "  When a PR is opened → move to:",
+    choices,
+    default: statusOptions.find((o) => /review/i.test(o.name))?.name ?? noChange,
+  });
+
+  const prMerged = await select<string>({
+    message: "  When a PR is merged → move to:",
+    choices,
+    default: statusOptions.find((o) => /done/i.test(o.name))?.name ?? noChange,
+  });
+
+  const triggers: Record<string, string> = {};
+  if (branchCreated !== noChange) triggers["branchCreated"] = branchCreated;
+  if (prOpened !== noChange) triggers["prOpened"] = prOpened;
+  if (prMerged !== noChange) triggers["prMerged"] = prMerged;
+
+  return {
+    enabled: true,
+    ...(Object.keys(triggers).length > 0 ? { triggers } : {}),
+  };
+}
+
 // ── Wizard ──
 
 export interface InitOptions {
@@ -359,6 +410,9 @@ async function runWizard(opts: InitOptions): Promise<void> {
       default: name,
     });
 
+    // Auto-status updates
+    const autoStatus = await promptAutoStatus(statusInfo?.options ?? []);
+
     repos.push({
       name: repoName,
       shortName,
@@ -366,6 +420,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       statusFieldId,
       ...(dueDateFieldId ? { dueDateFieldId } : {}),
       completionAction,
+      ...(autoStatus ? { autoStatus } : {}),
     });
   }
 
@@ -576,6 +631,9 @@ async function runReposAddWizard(initialRepoName?: string): Promise<void> {
     default: name,
   });
 
+  // Auto-status updates
+  const autoStatus = await promptAutoStatus(statusInfo?.options ?? []);
+
   const newRepo: RepoConfig = {
     name: repoName,
     shortName,
@@ -583,6 +641,7 @@ async function runReposAddWizard(initialRepoName?: string): Promise<void> {
     statusFieldId,
     ...(dueDateFieldId ? { dueDateFieldId } : {}),
     completionAction,
+    ...(autoStatus ? { autoStatus } : {}),
   };
 
   cfg.repos.push(newRepo);
