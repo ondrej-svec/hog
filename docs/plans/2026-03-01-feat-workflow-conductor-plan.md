@@ -403,25 +403,25 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Remove `src/api.ts` (TickTick client)
-- [ ] Remove `src/auth.ts` (TickTick OAuth)
-- [ ] Remove `src/sync.ts` (GitHub ↔ TickTick sync)
-- [ ] Remove `src/sync-state.ts` (sync mapping persistence)
-- [ ] Simplify `src/pick.ts` — remove TickTick task creation, keep GitHub assign
-- [ ] Remove TickTick types from `src/types.ts` (`Task`, `ChecklistItem`, `Project`, `ProjectData`, `CreateTaskInput`, `UpdateTaskInput`, `TaskStatus`)
-- [ ] Remove TickTick output helpers from `src/output.ts` (`printTasks`, `printTask`, `printProjects`, `printSyncResult`, `printSyncStatus`)
-- [ ] Remove TickTick fetch from `src/board/fetch.ts` (`DashboardData.ticktick`, `DashboardData.ticktickError`, TickTick fetch block)
-- [ ] Remove TickTick panel rendering from `src/board/components/dashboard.tsx`
-- [ ] Remove `task` subcommand tree from `src/cli.ts`
-- [ ] Remove `sync` subcommand tree from `src/cli.ts`
-- [ ] Remove `config ticktick:enable/disable` from `src/cli.ts`
-- [ ] Remove TickTick steps from `src/init.ts`
-- [ ] Clean up auth.json schema — remove `accessToken`, `clientId`, `clientSecret`
-- [ ] Add config v3 → v4 migration in `migrateConfig()`
-- [ ] Add `workflow` optional field to `REPO_CONFIG_SCHEMA` and `BOARD_CONFIG_SCHEMA`
-- [ ] Add `autoStatus` optional field to `REPO_CONFIG_SCHEMA`
-- [ ] Update all tests — remove TickTick-related test cases, add migration tests
-- [ ] Run `npm run ci` — verify clean
+- [x] Remove `src/api.ts` (TickTick client)
+- [x] Remove `src/auth.ts` (TickTick OAuth)
+- [x] Remove `src/sync.ts` (GitHub ↔ TickTick sync)
+- [x] Remove `src/sync-state.ts` (sync mapping persistence)
+- [x] Simplify `src/pick.ts` — remove TickTick task creation, keep GitHub assign
+- [x] Remove TickTick types from `src/types.ts` (`Task`, `ChecklistItem`, `Project`, `ProjectData`, `CreateTaskInput`, `UpdateTaskInput`, `TaskStatus`)
+- [x] Remove TickTick output helpers from `src/output.ts` (`printTasks`, `printTask`, `printProjects`, `printSyncResult`, `printSyncStatus`)
+- [x] Remove TickTick fetch from `src/board/fetch.ts` (`DashboardData.ticktick`, `DashboardData.ticktickError`, TickTick fetch block)
+- [x] Remove TickTick panel rendering from `src/board/components/dashboard.tsx`
+- [x] Remove `task` subcommand tree from `src/cli.ts`
+- [x] Remove `sync` subcommand tree from `src/cli.ts`
+- [x] Remove `config ticktick:enable/disable` from `src/cli.ts`
+- [x] Remove TickTick steps from `src/init.ts`
+- [x] Clean up auth.json schema — remove `accessToken`, `clientId`, `clientSecret`
+- [x] Add config v3 → v4 migration in `migrateConfig()`
+- [x] Add `workflow` optional field to `REPO_CONFIG_SCHEMA` and `BOARD_CONFIG_SCHEMA`
+- [x] Add `autoStatus` optional field to `REPO_CONFIG_SCHEMA`
+- [x] Update all tests — remove TickTick-related test cases, add migration tests
+- [x] Run `npm run ci` — verify clean
 
 **Files modified:** `src/api.ts` (delete), `src/auth.ts` (delete), `src/sync.ts` (delete), `src/sync-state.ts` (delete), `src/pick.ts`, `src/types.ts`, `src/output.ts`, `src/config.ts`, `src/cli.ts`, `src/init.ts`, `src/board/fetch.ts`, `src/board/components/dashboard.tsx`
 
