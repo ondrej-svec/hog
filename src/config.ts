@@ -28,7 +28,7 @@ const CLAUDE_START_COMMAND_SCHEMA = z.object({
   extraArgs: z.array(z.string()),
 });
 
-const AUTO_STATUS_SCHEMA = z
+export const AUTO_STATUS_SCHEMA = z
   .object({
     enabled: z.boolean().default(false),
     triggers: z
@@ -42,7 +42,7 @@ const AUTO_STATUS_SCHEMA = z
   })
   .optional();
 
-const WORKFLOW_CONFIG_SCHEMA = z
+export const WORKFLOW_CONFIG_SCHEMA = z
   .object({
     mode: z.enum(["suggested", "freeform"]).default("suggested"),
     phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
