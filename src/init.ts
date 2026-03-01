@@ -463,7 +463,47 @@ async function runWizard(opts: InitOptions): Promise<void> {
     console.log("  Skipped. You can add it later: hog config ai:set-key");
   }
 
-  // Step 8: Build and write config
+  // Step 9: Workflow template selection
+  console.log("\nWorkflow template (optional):");
+  console.log(
+    "  Workflow templates configure AI agent phases (brainstorm, plan, implement, review)",
+  );
+  console.log("  and auto-status transitions for your issues.\n");
+  const { BUILTIN_TEMPLATES, applyTemplateToBoard } = await import("./workflow-template.js");
+  const templateChoice = await select<string>({
+    message: "Choose a workflow template:",
+    choices: [
+      {
+        name: "Full — brainstorm, plan, implement, review, compound",
+        value: "full",
+      },
+      {
+        name: "Minimal — plan and implement only",
+        value: "minimal",
+      },
+      { name: "None — configure manually later", value: "none" },
+    ],
+  });
+
+  let boardWorkflow: HogConfig["board"]["workflow"];
+  if (templateChoice !== "none") {
+    const template = BUILTIN_TEMPLATES[templateChoice];
+    if (template) {
+      const baseBoard = {
+        refreshInterval: Number.parseInt(refreshInterval, 10) || 60,
+        backlogLimit: Number.parseInt(backlogLimit, 10) || 20,
+        assignee: login,
+        focusDuration: Number.parseInt(focusDuration, 10) || 1500,
+      };
+      const applied = applyTemplateToBoard(template, baseBoard);
+      boardWorkflow = applied.workflow;
+      console.log(`  Applied "${template.name}" template.`);
+    }
+  } else {
+    console.log("  Skipped. You can import a template later: hog workflow import <file>");
+  }
+
+  // Step 10: Build and write config
   const existingConfig = configExists ? loadFullConfig() : undefined;
   const config: HogConfig = {
     version: 4,
@@ -473,6 +513,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       backlogLimit: Number.parseInt(backlogLimit, 10) || 20,
       assignee: login,
       focusDuration: Number.parseInt(focusDuration, 10) || 1500,
+      workflow: boardWorkflow,
     },
     profiles: existingConfig?.profiles ?? {},
   };
