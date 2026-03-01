@@ -467,20 +467,20 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Create `src/board/spawn-agent.ts` — `spawnBackgroundAgent(options)`: spawns `claude -p --output-format stream-json`, parses stream, writes result file on exit
-- [ ] Create `src/board/spawn-agent.test.ts`
-- [ ] Create `~/.config/hog/agent-results/` directory on first use
-- [ ] Implement stream-json parser: extract tool_use events (for status display), result events (for session_id capture), and final text output
-- [ ] Create `src/board/hooks/use-agent-sessions.ts` — manages running background agents, monitors exit, reconciles with enrichment.json on board open
-- [ ] Create `src/board/hooks/use-agent-sessions.test.ts`
-- [ ] Create `src/board/components/agent-activity-panel.tsx` — shows running/completed agents with streaming status lines
-- [ ] Create `src/board/components/agent-activity-panel.test.tsx`
-- [ ] Add agent activity strip to `src/board/components/panel-layout.tsx` (bottom strip, similar to activity-panel.tsx)
-- [ ] Wire `[r]` key in keyboard handler — resumes last session for selected issue via `claude --resume <sessionId>` through `launchClaude()`
-- [ ] Add `[b]` option in workflow overlay to force background mode
-- [ ] Handle agent crash: update enrichment.json with exit code, show error toast
-- [ ] Smart scheduling: track running agent count, queue if over `maxConcurrentAgents` (default 3)
-- [ ] Scan `agent-results/` on board open for unprocessed results (overnight completion detection)
+- [x] Create `src/board/spawn-agent.ts` — `spawnBackgroundAgent(options)`: spawns `claude -p --output-format stream-json`, parses stream, writes result file on exit
+- [x] Create `src/board/spawn-agent.test.ts`
+- [x] Create `~/.config/hog/agent-results/` directory on first use
+- [x] Implement stream-json parser: extract tool_use events (for status display), result events (for session_id capture), and final text output
+- [x] Create `src/board/hooks/use-agent-sessions.ts` — manages running background agents, monitors exit, reconciles with enrichment.json on board open
+- [x] Create `src/board/hooks/use-agent-sessions.test.ts`
+- [x] Create `src/board/components/agent-activity-panel.tsx` — shows running/completed agents with streaming status lines
+- [x] Create `src/board/components/agent-activity-panel.test.tsx`
+- [x] Add agent activity strip to `src/board/components/panel-layout.tsx` (bottom strip, similar to activity-panel.tsx)
+- [x] Wire `[r]` key in keyboard handler — resumes last session for selected issue via `claude --resume <sessionId>` through `launchClaude()`
+- [x] Add `[b]` option in workflow overlay to force background mode
+- [x] Handle agent crash: update enrichment.json with exit code, show error toast
+- [x] Smart scheduling: track running agent count, queue if over `maxConcurrentAgents` (default 3)
+- [x] Scan `agent-results/` on board open for unprocessed results (overnight completion detection)
 
 **Files created:** `src/board/spawn-agent.ts`, `src/board/spawn-agent.test.ts`, `src/board/hooks/use-agent-sessions.ts`, `src/board/hooks/use-agent-sessions.test.ts`, `src/board/components/agent-activity-panel.tsx`, `src/board/components/agent-activity-panel.test.tsx`
 
