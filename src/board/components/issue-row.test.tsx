@@ -3,7 +3,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import type { GitHubIssue } from "../../github.js";
 import type { IssueRowProps } from "./issue-row.js";
-import { IssueRow } from "./issue-row.js";
+import { IssueRow, abbreviatePhase, ageColor } from "./issue-row.js";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -187,5 +187,81 @@ describe("IssueRow", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("alice");
     expect(frame).not.toContain("unassigned");
+  });
+
+  it("shows phase indicator when provided", async () => {
+    const { lastFrame } = renderRow({ phaseIndicator: "implement" });
+    await delay(50);
+    expect(lastFrame()).toContain("im");
+  });
+
+  it("does not show phase indicator when not provided", async () => {
+    const { lastFrame } = renderRow();
+    await delay(50);
+    const frame = lastFrame() ?? "";
+    expect(frame).not.toContain(" im");
+    expect(frame).not.toContain(" pl");
+  });
+
+  it("shows age suffix when above warning threshold", async () => {
+    const { lastFrame } = renderRow({
+      statusAgeDays: 10,
+      stalenessConfig: { warningDays: 7, criticalDays: 14 },
+    });
+    await delay(50);
+    expect(lastFrame()).toContain("[10d]");
+  });
+
+  it("does not show age suffix when below warning threshold", async () => {
+    const { lastFrame } = renderRow({
+      statusAgeDays: 3,
+      stalenessConfig: { warningDays: 7, criticalDays: 14 },
+    });
+    await delay(50);
+    expect(lastFrame()).not.toContain("[3d]");
+  });
+
+  it("does not show age suffix when statusAgeDays not provided", async () => {
+    const { lastFrame } = renderRow();
+    await delay(50);
+    const frame = lastFrame() ?? "";
+    expect(frame).not.toMatch(/\[\d+d\]/);
+  });
+});
+
+describe("abbreviatePhase", () => {
+  it("abbreviates known phases", () => {
+    expect(abbreviatePhase("research")).toBe("rs");
+    expect(abbreviatePhase("brainstorm")).toBe("bs");
+    expect(abbreviatePhase("plan")).toBe("pl");
+    expect(abbreviatePhase("implement")).toBe("im");
+    expect(abbreviatePhase("review")).toBe("rv");
+    expect(abbreviatePhase("compound")).toBe("cp");
+  });
+
+  it("falls back to first 2 chars for unknown phases", () => {
+    expect(abbreviatePhase("custom-phase")).toBe("cu");
+  });
+});
+
+describe("ageColor", () => {
+  it("returns undefined below warning threshold", () => {
+    expect(ageColor(3, { warningDays: 7, criticalDays: 14 })).toBeUndefined();
+  });
+
+  it("returns yellow at warning threshold", () => {
+    expect(ageColor(7, { warningDays: 7, criticalDays: 14 })).toBe("yellow");
+    expect(ageColor(10, { warningDays: 7, criticalDays: 14 })).toBe("yellow");
+  });
+
+  it("returns red at critical threshold", () => {
+    expect(ageColor(14, { warningDays: 7, criticalDays: 14 })).toBe("red");
+    expect(ageColor(21, { warningDays: 7, criticalDays: 14 })).toBe("red");
+  });
+
+  it("uses default thresholds (7/14) when config not provided", () => {
+    expect(ageColor(3)).toBeUndefined();
+    expect(ageColor(7)).toBe("yellow");
+    expect(ageColor(14)).toBe("red");
   });
 });
