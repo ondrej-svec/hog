@@ -435,23 +435,23 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Create `src/enrichment.ts` — Zod schema, `loadEnrichment()`, `saveEnrichment()`, `upsertSession()`, `findSession()`, `findActiveSession()`
-- [ ] Create `src/enrichment.test.ts`
-- [ ] Extend `buildPrompt()` in `src/board/launch-claude.ts` with `{body}`, `{slug}`, `{phase}`, `{repo}` placeholders
-- [ ] Update `buildPrompt.test.ts` with new placeholder tests
-- [ ] Add default phase prompt templates in `src/board/launch-claude.ts` (the `DEFAULT_PHASE_PROMPTS` map)
-- [ ] Create `src/board/hooks/use-workflow-state.ts` — reads enrichment.json, exposes per-issue phase state
-- [ ] Create `src/board/hooks/use-workflow-state.test.ts`
-- [ ] Create `src/board/components/workflow-overlay.tsx` — phase list, phase status (✅/🔄/○), keyboard navigation
-- [ ] Create `src/board/components/workflow-overlay.test.tsx`
-- [ ] Add `"overlay:workflow"` to `UIMode` in `src/board/hooks/use-ui-state.ts`
-- [ ] Add `ENTER_WORKFLOW` / `EXIT_WORKFLOW` actions to UI reducer
-- [ ] Wire `[W]` key in `src/board/hooks/use-keyboard.ts`
-- [ ] Add workflow overlay to `src/board/components/overlay-renderer.tsx`
-- [ ] Extend `launchClaude()` to accept `phase` parameter — selects prompt template
-- [ ] On interactive launch from workflow overlay: write session to enrichment.json
-- [ ] Add `hog workflow status [issueRef]` CLI subcommand showing enrichment state
-- [ ] Update help overlay with `[W]` keybinding
+- [x] Create `src/enrichment.ts` — Zod schema, `loadEnrichment()`, `saveEnrichment()`, `upsertSession()`, `findSession()`, `findActiveSession()`
+- [x] Create `src/enrichment.test.ts`
+- [x] Extend `buildPrompt()` in `src/board/launch-claude.ts` with `{body}`, `{slug}`, `{phase}`, `{repo}` placeholders
+- [x] Update `buildPrompt.test.ts` with new placeholder tests
+- [x] Add default phase prompt templates in `src/board/launch-claude.ts` (the `DEFAULT_PHASE_PROMPTS` map)
+- [x] Create `src/board/hooks/use-workflow-state.ts` — reads enrichment.json, exposes per-issue phase state
+- [x] Create `src/board/hooks/use-workflow-state.test.ts`
+- [x] Create `src/board/components/workflow-overlay.tsx` — phase list, phase status (✅/🔄/○), keyboard navigation
+- [x] Create `src/board/components/workflow-overlay.test.tsx`
+- [x] Add `"overlay:workflow"` to `UIMode` in `src/board/hooks/use-ui-state.ts`
+- [x] Add `ENTER_WORKFLOW` / `EXIT_WORKFLOW` actions to UI reducer
+- [x] Wire `[W]` key in `src/board/hooks/use-keyboard.ts`
+- [x] Add workflow overlay to `src/board/components/overlay-renderer.tsx`
+- [x] Extend `launchClaude()` to accept `phase` parameter — selects prompt template
+- [x] On interactive launch from workflow overlay: write session to enrichment.json
+- [x] Add `hog workflow status [issueRef]` CLI subcommand showing enrichment state
+- [x] Update help overlay with `[W]` keybinding
 
 **Files created:** `src/enrichment.ts`, `src/enrichment.test.ts`, `src/board/hooks/use-workflow-state.ts`, `src/board/hooks/use-workflow-state.test.ts`, `src/board/components/workflow-overlay.tsx`, `src/board/components/workflow-overlay.test.tsx`
 
