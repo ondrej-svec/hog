@@ -12,6 +12,7 @@ import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
 import { useActions } from "../hooks/use-actions.js";
 import { useAgentSessions } from "../hooks/use-agent-sessions.js";
+import { useAutoStatus } from "../hooks/use-auto-status.js";
 import { refreshAgeColor, useData } from "../hooks/use-data.js";
 import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
@@ -422,6 +423,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const [logVisible, setLogVisible] = useState(false);
   const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
 
+  // Auto-status updates — detects branch/PR events and updates GitHub Project status
+  useAutoStatus({
+    config,
+    data,
+    toast,
+    mutateData,
+    pushEntry,
+    registerPendingMutation,
+  });
+
   // Auto-expand log when an error entry is pushed
   useEffect(() => {
     const last = logEntries[logEntries.length - 1];
@@ -729,11 +740,28 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   );
   const issuesPanelHeight = Math.max(5, totalPanelHeight - ACTIVITY_HEIGHT);
 
-  // Build flat rows for issues panel
-  const flatRows = useMemo(
-    () => buildFlatRowsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId),
-    [boardTree.sections, selectedRepoName, selectedStatusGroupId],
-  );
+  // Build flat rows for issues panel, enriched with phase indicators and age
+  const flatRows = useMemo(() => {
+    const rows = buildFlatRowsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId);
+    return rows.map((row) => {
+      if (row.type !== "issue") return row;
+      // Phase indicator: derive from enrichment sessions
+      const wf = workflowState.getIssueWorkflow(
+        row.repoName,
+        row.issue.number,
+        config.repos.find((r) => r.name === row.repoName),
+      );
+      const activePhase = wf.phases.find((p) => p.state === "active");
+      const lastCompleted = [...wf.phases].reverse().find((p) => p.state === "completed");
+      const phaseIndicator = activePhase?.name ?? lastCompleted?.name;
+
+      // Status age: days since last update (approximation for time in current status)
+      const updatedMs = new Date(row.issue.updatedAt).getTime();
+      const statusAgeDays = Math.floor((Date.now() - updatedMs) / 86_400_000);
+
+      return { ...row, phaseIndicator, statusAgeDays };
+    });
+  }, [boardTree.sections, selectedRepoName, selectedStatusGroupId, workflowState, config.repos]);
 
   // Scroll offset - tracks viewport position
   const scrollRef = useRef(0);
@@ -1197,6 +1225,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           selectedId={nav.selectedId}
           selfLogin={config.board.assignee}
           panelWidth={issuesPanelWidth}
+          stalenessConfig={config.board.workflow?.staleness}
           isMultiSelected={
             ui.state.mode === "multiSelect" && row.navId
               ? multiSelect.isSelected(row.navId)
