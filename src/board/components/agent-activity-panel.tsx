@@ -42,9 +42,7 @@ export function AgentActivityPanel({ agents, maxHeight }: AgentActivityPanelProp
     <Box flexDirection="column">
       {visible.map((agent) => (
         <Box key={agent.sessionId} gap={1}>
-          <Text color={statusColor(agent)}>
-            {statusIcon(agent)}
-          </Text>
+          <Text color={statusColor(agent)}>{statusIcon(agent)}</Text>
           <Text color="cyan" bold>
             #{agent.issueNumber}
           </Text>

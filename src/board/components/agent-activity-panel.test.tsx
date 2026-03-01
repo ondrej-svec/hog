@@ -1,12 +1,12 @@
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import type { AgentActivityPanelProps } from "./agent-activity-panel.js";
-import { AgentActivityPanel } from "./agent-activity-panel.js";
 import type { TrackedAgent } from "../hooks/use-agent-sessions.js";
 import type { AgentMonitor } from "../spawn-agent.js";
-import type { ChildProcess } from "node:child_process";
-import { EventEmitter } from "node:events";
+import type { AgentActivityPanelProps } from "./agent-activity-panel.js";
+import { AgentActivityPanel } from "./agent-activity-panel.js";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

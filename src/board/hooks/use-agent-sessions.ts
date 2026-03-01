@@ -1,11 +1,9 @@
 import type { ChildProcess } from "node:child_process";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
-import type { AgentSession } from "../../enrichment.js";
 import type { AgentMonitor, SpawnAgentOptions, StreamEvent } from "../spawn-agent.js";
 import {
   attachStreamMonitor,
-  buildResultFilePath,
   findUnprocessedResults,
   isProcessAlive,
   readResultFile,
@@ -48,7 +46,11 @@ const PID_POLL_INTERVAL_MS = 5_000;
 export function useAgentSessions(
   config: HogConfig,
   workflowState: UseWorkflowStateResult,
-  toast: { info: (msg: string) => void; success: (msg: string) => void; error: (msg: string) => void },
+  toast: {
+    info: (msg: string) => void;
+    success: (msg: string) => void;
+    error: (msg: string) => void;
+  },
 ): UseAgentSessionsResult {
   const [agents, setAgents] = useState<TrackedAgent[]>([]);
   const agentsRef = useRef<TrackedAgent[]>([]);
@@ -105,7 +107,9 @@ export function useAgentSessions(
         // Check if PID is still alive
         if (!isProcessAlive(session.pid as number)) {
           workflowStateRef.current.markSessionExited(session.id, 1);
-          toastRef.current.info(`Background agent for #${session.issueNumber} (${session.phase}) exited`);
+          toastRef.current.info(
+            `Background agent for #${session.issueNumber} (${session.phase}) exited`,
+          );
         }
       }
     }, PID_POLL_INTERVAL_MS);
@@ -180,9 +184,7 @@ export function useAgentSessions(
         setAgents((prev) => prev.filter((a) => a.sessionId !== session.id));
 
         if (exitCode === 0) {
-          toastRef.current.success(
-            `Agent completed: ${opts.phase} for #${opts.issueNumber}`,
-          );
+          toastRef.current.success(`Agent completed: ${opts.phase} for #${opts.issueNumber}`);
         } else {
           toastRef.current.error(
             `Agent failed (exit ${exitCode}): ${opts.phase} for #${opts.issueNumber}`,

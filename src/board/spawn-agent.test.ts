@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { EventEmitter } from "node:events";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -255,7 +255,10 @@ describe("attachStreamMonitor", () => {
     const child = createMockChild();
     const monitor = attachStreamMonitor(child);
 
-    child.stdout?.emit("data", Buffer.from(`${JSON.stringify({ type: "system", session_id: "sess-1" })}\n`));
+    child.stdout?.emit(
+      "data",
+      Buffer.from(`${JSON.stringify({ type: "system", session_id: "sess-1" })}\n`),
+    );
 
     expect(monitor.sessionId).toBe("sess-1");
   });
@@ -355,9 +358,12 @@ describe("findUnprocessedResults", () => {
 
   it("returns JSON files not in processed set", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReaddirSync.mockReturnValue(["result-1.json", "result-2.json", "not-json.txt"] as unknown as ReturnType<typeof readdirSync>);
+    mockedReaddirSync.mockReturnValue([
+      "result-1.json",
+      "result-2.json",
+      "not-json.txt",
+    ] as unknown as ReturnType<typeof readdirSync>);
 
-    const processed = new Set([expect.stringContaining("result-1.json") as unknown as string]);
     const results = findUnprocessedResults(new Set());
 
     expect(results).toHaveLength(2);
@@ -367,7 +373,9 @@ describe("findUnprocessedResults", () => {
   it("filters out already processed files", () => {
     mockedExistsSync.mockReturnValue(true);
     const resultPath = `${AGENT_RESULTS_DIR}/result-1.json`;
-    mockedReaddirSync.mockReturnValue(["result-1.json", "result-2.json"] as unknown as ReturnType<typeof readdirSync>);
+    mockedReaddirSync.mockReturnValue(["result-1.json", "result-2.json"] as unknown as ReturnType<
+      typeof readdirSync
+    >);
 
     const results = findUnprocessedResults(new Set([resultPath]));
 

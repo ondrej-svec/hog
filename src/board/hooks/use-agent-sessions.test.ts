@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { EventEmitter } from "node:events";
-import { Readable } from "node:stream";
 import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { Readable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs", () => ({
@@ -41,27 +41,6 @@ const {
 } = await import("../spawn-agent.js");
 
 import type { AgentResultFile } from "../spawn-agent.js";
-import type { AgentSession, EnrichmentData } from "../../enrichment.js";
-
-function makeEnrichment(sessions: AgentSession[] = []): EnrichmentData {
-  return {
-    version: 1,
-    sessions,
-    nudgeState: { snoozedIssues: {} },
-  };
-}
-
-function makeSession(overrides: Partial<AgentSession> = {}): AgentSession {
-  return {
-    id: "test-1",
-    repo: "owner/repo",
-    issueNumber: 42,
-    phase: "brainstorm",
-    mode: "background",
-    startedAt: "2026-01-15T10:00:00Z",
-    ...overrides,
-  };
-}
 
 function createMockChild(): ChildProcess & EventEmitter {
   const child = new EventEmitter() as ChildProcess & EventEmitter;
@@ -152,11 +131,10 @@ describe("overnight result reconciliation", () => {
 
   it("finds unprocessed result files", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReaddirSync.mockReturnValue(
-      ["owner-repo-42-implement.json", "owner-repo-43-plan.json"] as unknown as ReturnType<
-        typeof readdirSync
-      >,
-    );
+    mockedReaddirSync.mockReturnValue([
+      "owner-repo-42-implement.json",
+      "owner-repo-43-plan.json",
+    ] as unknown as ReturnType<typeof readdirSync>);
 
     const processed = new Set([`${AGENT_RESULTS_DIR}/owner-repo-42-implement.json`]);
     const unprocessed = findUnprocessedResults(processed);

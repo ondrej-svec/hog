@@ -11,6 +11,7 @@ import { isHeaderId, isTerminalStatus, timeAgo } from "../constants.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
 import { useActions } from "../hooks/use-actions.js";
+import { useAgentSessions } from "../hooks/use-agent-sessions.js";
 import { refreshAgeColor, useData } from "../hooks/use-data.js";
 import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
@@ -19,7 +20,6 @@ import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
-import { useAgentSessions } from "../hooks/use-agent-sessions.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
@@ -53,6 +53,27 @@ interface DashboardProps {
 }
 
 // ── Helpers ──
+
+/** Resolve launch config for a workflow phase (template + start command + slug). */
+function resolvePhaseConfig(
+  rc: RepoConfig,
+  config: HogConfig,
+  issueTitle: string,
+  phase: string,
+): {
+  template: string | undefined;
+  startCommand: { command: string; extraArgs: readonly string[] } | undefined;
+  slug: string;
+} {
+  const phasePrompts = rc.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
+  const template = phasePrompts[phase] ?? DEFAULT_PHASE_PROMPTS[phase];
+  const startCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+  const slug = issueTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return { template, startCommand, slug };
+}
 
 interface StatusGroup {
   label: string;
@@ -907,17 +928,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         return;
       }
 
-      const phasePrompts = rc?.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
-      const template = phasePrompts[action.phase] ?? DEFAULT_PHASE_PROMPTS[action.phase];
-
-      const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
-      const slug = found.issue.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "");
+      const { template, startCommand, slug } = resolvePhaseConfig(
+        rc,
+        config,
+        found.issue.title,
+        action.phase,
+      );
 
       if (action.mode === "background") {
-        // Background agent: spawn headless claude process
         const agentResult = agentSessions.launchAgent({
           localPath: rc.localPath,
           repoFullName: found.repoName,
@@ -927,7 +945,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           phase: action.phase,
           promptTemplate: template,
           promptVariables: { slug, phase: action.phase, repo: found.repoName },
-          ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+          ...(startCommand ? { startCommand } : {}),
         });
 
         if (typeof agentResult === "object" && "error" in agentResult) {
@@ -943,16 +961,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       const result = launchClaude({
         localPath: rc.localPath,
         issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
-        ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+        ...(startCommand ? { startCommand } : {}),
         launchMode: config.board.claudeLaunchMode ?? "auto",
         ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
         repoFullName: found.repoName,
         promptTemplate: template,
-        promptVariables: {
-          slug,
-          phase: action.phase,
-          repo: found.repoName,
-        },
+        promptVariables: { slug, phase: action.phase, repo: found.repoName },
       });
 
       if (!result.ok) {
@@ -1219,7 +1233,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         events={boardTree.activity}
         selectedIdx={clampedActivityIdx}
         isActive={panelFocus.activePanelId === 4}
-        height={agentSessions.agents.length > 0 ? Math.max(1, ACTIVITY_HEIGHT - 2) : ACTIVITY_HEIGHT}
+        height={
+          agentSessions.agents.length > 0 ? Math.max(1, ACTIVITY_HEIGHT - 2) : ACTIVITY_HEIGHT
+        }
         width={activityPanelWidth}
       />
     </Box>

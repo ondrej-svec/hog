@@ -1,12 +1,12 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONFIG_DIR } from "../config.js";
 import type { AgentSession } from "../enrichment.js";
 import type { Result } from "../types.js";
-import { buildPrompt, DEFAULT_PHASE_PROMPTS } from "./launch-claude.js";
 import type { PromptVariables } from "./launch-claude.js";
+import { buildPrompt, DEFAULT_PHASE_PROMPTS } from "./launch-claude.js";
 
 // ── Constants ──
 
@@ -65,7 +65,7 @@ export function parseStreamLine(line: string): StreamEvent | undefined {
 
     if (type === "assistant" && parsed["message"]) {
       const message = parsed["message"] as Record<string, unknown>;
-      const content = message["content"] as Array<Record<string, unknown>> | undefined;
+      const content = message["content"] as Record<string, unknown>[] | undefined;
       if (content) {
         for (const block of content) {
           if (block["type"] === "tool_use") {
@@ -109,7 +109,11 @@ export interface AgentResultFile {
   readonly summary?: string | undefined;
 }
 
-export function buildResultFilePath(repoFullName: string, issueNumber: number, phase: string): string {
+export function buildResultFilePath(
+  repoFullName: string,
+  issueNumber: number,
+  phase: string,
+): string {
   const slug = repoFullName.replace("/", "-");
   return join(AGENT_RESULTS_DIR, `${slug}-${issueNumber}-${phase}.json`);
 }
@@ -150,7 +154,9 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
 
   const issue = { number: opts.issueNumber, title: opts.issueTitle, url: opts.issueUrl };
   const template =
-    opts.promptTemplate ?? DEFAULT_PHASE_PROMPTS[opts.phase] ?? `Issue #${opts.issueNumber}: ${opts.issueTitle}`;
+    opts.promptTemplate ??
+    DEFAULT_PHASE_PROMPTS[opts.phase] ??
+    `Issue #${opts.issueNumber}: ${opts.issueTitle}`;
   const prompt = buildPrompt(issue, template, opts.promptVariables);
 
   const command = opts.startCommand?.command ?? "claude";
