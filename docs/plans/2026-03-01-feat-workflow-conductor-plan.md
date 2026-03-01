@@ -1,7 +1,7 @@
 ---
 title: "feat: Workflow Conductor — Issue Lifecycle Orchestration"
 type: feat
-status: active
+status: completed
 date: 2026-03-01
 brainstorm: docs/brainstorms/2026-03-01-workflow-conductor-brainstorm.md
 ---
@@ -554,17 +554,17 @@ Import: `hog config workflow:import <file-or-url>` → merges into board-level o
 
 **Tasks:**
 
-- [ ] Create `src/notify.ts` — `sendNotification(title, body, config)` with OS notification (osascript/notify-send) and terminal bell support
-- [ ] Create `src/notify.test.ts`
-- [ ] Wire notifications into `use-agent-sessions.ts` — on agent completion, call `sendNotification()` if configured
-- [ ] Add `notifications` config to `BOARD_CONFIG_SCHEMA`
-- [ ] Define workflow template JSON schema (as documented in Technical Approach above)
-- [ ] Create `src/workflow-template.ts` — `exportTemplate(repoConfig)`, `importTemplate(filePath)`, `validateTemplate(json)`
-- [ ] Create `src/workflow-template.test.ts`
-- [ ] Add `hog config workflow:export [--repo <name>] [--output <file>]` CLI subcommand
-- [ ] Add `hog config workflow:import <file-or-url>` CLI subcommand — merges template into config
-- [ ] Add `hog config workflow:show [--repo <name>]` CLI subcommand — display current workflow config
-- [ ] Add workflow template section to `hog init` — offer built-in templates (code, blog, minimal) or import from file
+- [x] Create `src/notify.ts` — `sendNotification(title, body, config)` with OS notification (osascript/notify-send) and terminal bell support
+- [x] Create `src/notify.test.ts`
+- [x] Wire notifications into `use-agent-sessions.ts` — on agent completion, call `sendNotification()` if configured
+- [x] Add `notifications` config to `BOARD_CONFIG_SCHEMA`
+- [x] Define workflow template JSON schema (as documented in Technical Approach above)
+- [x] Create `src/workflow-template.ts` — `exportTemplate(repoConfig)`, `importTemplate(filePath)`, `validateTemplate(json)`
+- [x] Create `src/workflow-template.test.ts`
+- [x] Add `hog config workflow:export [--repo <name>] [--output <file>]` CLI subcommand
+- [x] Add `hog config workflow:import <file-or-url>` CLI subcommand — merges template into config
+- [x] Add `hog config workflow:show [--repo <name>]` CLI subcommand — display current workflow config
+- [x] Add workflow template section to `hog init` — offer built-in templates (code, blog, minimal) or import from file
 
 **Files created:** `src/notify.ts`, `src/notify.test.ts`, `src/workflow-template.ts`, `src/workflow-template.test.ts`
 
