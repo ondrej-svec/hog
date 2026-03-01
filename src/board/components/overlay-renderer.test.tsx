@@ -36,7 +36,7 @@ function makeUiState(overrides: Partial<UIState> = {}): UIState {
 }
 
 const BASE_CONFIG: HogConfig = {
-  version: 3,
+  version: 4,
   repos: [],
   board: {
     assignee: "me",
@@ -44,7 +44,6 @@ const BASE_CONFIG: HogConfig = {
     backlogLimit: 20,
     focusDuration: 1500,
   },
-  ticktick: { enabled: false },
   profiles: {},
 };
 

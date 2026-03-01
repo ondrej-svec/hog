@@ -40,10 +40,9 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function makeConfig(): HogConfig {
   return {
-    version: 3,
+    version: 4,
     repos: [],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
-    ticktick: { enabled: true },
     profiles: {},
   };
 }
@@ -55,8 +54,6 @@ function makeOptions(): FetchOptions {
 function makeDashboardData(): DashboardData {
   return {
     repos: [],
-    ticktick: [],
-    ticktickError: null,
     activity: [],
     fetchedAt: new Date("2026-02-15T12:00:00Z"),
   };

@@ -95,9 +95,7 @@ const BOARD_CONFIG_SCHEMA = z.object({
   workflow: z
     .object({
       defaultMode: z.enum(["suggested", "freeform"]).default("suggested"),
-      defaultPhases: z
-        .array(z.string())
-        .default(["brainstorm", "plan", "implement", "review"]),
+      defaultPhases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
       phasePrompts: z.record(z.string(), z.string()).optional(),
       staleness: z
         .object({

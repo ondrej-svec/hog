@@ -3,38 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Mock dependencies before importing pick module
 vi.mock("./config.js", () => ({
   findRepo: vi.fn(),
-  requireAuth: () => ({ accessToken: "test-token", clientId: "cid", clientSecret: "csec" }),
 }));
 
 const mockAssignIssue = vi.fn();
 const mockFetchRepoIssues = vi.fn();
-const mockFetchProjectFields = vi.fn();
 
 vi.mock("./github.js", () => ({
   assignIssue: (...args: unknown[]) => mockAssignIssue(...args),
   fetchRepoIssues: (...args: unknown[]) => mockFetchRepoIssues(...args),
-  fetchProjectFields: (...args: unknown[]) => mockFetchProjectFields(...args),
-}));
-
-const mockCreateTask = vi.fn();
-
-vi.mock("./api.js", () => ({
-  // biome-ignore lint/complexity/useArrowFunction: vitest 4 requires function keyword for constructor mocks
-  TickTickClient: vi.fn().mockImplementation(function () {
-    return { createTask: mockCreateTask };
-  }),
-}));
-
-const mockLoadSyncState = vi.fn();
-const mockSaveSyncState = vi.fn();
-const mockFindMapping = vi.fn();
-const mockUpsertMapping = vi.fn();
-
-vi.mock("./sync-state.js", () => ({
-  loadSyncState: (...args: unknown[]) => mockLoadSyncState(...args),
-  saveSyncState: (...args: unknown[]) => mockSaveSyncState(...args),
-  findMapping: (...args: unknown[]) => mockFindMapping(...args),
-  upsertMapping: (...args: unknown[]) => mockUpsertMapping(...args),
 }));
 
 import type { HogConfig, RepoConfig } from "./config.js";
@@ -56,11 +32,9 @@ function makeRepo(overrides: Partial<RepoConfig> = {}): RepoConfig {
 
 function makeConfig(overrides: Partial<HogConfig> = {}): HogConfig {
   return {
-    version: 3,
-    defaultProjectId: "inbox123",
+    version: 4,
     repos: [makeRepo()],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "test-user", focusDuration: 1500 },
-    ticktick: { enabled: true },
     profiles: {},
     ...overrides,
   };
@@ -164,19 +138,9 @@ describe("pickIssue", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetchProjectFields.mockReturnValue({});
-    mockLoadSyncState.mockReturnValue({ mappings: [], lastSyncAt: null });
-    mockFindMapping.mockReturnValue(undefined);
-    mockCreateTask.mockResolvedValue({
-      id: "tt-task-1",
-      title: "Fix mobile layout",
-      projectId: "inbox123",
-      status: 0,
-      priority: 0,
-    });
   });
 
-  it("assigns issue on GitHub and creates TickTick task", async () => {
+  it("assigns issue on GitHub", async () => {
     const issue = makeGitHubIssue();
     mockFetchRepoIssues.mockReturnValue([issue]);
 
@@ -186,10 +150,6 @@ describe("pickIssue", () => {
     expect(result.issue.number).toBe(145);
     expect(result.issue.repo).toBe("test-org/backend");
     expect(mockAssignIssue).toHaveBeenCalledWith("test-org/backend", 145);
-    expect(mockCreateTask).toHaveBeenCalled();
-    expect(mockUpsertMapping).toHaveBeenCalled();
-    expect(mockSaveSyncState).toHaveBeenCalled();
-    expect(result.ticktickTask).toBeDefined();
   });
 
   it("throws if issue not found", async () => {
@@ -217,45 +177,5 @@ describe("pickIssue", () => {
     const result = await pickIssue(config, { repo, issueNumber: 145 });
 
     expect(result.warning).toContain("currently assigned to petr");
-  });
-
-  it("skips TickTick if sync mapping already exists", async () => {
-    const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockFindMapping.mockReturnValue({ ticktickTaskId: "existing" });
-
-    const result = await pickIssue(config, { repo, issueNumber: 145 });
-
-    expect(result.success).toBe(true);
-    expect(result.ticktickTask).toBeUndefined();
-    expect(result.warning).toContain("TickTick task already exists");
-    expect(mockCreateTask).not.toHaveBeenCalled();
-  });
-
-  it("handles TickTick failure gracefully", async () => {
-    const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockCreateTask.mockRejectedValue(new Error("API timeout"));
-
-    const result = await pickIssue(config, { repo, issueNumber: 145 });
-
-    expect(result.success).toBe(true); // GitHub assignment succeeded
-    expect(result.warning).toContain("TickTick sync failed: API timeout");
-    expect(mockAssignIssue).toHaveBeenCalled();
-  });
-
-  it("includes project fields in TickTick task when available", async () => {
-    const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockFetchProjectFields.mockReturnValue({ targetDate: "2026-02-20", status: "In Progress" });
-
-    await pickIssue(config, { repo, issueNumber: 145 });
-
-    expect(mockCreateTask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dueDate: "2026-02-20",
-        isAllDay: true,
-      }),
-    );
   });
 });

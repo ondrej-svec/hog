@@ -67,7 +67,7 @@ function makeMockToast() {
 
 function makeConfig(): HogConfig {
   return {
-    version: 3,
+    version: 4,
     repos: [
       {
         name: "owner/repo",
@@ -78,7 +78,6 @@ function makeConfig(): HogConfig {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
-    ticktick: { enabled: true },
     profiles: {},
   };
 }

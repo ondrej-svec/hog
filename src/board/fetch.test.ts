@@ -16,24 +16,8 @@ vi.mock("../github.js", () => ({
   fetchProjectStatusOptions: (...args: unknown[]) => mockFetchProjectStatusOptions(...args),
 }));
 
-const mockListTasks = vi.fn();
-
-vi.mock("../api.js", () => ({
-  // biome-ignore lint/complexity/useArrowFunction: vitest 4 requires function keyword for constructor mocks
-  TickTickClient: vi.fn().mockImplementation(function () {
-    return { listTasks: mockListTasks };
-  }),
-}));
-
-const mockRequireAuth = vi.fn();
-
-vi.mock("../config.js", () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
-}));
-
 import { execFileSync } from "node:child_process";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { Priority, TaskStatus } from "../types.js";
 import { fetchDashboard, fetchRecentActivity } from "./fetch.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
@@ -53,11 +37,9 @@ function makeRepo(overrides: Partial<RepoConfig> = {}): RepoConfig {
 
 function makeConfig(overrides: Partial<HogConfig> = {}): HogConfig {
   return {
-    version: 3,
+    version: 4,
     repos: [makeRepo()],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "test-user", focusDuration: 1500 },
-    ticktick: { enabled: true },
-    defaultProjectId: "proj-1",
     profiles: {},
     ...overrides,
   };
@@ -77,29 +59,6 @@ function makeGitHubIssue(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeTask(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "tt-1",
-    projectId: "proj-1",
-    title: "Do the thing",
-    content: "",
-    desc: "",
-    isAllDay: false,
-    startDate: "",
-    dueDate: "",
-    completedTime: "",
-    priority: Priority.None,
-    reminders: [],
-    repeatFlag: "",
-    sortOrder: 0,
-    status: TaskStatus.Active,
-    timeZone: "UTC",
-    tags: [],
-    items: [],
-    ...overrides,
-  };
-}
-
 // ── fetchDashboard ─────────────────────────────────────────────────────────────
 
 describe("fetchDashboard", () => {
@@ -110,21 +69,12 @@ describe("fetchDashboard", () => {
     mockFetchProjectStatusOptions.mockReturnValue([]);
     // By default, silence the fetchRecentActivity execFileSync call
     mockExecFileSync.mockReturnValue("");
-    mockRequireAuth.mockReturnValue({
-      accessToken: "test-token",
-      clientId: "cid",
-      clientSecret: "csec",
-    });
-    mockListTasks.mockResolvedValue([]);
   });
 
-  it("returns repos, ticktick, activity, and fetchedAt on happy path with both sources", async () => {
+  it("returns repos, activity, and fetchedAt on happy path", async () => {
     const issue = makeGitHubIssue();
     mockFetchRepoIssues.mockReturnValue([issue]);
     mockFetchProjectStatusOptions.mockReturnValue([{ id: "opt-1", name: "In Progress" }]);
-
-    const task = makeTask();
-    mockListTasks.mockResolvedValue([task]);
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -134,22 +84,7 @@ describe("fetchDashboard", () => {
     expect(result.repos[0]?.issues).toHaveLength(1);
     expect(result.repos[0]?.issues[0]?.number).toBe(42);
     expect(result.repos[0]?.statusOptions).toEqual([{ id: "opt-1", name: "In Progress" }]);
-    expect(result.ticktick).toHaveLength(1);
-    expect(result.ticktick[0]?.id).toBe("tt-1");
-    expect(result.ticktickError).toBeNull();
     expect(result.fetchedAt).toBeInstanceOf(Date);
-  });
-
-  it("returns empty ticktick when ticktick is disabled", async () => {
-    const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-
-    const config = makeConfig({ ticktick: { enabled: false } });
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBeNull();
-    expect(mockListTasks).not.toHaveBeenCalled();
   });
 
   it("returns empty issues for a repo that errors, with error message", async () => {
@@ -181,7 +116,6 @@ describe("fetchDashboard", () => {
     const result = await fetchDashboard(config);
 
     expect(result.repos).toHaveLength(0);
-    expect(result.ticktick).toHaveLength(0);
     expect(result.activity).toHaveLength(0);
   });
 
@@ -288,46 +222,6 @@ describe("fetchDashboard", () => {
     const result = await fetchDashboard(config);
 
     expect(result.repos[0]?.issues[0]?.slackThreadUrl).toBeUndefined();
-  });
-
-  it("filters out completed TickTick tasks", async () => {
-    const activeTask = makeTask({ id: "tt-active", status: TaskStatus.Active });
-    const completedTask = makeTask({ id: "tt-done", status: TaskStatus.Completed });
-    mockListTasks.mockResolvedValue([activeTask, completedTask]);
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(1);
-    expect(result.ticktick[0]?.id).toBe("tt-active");
-  });
-
-  it("returns ticktickError when TickTick API throws", async () => {
-    mockListTasks.mockRejectedValue(new Error("Network timeout"));
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBe("Network timeout");
-  });
-
-  it("returns ticktickError as string when a non-Error is thrown", async () => {
-    mockListTasks.mockRejectedValue("quota exceeded");
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktickError).toBe("quota exceeded");
-  });
-
-  it("returns empty ticktick when no defaultProjectId is configured", async () => {
-    const config = makeConfig({ defaultProjectId: undefined });
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBeNull();
-    expect(mockListTasks).not.toHaveBeenCalled();
   });
 
   it("sorts activity events by timestamp descending", async () => {

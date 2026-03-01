@@ -45,7 +45,7 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function makeConfig(): HogConfig {
   return {
-    version: 3,
+    version: 4,
     repos: [
       {
         name: "owner/repo",
@@ -56,7 +56,6 @@ function makeConfig(): HogConfig {
       },
     ],
     board: { refreshInterval: 9999, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
-    ticktick: { enabled: true },
     profiles: {},
   };
 }
@@ -116,8 +115,6 @@ function makeActivityEvent(overrides: Partial<ActivityEvent> = {}): ActivityEven
 function makeDashboardData(overrides: Partial<DashboardData> = {}): DashboardData {
   return {
     repos: [makeRepoData()],
-    ticktick: [],
-    ticktickError: null,
     activity: [],
     fetchedAt: new Date("2026-02-15T12:00:00Z"),
     ...overrides,
@@ -166,7 +163,7 @@ describe("Dashboard integration", () => {
   });
 
   it("should render with empty data (no repos, no tasks)", async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [], ticktick: [] }));
+    mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [] }));
 
     const instance = render(
       React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
@@ -432,22 +429,6 @@ describe("Dashboard integration", () => {
     expect(frame).toContain("repo");
     // The section is collapsed by default so the error is not visible,
     // but it should not crash
-    expect(frame).toContain("HOG BOARD");
-
-    instance.unmount();
-  });
-
-  it("should handle ticktick error in data without crashing", async () => {
-    mockFetchDashboard.mockResolvedValue(makeDashboardData({ ticktickError: "Auth expired" }));
-
-    const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
-    );
-
-    await delay(200);
-
-    const frame = instance.lastFrame()!;
-    // Should render board without crashing (ticktick error is non-fatal)
     expect(frame).toContain("HOG BOARD");
 
     instance.unmount();
