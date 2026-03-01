@@ -1,8 +1,6 @@
 import { render } from "ink-testing-library";
-import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { PhaseStatus } from "../hooks/use-workflow-state.js";
-import type { WorkflowAction } from "./workflow-overlay.js";
 import { WorkflowOverlay } from "./workflow-overlay.js";
 
 function makeIssue() {

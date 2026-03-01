@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
-import { AUTO_STATUS_SCHEMA, WORKFLOW_CONFIG_SCHEMA } from "./config.js";
 import type { BoardConfig, RepoConfig } from "./config.js";
+import { WORKFLOW_CONFIG_SCHEMA } from "./config.js";
 
 // ── Schema ──
 
 const WORKFLOW_TEMPLATE_SCHEMA = z.object({
+  // biome-ignore lint/style/useNamingConvention: $schema is a standard JSON Schema field
   $schema: z.string().optional(),
   name: z.string().min(1),
   description: z.string().optional(),
@@ -165,10 +166,7 @@ export function applyTemplateToRepo(template: WorkflowTemplate, repo: RepoConfig
  * Merge a workflow template into board config. Returns a new board config
  * with workflow fields updated from the template.
  */
-export function applyTemplateToBoard(
-  template: WorkflowTemplate,
-  board: BoardConfig,
-): BoardConfig {
+export function applyTemplateToBoard(template: WorkflowTemplate, board: BoardConfig): BoardConfig {
   return {
     ...board,
     workflow: {

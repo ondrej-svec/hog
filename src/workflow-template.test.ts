@@ -1,12 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BoardConfig, RepoConfig } from "./config.js";
 import {
-  BUILTIN_TEMPLATES,
   applyTemplateToBoard,
   applyTemplateToRepo,
+  BUILTIN_TEMPLATES,
   exportTemplate,
   importTemplate,
   validateTemplate,

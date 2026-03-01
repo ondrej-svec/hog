@@ -2,7 +2,6 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { NudgeCandidate } from "../hooks/use-nudges.js";
-import type { NudgeAction } from "./nudge-overlay.js";
 import { NudgeOverlay } from "./nudge-overlay.js";
 
 function makeCandidate(overrides: Partial<NudgeCandidate> = {}): NudgeCandidate {
