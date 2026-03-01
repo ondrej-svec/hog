@@ -1279,6 +1279,103 @@ workflowCommand
     }
   });
 
+workflowCommand
+  .command("triage")
+  .description("List stale issues and optionally launch background agents")
+  .option("-r, --repo <name>", "Filter to a specific repo")
+  .option("-p, --phase <phase>", "Phase to run (research, plan, review)", "research")
+  .option("-l, --launch", "Launch background agents for all stale issues")
+  .action(async (opts: { repo?: string; phase?: string; launch?: boolean }) => {
+    const cfg = loadFullConfig();
+    const { loadEnrichment, isSnoozed } = await import("./enrichment.js");
+    const { fetchDashboard } = await import("./board/fetch.js");
+
+    const data = await fetchDashboard(cfg, {});
+    const enrichment = loadEnrichment();
+    const warningDays = cfg.board.workflow?.staleness?.warningDays ?? 7;
+
+    type StaleIssue = {
+      repo: string;
+      number: number;
+      title: string;
+      url: string;
+      ageDays: number;
+    };
+
+    const staleIssues: StaleIssue[] = [];
+    for (const rd of data.repos) {
+      if (opts.repo && rd.repo.name !== opts.repo && rd.repo.shortName !== opts.repo) continue;
+      for (const issue of rd.issues) {
+        if (isSnoozed(enrichment, rd.repo.name, issue.number)) continue;
+        const ageDays = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / 86_400_000);
+        if (ageDays >= warningDays) {
+          staleIssues.push({
+            repo: rd.repo.name,
+            number: issue.number,
+            title: issue.title,
+            url: issue.url,
+            ageDays,
+          });
+        }
+      }
+    }
+
+    staleIssues.sort((a, b) => b.ageDays - a.ageDays);
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issues: staleIssues } });
+      return;
+    }
+
+    if (staleIssues.length === 0) {
+      console.log("No stale issues found.");
+      return;
+    }
+
+    console.log(`Found ${staleIssues.length} stale issue${staleIssues.length > 1 ? "s" : ""}:\n`);
+    for (const issue of staleIssues) {
+      const color = issue.ageDays >= 14 ? "\x1b[31m" : "\x1b[33m";
+      console.log(
+        `  ${color}[${issue.ageDays}d]\x1b[0m #${issue.number} ${issue.title} (${issue.repo})`,
+      );
+    }
+
+    if (opts.launch) {
+      const { spawnBackgroundAgent } = await import("./board/spawn-agent.js");
+      const phase = opts.phase ?? "research";
+      console.log(`\nLaunching ${phase} agents...\n`);
+
+      let launched = 0;
+      for (const issue of staleIssues) {
+        const rc = cfg.repos.find((r) => r.name === issue.repo);
+        if (!rc?.localPath) {
+          console.log(`  Skip #${issue.number} — no localPath configured for ${issue.repo}`);
+          continue;
+        }
+        const result = spawnBackgroundAgent({
+          localPath: rc.localPath,
+          repoFullName: issue.repo,
+          issueNumber: issue.number,
+          issueTitle: issue.title,
+          issueUrl: issue.url,
+          phase,
+        });
+        if (result.ok) {
+          const pid = result.value.pid;
+          console.log(`  Started ${phase} agent for #${issue.number} (PID ${pid})`);
+          // Detach child so CLI can exit
+          result.value.child.unref();
+          launched++;
+        } else {
+          console.log(`  Failed #${issue.number}: ${result.error.message}`);
+        }
+      }
+      console.log(`\nLaunched ${launched} agent${launched !== 1 ? "s" : ""}.`);
+    } else {
+      console.log(`\nRun with --launch to start background agents.`);
+    }
+  });
+
 // -- Run --
 
 program.parseAsync().catch((err: unknown) => {

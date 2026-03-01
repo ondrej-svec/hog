@@ -49,6 +49,7 @@ const SHORTCUTS = [
       { key: "l", desc: "Manage labels" },
       { key: "C", desc: "Launch Claude Code session for this issue" },
       { key: "W", desc: "Open workflow overlay (phase-aware launch)" },
+      { key: "T", desc: "Open triage overlay (batch agent launch)" },
     ],
   },
   {

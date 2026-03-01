@@ -78,6 +78,16 @@ export const DEFAULT_PHASE_PROMPTS: Record<string, string> = {
     "Write a solution document to docs/solutions/.",
     "Include: symptoms, root cause, solution, prevention.",
   ].join("\n"),
+
+  "completion-check": [
+    "Check the status of Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "Read the plan doc if it exists in docs/plans/.",
+    "Run `git diff main...HEAD --stat` to see what's changed.",
+    "Run the project's test suite.",
+    "Report: what's done, what's remaining, what's blocking.",
+  ].join("\n"),
 };
 
 // ── Helpers ──

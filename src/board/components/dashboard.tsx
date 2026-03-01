@@ -18,6 +18,7 @@ import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
+import { useNudges } from "../hooks/use-nudges.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
@@ -29,6 +30,7 @@ import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { HintBar } from "./hint-bar.js";
+import type { NudgeAction } from "./nudge-overlay.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import { Panel } from "./panel.js";
 import {
@@ -43,6 +45,7 @@ import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
 import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
+import type { TriageAction } from "./triage-overlay.js";
 import type { WorkflowAction } from "./workflow-overlay.js";
 
 // ── Types ──
@@ -432,6 +435,23 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     pushEntry,
     registerPendingMutation,
   });
+
+  // Nudge system — staleness detection and snooze tracking
+  const nudges = useNudges({
+    config,
+    repos: allRepos,
+    enrichment: workflowState.enrichment,
+    onEnrichmentChange: () => workflowState.reload(),
+  });
+
+  // Auto-show daily nudge on first board open today
+  const dailyNudgeShownRef = useRef(false);
+  useEffect(() => {
+    if (nudges.shouldShowDailyNudge && !dailyNudgeShownRef.current && ui.canAct) {
+      dailyNudgeShownRef.current = true;
+      ui.enterNudge();
+    }
+  }, [nudges.shouldShowDailyNudge, ui]);
 
   // Auto-expand log when an error entry is pushed
   useEffect(() => {
@@ -947,6 +967,41 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         return;
       }
 
+      // Completion check — launch background agent with completion-check phase
+      if (action.type === "completion-check") {
+        if (!rc?.localPath) {
+          toast.info(
+            `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+          );
+          ui.exitOverlay();
+          return;
+        }
+        const { template, startCommand, slug } = resolvePhaseConfig(
+          rc,
+          config,
+          found.issue.title,
+          "completion-check",
+        );
+        const agentResult = agentSessions.launchAgent({
+          localPath: rc.localPath,
+          repoFullName: found.repoName,
+          issueNumber: found.issue.number,
+          issueTitle: found.issue.title,
+          issueUrl: found.issue.url,
+          phase: "completion-check",
+          promptTemplate: template,
+          promptVariables: { slug, phase: "completion-check", repo: found.repoName },
+          ...(startCommand ? { startCommand } : {}),
+        });
+        if (typeof agentResult === "object" && "error" in agentResult) {
+          toast.error(agentResult.error);
+        } else {
+          toast.info(`Completion check started for #${found.issue.number}`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
       // Launch phase
       if (!rc?.localPath) {
         toast.info(
@@ -1017,6 +1072,103 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     },
     [repos, nav.selectedId, config, ui, toast, workflowState, agentSessions],
   );
+
+  // Nudge action handler
+  const handleNudgeAction = useCallback(
+    (action: NudgeAction) => {
+      if (action.type === "snooze") {
+        nudges.snooze(action.repo, action.issueNumber, action.days);
+        toast.info(`Snoozed #${action.issueNumber} for ${action.days}d`);
+      } else {
+        nudges.dismissNudge();
+      }
+    },
+    [nudges, toast],
+  );
+
+  // Triage action handler
+  const handleTriageAction = useCallback(
+    (action: TriageAction) => {
+      if (action.type === "snooze") {
+        nudges.snooze(action.repo, action.issueNumber, action.days);
+        toast.info(`Snoozed #${action.issueNumber} for ${action.days}d`);
+        return;
+      }
+
+      // Launch agents for selected candidates
+      let launched = 0;
+      for (const candidate of action.candidates) {
+        const rc = config.repos.find((r) => r.name === candidate.repo);
+        if (!rc?.localPath) continue;
+
+        const { template, startCommand, slug } = resolvePhaseConfig(
+          rc,
+          config,
+          candidate.issue.title,
+          action.phase,
+        );
+
+        if (action.mode === "background") {
+          const result = agentSessions.launchAgent({
+            localPath: rc.localPath,
+            repoFullName: candidate.repo,
+            issueNumber: candidate.issue.number,
+            issueTitle: candidate.issue.title,
+            issueUrl: candidate.issue.url,
+            phase: action.phase,
+            promptTemplate: template,
+            promptVariables: { slug, phase: action.phase, repo: candidate.repo },
+            ...(startCommand ? { startCommand } : {}),
+          });
+          if (typeof result === "string") launched++;
+        } else {
+          // Interactive: launch first only
+          const result = launchClaude({
+            localPath: rc.localPath,
+            issue: {
+              number: candidate.issue.number,
+              title: candidate.issue.title,
+              url: candidate.issue.url,
+            },
+            ...(startCommand ? { startCommand } : {}),
+            launchMode: config.board.claudeLaunchMode ?? "auto",
+            ...(config.board.claudeTerminalApp
+              ? { terminalApp: config.board.claudeTerminalApp }
+              : {}),
+            repoFullName: candidate.repo,
+            promptTemplate: template,
+            promptVariables: { slug, phase: action.phase, repo: candidate.repo },
+          });
+          if (result.ok) {
+            workflowState.recordSession({
+              repo: candidate.repo,
+              issueNumber: candidate.issue.number,
+              phase: action.phase,
+              mode: "interactive",
+              startedAt: new Date().toISOString(),
+            });
+            launched++;
+          }
+          break; // Only one interactive launch
+        }
+      }
+
+      if (launched > 0) {
+        toast.info(`Launched ${launched} ${action.phase} agent${launched > 1 ? "s" : ""}`);
+      }
+      ui.exitOverlay();
+    },
+    [config, agentSessions, workflowState, nudges, toast, ui],
+  );
+
+  // Triage entry point handler
+  const handleEnterTriage = useCallback(() => {
+    if (nudges.candidates.length === 0) {
+      toast.info("No stale issues to triage");
+      return;
+    }
+    ui.enterTriage();
+  }, [nudges.candidates.length, toast, ui]);
 
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = "github" as const;
@@ -1142,6 +1294,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleToggleLog: () => setLogVisible((v) => !v),
       handleLaunchClaude,
       handleEnterWorkflow,
+      handleEnterTriage,
     },
     onSearchEscape,
     panelFocus,
@@ -1365,6 +1518,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
             : undefined
         }
         onWorkflowAction={handleWorkflowAction}
+        nudgeCandidates={nudges.candidates}
+        onNudgeAction={handleNudgeAction}
+        triageCandidates={nudges.candidates}
+        onTriageAction={handleTriageAction}
       />
 
       {/* Detail overlay — full-screen on narrow layouts (no side panel) */}
@@ -1388,6 +1545,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "overlay:detail" &&
+      ui.state.mode !== "overlay:nudge" &&
+      ui.state.mode !== "overlay:triage" &&
       ui.state.mode !== "focus" ? (
         <PanelLayout
           cols={termSize.cols}

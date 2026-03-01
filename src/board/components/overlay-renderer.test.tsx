@@ -86,6 +86,10 @@ function makeBaseProps(overrides: Partial<OverlayRendererProps> = {}): OverlayRe
     onToastError: vi.fn(),
     workflowPhases: [],
     onWorkflowAction: vi.fn(),
+    nudgeCandidates: [],
+    onNudgeAction: vi.fn(),
+    triageCandidates: [],
+    onTriageAction: vi.fn(),
     ...overrides,
   };
 }

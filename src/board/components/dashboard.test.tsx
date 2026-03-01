@@ -38,6 +38,23 @@ vi.mock("../../pick.js", () => ({
   pickIssue: vi.fn(),
 }));
 
+// Mock enrichment to prevent daily nudge overlay from auto-showing in tests
+vi.mock("../../enrichment.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../../enrichment.js")>();
+  return {
+    ...original,
+    loadEnrichment: () => ({
+      version: 1 as const,
+      sessions: [],
+      nudgeState: {
+        lastDailyNudge: new Date().toISOString().slice(0, 10), // today — suppresses auto-nudge
+        snoozedIssues: {},
+      },
+    }),
+    saveEnrichment: vi.fn(),
+  };
+});
+
 // Must import Dashboard AFTER mocks are set up
 import { Dashboard } from "./dashboard.js";
 

@@ -33,6 +33,7 @@ const ENRICHMENT_SCHEMA = z.object({
 });
 
 export type AgentSession = z.infer<typeof AGENT_SESSION_SCHEMA>;
+export type NudgeState = z.infer<typeof NUDGE_STATE_SCHEMA>;
 export type EnrichmentData = z.infer<typeof ENRICHMENT_SCHEMA>;
 
 // ── I/O ──
@@ -125,4 +126,48 @@ export function findLatestSession(
   const sessions = findSessions(data, repo, issueNumber);
   if (sessions.length === 0) return undefined;
   return sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+}
+
+// ── Nudge helpers ──
+
+/** Build a snooze key for an issue. */
+export function snoozeKey(repo: string, issueNumber: number): string {
+  return `${repo}#${issueNumber}`;
+}
+
+/** Check if an issue is currently snoozed. */
+export function isSnoozed(data: EnrichmentData, repo: string, issueNumber: number): boolean {
+  const key = snoozeKey(repo, issueNumber);
+  const until = data.nudgeState.snoozedIssues[key];
+  if (!until) return false;
+  return new Date(until).getTime() > Date.now();
+}
+
+/** Snooze an issue for the given number of days. */
+export function snoozeIssue(
+  data: EnrichmentData,
+  repo: string,
+  issueNumber: number,
+  days: number,
+): EnrichmentData {
+  const key = snoozeKey(repo, issueNumber);
+  const until = new Date(Date.now() + days * 86_400_000).toISOString();
+  return {
+    ...data,
+    nudgeState: {
+      ...data.nudgeState,
+      snoozedIssues: { ...data.nudgeState.snoozedIssues, [key]: until },
+    },
+  };
+}
+
+/** Mark the daily nudge as shown today. */
+export function markNudgeShown(data: EnrichmentData): EnrichmentData {
+  return {
+    ...data,
+    nudgeState: {
+      ...data.nudgeState,
+      lastDailyNudge: new Date().toISOString().slice(0, 10),
+    },
+  };
 }

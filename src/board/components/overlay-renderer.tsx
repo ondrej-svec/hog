@@ -2,6 +2,7 @@ import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "../hooks/use-action-log.js";
+import type { NudgeCandidate } from "../hooks/use-nudges.js";
 import type { UIState } from "../hooks/use-ui-state.js";
 import type { PhaseStatus } from "../hooks/use-workflow-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
@@ -16,8 +17,12 @@ import { FuzzyPicker } from "./fuzzy-picker.js";
 import { HelpOverlay } from "./help-overlay.js";
 import { LabelPicker } from "./label-picker.js";
 import { NlCreateOverlay } from "./nl-create-overlay.js";
+import type { NudgeAction } from "./nudge-overlay.js";
+import { NudgeOverlay } from "./nudge-overlay.js";
 import { SearchBar } from "./search-bar.js";
 import { StatusPicker } from "./status-picker.js";
+import type { TriageAction } from "./triage-overlay.js";
+import { TriageOverlay } from "./triage-overlay.js";
 import type { WorkflowAction } from "./workflow-overlay.js";
 import { WorkflowOverlay } from "./workflow-overlay.js";
 
@@ -80,6 +85,12 @@ export interface OverlayRendererProps {
   readonly workflowPhases: PhaseStatus[];
   readonly workflowLatestSessionId?: string | undefined;
   readonly onWorkflowAction: (action: WorkflowAction) => void;
+  // Nudge overlay
+  readonly nudgeCandidates: NudgeCandidate[];
+  readonly onNudgeAction: (action: NudgeAction) => void;
+  // Triage overlay
+  readonly triageCandidates: NudgeCandidate[];
+  readonly onTriageAction: (action: TriageAction) => void;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -124,6 +135,10 @@ function OverlayRenderer({
   workflowPhases,
   workflowLatestSessionId,
   onWorkflowAction,
+  nudgeCandidates,
+  onNudgeAction,
+  triageCandidates,
+  onTriageAction,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
@@ -255,6 +270,24 @@ function OverlayRenderer({
           phases={workflowPhases}
           latestSessionId={workflowLatestSessionId}
           onAction={onWorkflowAction}
+          onCancel={onExitOverlay}
+        />
+      ) : null}
+
+      {/* Nudge overlay */}
+      {mode === "overlay:nudge" && nudgeCandidates.length > 0 ? (
+        <NudgeOverlay
+          candidates={nudgeCandidates}
+          onAction={onNudgeAction}
+          onCancel={onExitOverlay}
+        />
+      ) : null}
+
+      {/* Triage overlay */}
+      {mode === "overlay:triage" && triageCandidates.length > 0 ? (
+        <TriageOverlay
+          candidates={triageCandidates}
+          onAction={onTriageAction}
           onCancel={onExitOverlay}
         />
       ) : null}

@@ -71,6 +71,8 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
     enterEditIssue: vi.fn(),
     enterDetail: vi.fn(),
     enterWorkflow: vi.fn(),
+    enterNudge: vi.fn(),
+    enterTriage: vi.fn(),
     toggleHelp: vi.fn(),
     exitOverlay: vi.fn(),
     exitToNormal: vi.fn(),
@@ -131,6 +133,7 @@ function makeActions() {
     handleToggleLog: vi.fn(),
     handleLaunchClaude: vi.fn(),
     handleEnterWorkflow: vi.fn(),
+    handleEnterTriage: vi.fn(),
   };
 }
 

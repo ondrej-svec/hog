@@ -28,6 +28,7 @@ interface KeyboardActions {
   handleToggleLog: () => void;
   handleLaunchClaude: () => void;
   handleEnterWorkflow: () => void;
+  handleEnterTriage: () => void;
 }
 
 interface PanelNav {
@@ -93,6 +94,7 @@ export function useKeyboard({
     handleToggleLog,
     handleLaunchClaude,
     handleEnterWorkflow,
+    handleEnterTriage,
   } = actions;
 
   const handleInput = useCallback(
@@ -226,6 +228,10 @@ export function useKeyboard({
         }
         if (input === "W") {
           handleEnterWorkflow();
+          return;
+        }
+        if (input === "T") {
+          handleEnterTriage();
           return;
         }
         if (input === "g") {
@@ -384,6 +390,7 @@ export function useKeyboard({
       handleToggleLog,
       handleLaunchClaude,
       handleEnterWorkflow,
+      handleEnterTriage,
       showDetailPanel,
     ],
   );

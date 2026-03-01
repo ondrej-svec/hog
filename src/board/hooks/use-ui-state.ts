@@ -17,6 +17,8 @@ export type UIMode =
   | "overlay:editIssue"
   | "overlay:detail"
   | "overlay:workflow"
+  | "overlay:nudge"
+  | "overlay:triage"
   | "multiSelect"
   | "focus";
 
@@ -45,6 +47,8 @@ export type UIAction =
   | { type: "ENTER_EDIT_ISSUE" }
   | { type: "ENTER_DETAIL" }
   | { type: "ENTER_WORKFLOW" }
+  | { type: "ENTER_NUDGE" }
+  | { type: "ENTER_TRIAGE" }
   | { type: "TOGGLE_HELP" }
   | { type: "EXIT_OVERLAY" }
   | { type: "EXIT_TO_NORMAL" }
@@ -122,6 +126,14 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       if (state.mode !== "normal") return state;
       return { ...state, mode: "overlay:workflow", previousMode: "normal" };
 
+    case "ENTER_NUDGE":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:nudge", previousMode: "normal" };
+
+    case "ENTER_TRIAGE":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:triage", previousMode: "normal" };
+
     case "TOGGLE_HELP":
       // Help stacks on any mode
       return { ...state, helpVisible: !state.helpVisible };
@@ -183,6 +195,8 @@ export interface UseUIStateResult {
   enterEditIssue: () => void;
   enterDetail: () => void;
   enterWorkflow: () => void;
+  enterNudge: () => void;
+  enterTriage: () => void;
   toggleHelp: () => void;
   exitOverlay: () => void;
   exitToNormal: () => void;
@@ -211,6 +225,8 @@ export function useUIState(): UseUIStateResult {
     enterEditIssue: useCallback(() => dispatch({ type: "ENTER_EDIT_ISSUE" }), []),
     enterDetail: useCallback(() => dispatch({ type: "ENTER_DETAIL" }), []),
     enterWorkflow: useCallback(() => dispatch({ type: "ENTER_WORKFLOW" }), []),
+    enterNudge: useCallback(() => dispatch({ type: "ENTER_NUDGE" }), []),
+    enterTriage: useCallback(() => dispatch({ type: "ENTER_TRIAGE" }), []),
     toggleHelp: useCallback(() => dispatch({ type: "TOGGLE_HELP" }), []),
     exitOverlay: useCallback(() => dispatch({ type: "EXIT_OVERLAY" }), []),
     exitToNormal: useCallback(() => dispatch({ type: "EXIT_TO_NORMAL" }), []),

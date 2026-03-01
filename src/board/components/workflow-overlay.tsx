@@ -8,7 +8,8 @@ import type { PhaseStatus } from "../hooks/use-workflow-state.js";
 export type WorkflowAction =
   | { type: "launch"; phase: string; mode: "interactive" }
   | { type: "launch"; phase: string; mode: "background" }
-  | { type: "resume"; sessionId: string };
+  | { type: "resume"; sessionId: string }
+  | { type: "completion-check" };
 
 interface WorkflowOverlayProps {
   readonly issue: GitHubIssue;
@@ -88,6 +89,11 @@ function WorkflowOverlay({
 
     if (input === "r" && latestSessionId) {
       onAction({ type: "resume", sessionId: latestSessionId });
+      return;
+    }
+
+    if (input === "c") {
+      onAction({ type: "completion-check" });
     }
   });
 
@@ -120,6 +126,7 @@ function WorkflowOverlay({
       <Box flexDirection="column">
         <Text dimColor>Enter/i: Launch interactively</Text>
         <Text dimColor>b: Launch as background agent</Text>
+        <Text dimColor>c: Check what's left (completion check)</Text>
         {latestSessionId ? <Text dimColor>r: Resume last session</Text> : null}
         <Text dimColor>Esc: Back</Text>
       </Box>
