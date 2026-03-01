@@ -48,6 +48,7 @@ const SHORTCUTS = [
       { key: "I", desc: "Natural-language issue create" },
       { key: "l", desc: "Manage labels" },
       { key: "C", desc: "Launch Claude Code session for this issue" },
+      { key: "W", desc: "Open workflow overlay (phase-aware launch)" },
     ],
   },
   {

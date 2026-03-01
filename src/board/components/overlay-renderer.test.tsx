@@ -84,6 +84,8 @@ function makeBaseProps(overrides: Partial<OverlayRendererProps> = {}): OverlayRe
     selectedRepoConfig: null,
     onToastInfo: vi.fn(),
     onToastError: vi.fn(),
+    workflowPhases: [],
+    onWorkflowAction: vi.fn(),
     ...overrides,
   };
 }

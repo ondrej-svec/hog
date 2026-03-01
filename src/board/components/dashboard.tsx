@@ -18,7 +18,9 @@ import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
-import { launchClaude } from "../launch-claude.js";
+import { useWorkflowState } from "../hooks/use-workflow-state.js";
+import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
+import type { WorkflowAction } from "./workflow-overlay.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
@@ -369,6 +371,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // UI state machine
   const ui = useUIState();
+
+  // Workflow state (enrichment.json)
+  const workflowState = useWorkflowState(config);
 
   // Panel focus state — default to Issues panel [3]
   const [activePanelId, setActivePanelId] = useState<PanelId>(3);
@@ -845,6 +850,97 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     toast.info(`Claude Code session opened in ${rc.shortName ?? found.repoName}`);
   }, [repos, nav.selectedId, config.repos, config.board, toast]);
 
+  // Workflow overlay handlers
+  const handleEnterWorkflow = useCallback(() => {
+    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+    if (!found) return;
+    ui.enterWorkflow();
+  }, [repos, nav.selectedId, ui]);
+
+  const handleWorkflowAction = useCallback(
+    (action: WorkflowAction) => {
+      const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+      if (!found) return;
+
+      const rc = config.repos.find((r) => r.name === found.repoName);
+
+      if (action.type === "resume") {
+        if (!rc?.localPath) {
+          toast.info(`Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`);
+          ui.exitOverlay();
+          return;
+        }
+        const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+        const result = launchClaude({
+          localPath: rc.localPath,
+          issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
+          ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+          launchMode: config.board.claudeLaunchMode ?? "auto",
+          ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
+          repoFullName: found.repoName,
+          promptTemplate: `--resume ${action.sessionId}`,
+        });
+        if (!result.ok) {
+          toast.error(result.error.message);
+        } else {
+          toast.info(`Resumed Claude Code session`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
+      // Launch phase
+      if (!rc?.localPath) {
+        toast.info(`Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`);
+        ui.exitOverlay();
+        return;
+      }
+
+      const phasePrompts = rc?.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
+      const template = phasePrompts[action.phase] ?? DEFAULT_PHASE_PROMPTS[action.phase];
+
+      const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+      const slug = found.issue.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      const result = launchClaude({
+        localPath: rc.localPath,
+        issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
+        ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+        launchMode: config.board.claudeLaunchMode ?? "auto",
+        ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
+        repoFullName: found.repoName,
+        promptTemplate: template,
+        promptVariables: {
+          slug,
+          phase: action.phase,
+          repo: found.repoName,
+        },
+      });
+
+      if (!result.ok) {
+        toast.error(result.error.message);
+        ui.exitOverlay();
+        return;
+      }
+
+      // Record session in enrichment
+      workflowState.recordSession({
+        repo: found.repoName,
+        issueNumber: found.issue.number,
+        phase: action.phase,
+        mode: action.mode,
+        startedAt: new Date().toISOString(),
+      });
+
+      toast.info(`${action.phase} session opened for #${found.issue.number}`);
+      ui.exitOverlay();
+    },
+    [repos, nav.selectedId, config, ui, toast, workflowState],
+  );
+
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = "github" as const;
 
@@ -968,6 +1064,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleUndo: undoLast,
       handleToggleLog: () => setLogVisible((v) => !v),
       handleLaunchClaude,
+      handleEnterWorkflow,
     },
     onSearchEscape,
     panelFocus,
@@ -1158,6 +1255,25 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onToastInfo={toast.info}
         onToastError={toast.error}
         onPushEntry={pushEntry}
+        workflowPhases={
+          selectedItem.issue && selectedItem.repoName
+            ? workflowState.getIssueWorkflow(
+                selectedItem.repoName,
+                selectedItem.issue.number,
+                selectedRepoConfig ?? undefined,
+              ).phases
+            : []
+        }
+        workflowLatestSessionId={
+          selectedItem.issue && selectedItem.repoName
+            ? workflowState.getIssueWorkflow(
+                selectedItem.repoName,
+                selectedItem.issue.number,
+                selectedRepoConfig ?? undefined,
+              ).latestSessionId
+            : undefined
+        }
+        onWorkflowAction={handleWorkflowAction}
       />
 
       {/* Detail overlay — full-screen on narrow layouts (no side panel) */}

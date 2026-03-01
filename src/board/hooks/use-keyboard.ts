@@ -27,6 +27,7 @@ interface KeyboardActions {
   handleUndo: () => void;
   handleToggleLog: () => void;
   handleLaunchClaude: () => void;
+  handleEnterWorkflow: () => void;
 }
 
 interface PanelNav {
@@ -91,6 +92,7 @@ export function useKeyboard({
     handleUndo,
     handleToggleLog,
     handleLaunchClaude,
+    handleEnterWorkflow,
   } = actions;
 
   const handleInput = useCallback(
@@ -220,6 +222,10 @@ export function useKeyboard({
         }
         if (input === "C") {
           handleLaunchClaude();
+          return;
+        }
+        if (input === "W") {
+          handleEnterWorkflow();
           return;
         }
         if (input === "g") {
@@ -377,6 +383,7 @@ export function useKeyboard({
       handleUndo,
       handleToggleLog,
       handleLaunchClaude,
+      handleEnterWorkflow,
       showDetailPanel,
     ],
   );

@@ -3,6 +3,7 @@ import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "../hooks/use-action-log.js";
 import type { UIState } from "../hooks/use-ui-state.js";
+import type { PhaseStatus } from "../hooks/use-workflow-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { BulkActionMenu } from "./bulk-action-menu.js";
 import { CommentInput } from "./comment-input.js";
@@ -17,6 +18,8 @@ import { LabelPicker } from "./label-picker.js";
 import { NlCreateOverlay } from "./nl-create-overlay.js";
 import { SearchBar } from "./search-bar.js";
 import { StatusPicker } from "./status-picker.js";
+import type { WorkflowAction } from "./workflow-overlay.js";
+import { WorkflowOverlay } from "./workflow-overlay.js";
 
 export interface OverlayRendererProps {
   readonly uiState: UIState;
@@ -73,6 +76,10 @@ export interface OverlayRendererProps {
   readonly onToastInfo: (msg: string) => void;
   readonly onToastError: (msg: string) => void;
   readonly onPushEntry?: ((entry: ActionLogEntry) => void) | undefined;
+  // Workflow overlay
+  readonly workflowPhases: PhaseStatus[];
+  readonly workflowLatestSessionId?: string | undefined;
+  readonly onWorkflowAction: (action: WorkflowAction) => void;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -114,6 +121,9 @@ function OverlayRenderer({
   onToastInfo,
   onToastError,
   onPushEntry,
+  workflowPhases,
+  workflowLatestSessionId,
+  onWorkflowAction,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
@@ -234,6 +244,18 @@ function OverlayRenderer({
           onToastInfo={onToastInfo}
           onToastError={onToastError}
           {...(onPushEntry ? { onPushEntry } : {})}
+        />
+      ) : null}
+
+      {/* Workflow overlay */}
+      {mode === "overlay:workflow" && selectedIssue && selectedRepoName ? (
+        <WorkflowOverlay
+          issue={selectedIssue}
+          repoName={selectedRepoName}
+          phases={workflowPhases}
+          latestSessionId={workflowLatestSessionId}
+          onAction={onWorkflowAction}
+          onCancel={onExitOverlay}
         />
       ) : null}
     </>

@@ -16,6 +16,7 @@ function makeIssue() {
     labels: [],
     body: "",
     dueDate: null,
+    updatedAt: "2026-01-15T10:00:00Z",
   };
 }
 
@@ -116,7 +117,7 @@ describe("WorkflowOverlay", () => {
   });
 
   it("calls onAction with launch interactive on Enter", () => {
-    const onAction = vi.fn<[WorkflowAction], void>();
+    const onAction = vi.fn();
     const { stdin } = render(
       <WorkflowOverlay
         issue={makeIssue()}
@@ -136,7 +137,7 @@ describe("WorkflowOverlay", () => {
   });
 
   it("calls onAction with launch background on b", () => {
-    const onAction = vi.fn<[WorkflowAction], void>();
+    const onAction = vi.fn();
     const { stdin } = render(
       <WorkflowOverlay
         issue={makeIssue()}
@@ -156,7 +157,7 @@ describe("WorkflowOverlay", () => {
   });
 
   it("calls onAction with resume on r when sessionId present", () => {
-    const onAction = vi.fn<[WorkflowAction], void>();
+    const onAction = vi.fn();
     const { stdin } = render(
       <WorkflowOverlay
         issue={makeIssue()}
