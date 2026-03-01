@@ -16,7 +16,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import type { LaunchClaudeOptions } from "./launch-claude.js";
-import { DEFAULT_PHASE_PROMPTS, buildPrompt, launchClaude } from "./launch-claude.js";
+import { buildPrompt, DEFAULT_PHASE_PROMPTS, launchClaude } from "./launch-claude.js";
 
 // ── Fixtures ──
 
@@ -151,9 +151,7 @@ describe("buildPrompt", () => {
   it("interpolates {phase} placeholder from variables", () => {
     const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
     const template = "Phase: {phase} for #{number}";
-    expect(buildPrompt(issue, template, { phase: "brainstorm" })).toBe(
-      "Phase: brainstorm for #1",
-    );
+    expect(buildPrompt(issue, template, { phase: "brainstorm" })).toBe("Phase: brainstorm for #1");
   });
 
   it("interpolates {repo} placeholder from variables", () => {

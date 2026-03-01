@@ -20,7 +20,6 @@ import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
-import type { WorkflowAction } from "./workflow-overlay.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
@@ -41,6 +40,7 @@ import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
 import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
+import type { WorkflowAction } from "./workflow-overlay.js";
 
 // ── Types ──
 
@@ -866,7 +866,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
       if (action.type === "resume") {
         if (!rc?.localPath) {
-          toast.info(`Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`);
+          toast.info(
+            `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+          );
           ui.exitOverlay();
           return;
         }
@@ -876,7 +878,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
           ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
           launchMode: config.board.claudeLaunchMode ?? "auto",
-          ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
+          ...(config.board.claudeTerminalApp
+            ? { terminalApp: config.board.claudeTerminalApp }
+            : {}),
           repoFullName: found.repoName,
           promptTemplate: `--resume ${action.sessionId}`,
         });
@@ -891,7 +895,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
       // Launch phase
       if (!rc?.localPath) {
-        toast.info(`Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`);
+        toast.info(
+          `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+        );
         ui.exitOverlay();
         return;
       }

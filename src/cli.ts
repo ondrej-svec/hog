@@ -1269,7 +1269,9 @@ workflowCommand
           console.log(`${key}:`);
           for (const s of sessions) {
             const status = s.exitedAt ? `exited (code ${s.exitCode ?? "?"})` : "active";
-            console.log(`  ${s.phase} [${s.mode}] — ${status} — ${new Date(s.startedAt).toLocaleString()}`);
+            console.log(
+              `  ${s.phase} [${s.mode}] — ${status} — ${new Date(s.startedAt).toLocaleString()}`,
+            );
           }
           console.log();
         }

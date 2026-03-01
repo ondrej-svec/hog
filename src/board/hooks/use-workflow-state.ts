@@ -1,7 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import type { AgentSession, EnrichmentData } from "../../enrichment.js";
-import { findActiveSession, findSessions, loadEnrichment, saveEnrichment, upsertSession } from "../../enrichment.js";
+import {
+  findActiveSession,
+  findSessions,
+  loadEnrichment,
+  saveEnrichment,
+  upsertSession,
+} from "../../enrichment.js";
 
 // ── Types ──
 
@@ -20,7 +26,11 @@ export interface IssueWorkflowState {
 export interface UseWorkflowStateResult {
   readonly enrichment: EnrichmentData;
   /** Get workflow state for a specific issue. */
-  readonly getIssueWorkflow: (repo: string, issueNumber: number, repoConfig?: RepoConfig) => IssueWorkflowState;
+  readonly getIssueWorkflow: (
+    repo: string,
+    issueNumber: number,
+    repoConfig?: RepoConfig,
+  ) => IssueWorkflowState;
   /** Record a new session launch. */
   readonly recordSession: (session: Omit<AgentSession, "id">) => AgentSession;
   /** Mark a session as exited. */
@@ -41,10 +51,7 @@ function resolvePhases(config: HogConfig, repoConfig?: RepoConfig): string[] {
   return ["brainstorm", "plan", "implement", "review"];
 }
 
-function derivePhaseStatus(
-  phaseName: string,
-  sessions: AgentSession[],
-): PhaseStatus {
+function derivePhaseStatus(phaseName: string, sessions: AgentSession[]): PhaseStatus {
   const phaseSessions = sessions.filter((s) => s.phase === phaseName);
   if (phaseSessions.length === 0) {
     return { name: phaseName, state: "pending" };
@@ -92,16 +99,13 @@ export function useWorkflowState(config: HogConfig): UseWorkflowStateResult {
     [config],
   );
 
-  const recordSession = useCallback(
-    (session: Omit<AgentSession, "id">): AgentSession => {
-      const result = upsertSession(enrichmentRef.current, session);
-      setEnrichment(result.data);
-      enrichmentRef.current = result.data;
-      saveEnrichment(result.data);
-      return result.session;
-    },
-    [],
-  );
+  const recordSession = useCallback((session: Omit<AgentSession, "id">): AgentSession => {
+    const result = upsertSession(enrichmentRef.current, session);
+    setEnrichment(result.data);
+    enrichmentRef.current = result.data;
+    saveEnrichment(result.data);
+    return result.session;
+  }, []);
 
   const markSessionExited = useCallback((sessionId: string, exitCode: number) => {
     const data = enrichmentRef.current;

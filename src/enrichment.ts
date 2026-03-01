@@ -113,9 +113,7 @@ export function findActiveSession(
   repo: string,
   issueNumber: number,
 ): AgentSession | undefined {
-  return data.sessions.find(
-    (s) => s.repo === repo && s.issueNumber === issueNumber && !s.exitedAt,
-  );
+  return data.sessions.find((s) => s.repo === repo && s.issueNumber === issueNumber && !s.exitedAt);
 }
 
 /** Find the most recent session for an issue (by startedAt). */

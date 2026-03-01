@@ -57,7 +57,12 @@ describe("workflow state phase derivation", () => {
   });
 
   it("finds sessions for an issue across multiple phases", () => {
-    const s1 = makeSession({ id: "s1", phase: "brainstorm", exitedAt: "2026-01-15T11:00:00Z", exitCode: 0 });
+    const s1 = makeSession({
+      id: "s1",
+      phase: "brainstorm",
+      exitedAt: "2026-01-15T11:00:00Z",
+      exitCode: 0,
+    });
     const s2 = makeSession({ id: "s2", phase: "plan" });
     const data = makeEnrichment([s1, s2]);
 
@@ -67,7 +72,12 @@ describe("workflow state phase derivation", () => {
 
   it("finds active session (no exitedAt)", () => {
     const active = makeSession({ id: "active", phase: "implement" });
-    const done = makeSession({ id: "done", phase: "brainstorm", exitedAt: "2026-01-15T11:00:00Z", exitCode: 0 });
+    const done = makeSession({
+      id: "done",
+      phase: "brainstorm",
+      exitedAt: "2026-01-15T11:00:00Z",
+      exitCode: 0,
+    });
     const data = makeEnrichment([active, done]);
 
     const result = findActiveSession(data, "owner/repo", 42);
