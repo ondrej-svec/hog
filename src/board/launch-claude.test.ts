@@ -16,7 +16,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import type { LaunchClaudeOptions } from "./launch-claude.js";
-import { buildPrompt, launchClaude } from "./launch-claude.js";
+import { DEFAULT_PHASE_PROMPTS, buildPrompt, launchClaude } from "./launch-claude.js";
 
 // ── Fixtures ──
 
@@ -130,6 +130,82 @@ describe("buildPrompt", () => {
     const issue = makeIssue();
     const template = "Just do it";
     expect(buildPrompt(issue, template)).toBe("Just do it");
+  });
+
+  it("interpolates {body} placeholder from variables", () => {
+    const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
+    const template = "Issue #{number}\n\n{body}";
+    expect(buildPrompt(issue, template, { body: "Some issue body text" })).toBe(
+      "Issue #1\n\nSome issue body text",
+    );
+  });
+
+  it("interpolates {slug} placeholder from variables", () => {
+    const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
+    const template = "docs/research/{slug}.md";
+    expect(buildPrompt(issue, template, { slug: "fix-auth-flow" })).toBe(
+      "docs/research/fix-auth-flow.md",
+    );
+  });
+
+  it("interpolates {phase} placeholder from variables", () => {
+    const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
+    const template = "Phase: {phase} for #{number}";
+    expect(buildPrompt(issue, template, { phase: "brainstorm" })).toBe(
+      "Phase: brainstorm for #1",
+    );
+  });
+
+  it("interpolates {repo} placeholder from variables", () => {
+    const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
+    const template = "Repo: {repo}, Issue #{number}";
+    expect(buildPrompt(issue, template, { repo: "owner/my-repo" })).toBe(
+      "Repo: owner/my-repo, Issue #1",
+    );
+  });
+
+  it("replaces missing variables with empty string", () => {
+    const issue = makeIssue({ number: 1, title: "Test", url: "https://example.com/1" });
+    const template = "Body: [{body}], Slug: [{slug}]";
+    expect(buildPrompt(issue, template)).toBe("Body: [], Slug: []");
+  });
+
+  it("interpolates all variables together", () => {
+    const issue = makeIssue({
+      number: 42,
+      title: "Fix auth",
+      url: "https://github.com/a/b/issues/42",
+    });
+    const template = "{repo} #{number}: {title}\nPhase: {phase}\n\n{body}";
+    const result = buildPrompt(issue, template, {
+      repo: "a/b",
+      phase: "plan",
+      body: "Auth is broken",
+    });
+    expect(result).toBe("a/b #42: Fix auth\nPhase: plan\n\nAuth is broken");
+  });
+});
+
+describe("DEFAULT_PHASE_PROMPTS", () => {
+  it("contains all standard phases", () => {
+    expect(Object.keys(DEFAULT_PHASE_PROMPTS)).toEqual(
+      expect.arrayContaining(["research", "brainstorm", "plan", "implement", "review", "compound"]),
+    );
+  });
+
+  it("each phase prompt contains {number} and {title} placeholders", () => {
+    for (const [phase, prompt] of Object.entries(DEFAULT_PHASE_PROMPTS)) {
+      expect(prompt, `${phase} should contain {number}`).toContain("{number}");
+      expect(prompt, `${phase} should contain {title}`).toContain("{title}");
+    }
+  });
+
+  it("research phase prompt contains {slug}", () => {
+    expect(DEFAULT_PHASE_PROMPTS["research"]).toContain("{slug}");
+  });
+
+  it("brainstorm phase prompt contains {body}", () => {
+    expect(DEFAULT_PHASE_PROMPTS["brainstorm"]).toContain("{body}");
   });
 });
 
