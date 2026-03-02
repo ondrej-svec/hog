@@ -36,7 +36,6 @@ export const AUTO_STATUS_SCHEMA = z
         branchCreated: z.string().optional(),
         prOpened: z.string().optional(),
         prMerged: z.string().optional(),
-        branchPattern: z.string().optional(),
       })
       .optional(),
   })

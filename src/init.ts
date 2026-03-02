@@ -477,10 +477,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
         name: "Full — brainstorm, plan, implement, review, compound",
         value: "full",
       },
-      {
-        name: "Minimal — plan and implement only",
-        value: "minimal",
-      },
       { name: "None — configure manually later", value: "none" },
     ],
   });

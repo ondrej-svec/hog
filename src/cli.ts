@@ -1174,6 +1174,80 @@ issueCommand
     outputBulkResults(results);
   });
 
+// -- Issue snooze command --
+
+interface IssueSnoozeOptions {
+  days: string;
+  list?: true;
+}
+
+issueCommand
+  .command("snooze [issueRef]")
+  .description("Snooze an issue to suppress staleness nudges for N days")
+  .option("--days <n>", "Number of days to snooze", "7")
+  .option("--list", "List all currently snoozed issues")
+  .action(async (issueRef: string | undefined, opts: IssueSnoozeOptions) => {
+    const { loadEnrichment, saveEnrichment, snoozeIssue, isSnoozed } = await import(
+      "./enrichment.js"
+    );
+    const enrichment = loadEnrichment();
+
+    if (opts.list) {
+      const snoozed = Object.entries(enrichment.nudgeState.snoozedIssues)
+        .filter(([, until]) => new Date(until).getTime() > Date.now())
+        .map(([key, until]) => ({ issue: key, snoozedUntil: until }));
+
+      if (useJson()) {
+        jsonOut({ ok: true, data: { snoozed } });
+      } else if (snoozed.length === 0) {
+        console.log("No issues currently snoozed.");
+      } else {
+        console.log("Snoozed issues:");
+        for (const { issue, snoozedUntil } of snoozed) {
+          const until = new Date(snoozedUntil).toLocaleDateString();
+          console.log(`  ${issue} — until ${until}`);
+        }
+      }
+      return;
+    }
+
+    if (!issueRef) {
+      errorOut("issueRef required unless using --list");
+    }
+
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const days = Number.parseInt(opts.days, 10);
+
+    if (Number.isNaN(days) || days < 1) {
+      errorOut(`Invalid --days value: "${opts.days}". Must be a positive integer.`);
+    }
+
+    const alreadySnoozed = isSnoozed(enrichment, ref.repo.name, ref.issueNumber);
+    const updated = snoozeIssue(enrichment, ref.repo.name, ref.issueNumber, days);
+    saveEnrichment(updated);
+
+    const until = new Date(Date.now() + days * 86_400_000).toLocaleDateString();
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          repo: ref.repo.name,
+          issueNumber: ref.issueNumber,
+          days,
+          snoozedUntil: new Date(Date.now() + days * 86_400_000).toISOString(),
+          wasAlreadySnoozed: alreadySnoozed,
+        },
+      });
+    } else {
+      const verb = alreadySnoozed ? "Re-snoozed" : "Snoozed";
+      console.log(
+        `${verb} ${ref.repo.shortName}#${ref.issueNumber} for ${days} days (until ${until})`,
+      );
+    }
+  });
+
 program.addCommand(issueCommand);
 
 // -- Log commands --
@@ -1373,6 +1447,155 @@ workflowCommand
       console.log(`\nLaunched ${launched} agent${launched !== 1 ? "s" : ""}.`);
     } else {
       console.log(`\nRun with --launch to start background agents.`);
+    }
+  });
+
+// -- Workflow launch command --
+
+interface WorkflowLaunchOptions {
+  phase: string;
+  mode?: string;
+}
+
+workflowCommand
+  .command("launch <issueRef>")
+  .description("Launch a background Claude agent for a workflow phase on an issue")
+  .requiredOption(
+    "--phase <phase>",
+    "Workflow phase to run (research, brainstorm, plan, implement, review, compound, completion-check)",
+  )
+  .option("--mode <mode>", "Launch mode: background (default)", "background")
+  .action(async (issueRef: string, opts: WorkflowLaunchOptions) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const rc = ref.repo;
+
+    if (!rc.localPath) {
+      errorOut(
+        `Set localPath for ${rc.shortName} in ~/.config/hog/config.json to enable agent launch`,
+        { repo: rc.shortName },
+      );
+    }
+
+    const { fetchIssueAsync } = await import("./github.js");
+    const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
+
+    const { spawnBackgroundAgent } = await import("./board/spawn-agent.js");
+    const { DEFAULT_PHASE_PROMPTS } = await import("./board/launch-claude.js");
+
+    const phaseTemplate = DEFAULT_PHASE_PROMPTS[opts.phase];
+
+    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+
+    const result = spawnBackgroundAgent({
+      localPath: rc.localPath,
+      repoFullName: rc.name,
+      issueNumber: ref.issueNumber,
+      issueTitle: issue.title,
+      issueUrl: issue.url,
+      phase: opts.phase,
+      promptTemplate: phaseTemplate,
+      promptVariables: { phase: opts.phase, repo: rc.name },
+      ...(startCommand ? { startCommand } : {}),
+    });
+
+    if (!result.ok) {
+      errorOut(result.error.message, { kind: result.error.kind });
+    }
+
+    // Detach child so CLI can exit immediately
+    result.value.child.unref();
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          pid: result.value.pid,
+          phase: opts.phase,
+          repo: rc.shortName,
+          issueNumber: ref.issueNumber,
+          resultFile: result.value.resultFilePath,
+        },
+      });
+    } else {
+      console.log(
+        `Started ${opts.phase} agent for ${rc.shortName}#${ref.issueNumber} (PID ${result.value.pid})`,
+      );
+      console.log(`  Result file: ${result.value.resultFilePath}`);
+    }
+  });
+
+// -- Workflow resume command --
+
+interface WorkflowResumeOptions {
+  session?: string;
+}
+
+workflowCommand
+  .command("resume <issueRef>")
+  .description("Resume an interactive Claude Code session for an issue")
+  .option("--session <id>", "Claude session ID to resume (default: latest session for issue)")
+  .action(async (issueRef: string, opts: WorkflowResumeOptions) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const rc = ref.repo;
+
+    if (!rc.localPath) {
+      errorOut(
+        `Set localPath for ${rc.shortName} in ~/.config/hog/config.json to enable Claude Code launch`,
+        { repo: rc.shortName },
+      );
+    }
+
+    let sessionId = opts.session;
+
+    if (!sessionId) {
+      const { loadEnrichment, findSessions } = await import("./enrichment.js");
+      const enrichment = loadEnrichment();
+      const sessions = findSessions(enrichment, rc.name, ref.issueNumber);
+      const latest = sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+
+      if (!latest?.claudeSessionId) {
+        errorOut(
+          `No previous session found for ${rc.shortName}#${ref.issueNumber}. Use --session <id> to specify one.`,
+          { repo: rc.shortName, issueNumber: ref.issueNumber },
+        );
+      }
+
+      sessionId = latest.claudeSessionId;
+    }
+
+    const { launchClaude } = await import("./board/launch-claude.js");
+    const { fetchIssueAsync } = await import("./github.js");
+
+    const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
+    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
+    const terminalApp = cfg.board.claudeTerminalApp;
+
+    const result = launchClaude({
+      localPath: rc.localPath,
+      issue: { number: issue.number, title: issue.title, url: issue.url },
+      promptTemplate: `--resume ${sessionId}`,
+      ...(startCommand ? { startCommand } : {}),
+      launchMode,
+      ...(terminalApp ? { terminalApp } : {}),
+      repoFullName: rc.name,
+    });
+
+    if (!result.ok) {
+      errorOut(result.error.message, { kind: result.error.kind });
+    }
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: { repo: rc.shortName, issueNumber: ref.issueNumber, sessionId },
+      });
+    } else {
+      console.log(
+        `Resuming Claude Code session ${sessionId} for ${rc.shortName}#${ref.issueNumber}`,
+      );
     }
   });
 

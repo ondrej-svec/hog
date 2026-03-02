@@ -1,44 +1,61 @@
-import type { SpawnSyncReturns } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:child_process", () => ({
-  spawnSync: vi.fn(),
-}));
+const mockUnref = vi.fn();
+const mockSpawn = vi.fn(() => ({ unref: mockUnref }));
 
-const { spawnSync } = await import("node:child_process");
-const mockedSpawnSync = vi.mocked(spawnSync);
+vi.mock("node:child_process", () => ({
+  spawn: mockSpawn,
+}));
 
 const { sendOsNotification, sendSoundNotification, notify } = await import("./notify.js");
 
 describe("sendOsNotification", () => {
   beforeEach(() => {
-    mockedSpawnSync.mockReset();
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
   });
 
-  it("should call osascript on darwin", () => {
+  it("should call osascript on darwin with safe variable binding", () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
     sendOsNotification({ title: "Test Title", body: "Test Body" });
 
-    expect(mockedSpawnSync).toHaveBeenCalledWith("osascript", [
-      "-e",
-      'display notification "Test Body" with title "Test Title"',
-    ]);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "osascript",
+      [
+        "-e",
+        `set theBody to ${JSON.stringify("Test Body")}`,
+        "-e",
+        `set theTitle to ${JSON.stringify("Test Title")}`,
+        "-e",
+        "display notification theBody with title theTitle",
+      ],
+      { stdio: "ignore", detached: true },
+    );
+    expect(mockUnref).toHaveBeenCalled();
 
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   });
 
-  it("should escape double quotes in title and body on darwin", () => {
+  it("should safely handle quotes and special characters in title and body on darwin", () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
     sendOsNotification({ title: 'Say "hello"', body: 'It\'s "done"' });
 
-    expect(mockedSpawnSync).toHaveBeenCalledWith("osascript", [
-      "-e",
-      'display notification "It\'s \\"done\\"" with title "Say \\"hello\\""',
-    ]);
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "osascript",
+      [
+        "-e",
+        `set theBody to ${JSON.stringify('It\'s "done"')}`,
+        "-e",
+        `set theTitle to ${JSON.stringify('Say "hello"')}`,
+        "-e",
+        "display notification theBody with title theTitle",
+      ],
+      { stdio: "ignore", detached: true },
+    );
 
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   });
@@ -49,7 +66,11 @@ describe("sendOsNotification", () => {
 
     sendOsNotification({ title: "Test", body: "Body" });
 
-    expect(mockedSpawnSync).toHaveBeenCalledWith("notify-send", ["Test", "Body"]);
+    expect(mockSpawn).toHaveBeenCalledWith("notify-send", ["Test", "Body"], {
+      stdio: "ignore",
+      detached: true,
+    });
+    expect(mockUnref).toHaveBeenCalled();
 
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   });
@@ -66,7 +87,8 @@ describe("sendSoundNotification", () => {
 
 describe("notify", () => {
   beforeEach(() => {
-    mockedSpawnSync.mockReset();
+    mockSpawn.mockClear();
+    mockUnref.mockClear();
   });
 
   afterEach(() => {
@@ -76,7 +98,7 @@ describe("notify", () => {
   it("should do nothing when config is undefined", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     notify(undefined, { title: "t", body: "b" });
-    expect(mockedSpawnSync).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
     expect(writeSpy).not.toHaveBeenCalled();
     writeSpy.mockRestore();
   });
@@ -86,7 +108,7 @@ describe("notify", () => {
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 
     notify({ os: true, sound: false }, { title: "Done", body: "Agent finished" });
-    expect(mockedSpawnSync).toHaveBeenCalledOnce();
+    expect(mockSpawn).toHaveBeenCalledOnce();
 
     Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
   });
@@ -95,7 +117,7 @@ describe("notify", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     notify({ os: false, sound: true }, { title: "Done", body: "Agent finished" });
     expect(writeSpy).toHaveBeenCalledWith("\x07");
-    expect(mockedSpawnSync).not.toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
     writeSpy.mockRestore();
   });
 
@@ -105,7 +127,7 @@ describe("notify", () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     notify({ os: true, sound: true }, { title: "Done", body: "Agent finished" });
-    expect(mockedSpawnSync).toHaveBeenCalledOnce();
+    expect(mockSpawn).toHaveBeenCalledOnce();
     expect(writeSpy).toHaveBeenCalledWith("\x07");
 
     writeSpy.mockRestore();

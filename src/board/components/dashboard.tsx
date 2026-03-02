@@ -4,6 +4,7 @@ import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import type { EnrichmentData } from "../../enrichment.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
 import type { PanelId } from "../constants.js";
@@ -436,12 +437,20 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     registerPendingMutation,
   });
 
+  // Stable callback to avoid invalidating useCallbacks in use-nudges.ts
+  const handleEnrichmentChange = useCallback(
+    (data: EnrichmentData) => {
+      workflowState.updateEnrichment(data);
+    },
+    [workflowState],
+  );
+
   // Nudge system — staleness detection and snooze tracking
   const nudges = useNudges({
     config,
     repos: allRepos,
     enrichment: workflowState.enrichment,
-    onEnrichmentChange: () => workflowState.reload(),
+    onEnrichmentChange: handleEnrichmentChange,
   });
 
   // Auto-show daily nudge on first board open today
@@ -845,6 +854,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     if (!selectedItem.repoName) return null;
     return config.repos.find((r) => r.name === selectedItem.repoName) ?? null;
   }, [selectedItem.repoName, config.repos]);
+
+  // Memoize workflow lookup for the selected issue to avoid repeated linear scans
+  const selectedIssueWorkflow = useMemo(() => {
+    if (!selectedItem.issue || !selectedItem.repoName) return null;
+    return workflowState.getIssueWorkflow(
+      selectedItem.repoName,
+      selectedItem.issue.number,
+      selectedRepoConfig ?? undefined,
+    );
+  }, [selectedItem.issue, selectedItem.repoName, selectedRepoConfig, workflowState]);
 
   // Status options for the selected issue's repo (for status picker, single or bulk)
   const selectedRepoStatusOptions = useMemo(() => {
@@ -1499,24 +1518,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onToastInfo={toast.info}
         onToastError={toast.error}
         onPushEntry={pushEntry}
-        workflowPhases={
-          selectedItem.issue && selectedItem.repoName
-            ? workflowState.getIssueWorkflow(
-                selectedItem.repoName,
-                selectedItem.issue.number,
-                selectedRepoConfig ?? undefined,
-              ).phases
-            : []
-        }
-        workflowLatestSessionId={
-          selectedItem.issue && selectedItem.repoName
-            ? workflowState.getIssueWorkflow(
-                selectedItem.repoName,
-                selectedItem.issue.number,
-                selectedRepoConfig ?? undefined,
-              ).latestSessionId
-            : undefined
-        }
+        workflowPhases={selectedIssueWorkflow?.phases ?? []}
+        workflowLatestSessionId={selectedIssueWorkflow?.latestSessionId}
         onWorkflowAction={handleWorkflowAction}
         nudgeCandidates={nudges.candidates}
         onNudgeAction={handleNudgeAction}

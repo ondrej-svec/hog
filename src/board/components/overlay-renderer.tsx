@@ -52,7 +52,7 @@ export interface OverlayRendererProps {
   readonly onCancelPick: () => void;
   // Bulk action
   readonly multiSelectCount: number;
-  readonly multiSelectType: "github" | "ticktick" | "mixed";
+  readonly multiSelectType: "github" | "mixed";
   readonly onBulkAction: (action: BulkAction) => void;
   // Focus mode
   readonly focusLabel: string | null;
@@ -287,6 +287,9 @@ function OverlayRenderer({
       {mode === "overlay:triage" && triageCandidates.length > 0 ? (
         <TriageOverlay
           candidates={triageCandidates}
+          phases={
+            config.board.workflow?.defaultPhases ?? ["brainstorm", "plan", "implement", "review"]
+          }
           onAction={onTriageAction}
           onCancel={onExitOverlay}
         />

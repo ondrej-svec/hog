@@ -6,8 +6,6 @@ import { WORKFLOW_CONFIG_SCHEMA } from "./config.js";
 // ── Schema ──
 
 const WORKFLOW_TEMPLATE_SCHEMA = z.object({
-  // biome-ignore lint/style/useNamingConvention: $schema is a standard JSON Schema field
-  $schema: z.string().optional(),
   name: z.string().min(1),
   description: z.string().optional(),
   version: z.string().default("1.0.0"),
@@ -53,15 +51,6 @@ export const BUILTIN_TEMPLATES: Record<string, WorkflowTemplate> = {
       branchCreated: "In Progress",
       prOpened: "In Review",
       prMerged: "Done",
-    },
-  },
-  minimal: {
-    name: "Minimal",
-    description: "Plan and implement — no extra phases",
-    version: "1.0.0",
-    workflow: {
-      mode: "freeform",
-      phases: ["plan", "implement"],
     },
   },
 };

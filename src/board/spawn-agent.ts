@@ -1,12 +1,13 @@
 import type { ChildProcess } from "node:child_process";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { CONFIG_DIR } from "../config.js";
 import type { AgentSession } from "../enrichment.js";
 import type { Result } from "../types.js";
 import type { PromptVariables } from "./launch-claude.js";
-import { buildPrompt, DEFAULT_PHASE_PROMPTS } from "./launch-claude.js";
+import { buildPrompt, DEFAULT_PHASE_PROMPTS, isClaudeInPath } from "./launch-claude.js";
 
 // ── Constants ──
 
@@ -43,6 +44,12 @@ export type SpawnResult = Result<SpawnAgentResult, SpawnError>;
 
 // ── Stream-JSON parsing ──
 
+const SESSION_ID_RE = /^[a-zA-Z0-9_-]{8,64}$/;
+
+function parseSessionId(raw: unknown): string | undefined {
+  return typeof raw === "string" && SESSION_ID_RE.test(raw) ? raw : undefined;
+}
+
 export interface StreamEvent {
   readonly type: "tool_use" | "result" | "text" | "system" | "error" | "unknown";
   readonly toolName?: string | undefined;
@@ -59,8 +66,7 @@ export function parseStreamLine(line: string): StreamEvent | undefined {
     const type = parsed["type"] as string | undefined;
 
     if (type === "system") {
-      const sessionId = parsed["session_id"] as string | undefined;
-      return { type: "system", sessionId };
+      return { type: "system", sessionId: parseSessionId(parsed["session_id"]) };
     }
 
     if (type === "assistant" && parsed["message"]) {
@@ -80,8 +86,7 @@ export function parseStreamLine(line: string): StreamEvent | undefined {
     }
 
     if (type === "result") {
-      const sessionId = parsed["session_id"] as string | undefined;
-      return { type: "result", sessionId };
+      return { type: "result", sessionId: parseSessionId(parsed["session_id"]) };
     }
 
     if (type === "error") {
@@ -105,17 +110,27 @@ export interface AgentResultFile {
   readonly startedAt: string;
   readonly completedAt: string;
   readonly exitCode: number;
-  readonly artifacts: string[];
   readonly summary?: string | undefined;
 }
+
+const AGENT_RESULT_FILE_SCHEMA = z.object({
+  sessionId: z.string(),
+  phase: z.string(),
+  issueRef: z.string(),
+  startedAt: z.string(),
+  completedAt: z.string(),
+  exitCode: z.number(),
+  summary: z.string().optional(),
+});
 
 export function buildResultFilePath(
   repoFullName: string,
   issueNumber: number,
   phase: string,
 ): string {
-  const slug = repoFullName.replace("/", "-");
-  return join(AGENT_RESULTS_DIR, `${slug}-${issueNumber}-${phase}.json`);
+  const safePhase = phase.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const slug = repoFullName.replace(/\//g, "-");
+  return join(AGENT_RESULTS_DIR, `${slug}-${issueNumber}-${safePhase}.json`);
 }
 
 export function writeResultFile(path: string, result: AgentResultFile): void {
@@ -124,11 +139,6 @@ export function writeResultFile(path: string, result: AgentResultFile): void {
 }
 
 // ── Spawn ──
-
-function isClaudeInPath(): boolean {
-  const result = spawnSync("which", ["claude"], { stdio: "pipe" });
-  return result.status === 0;
-}
 
 /** Spawn a background Claude agent process. Returns child process handle and PID. */
 export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
@@ -198,12 +208,14 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
 
 // ── Stream monitoring ──
 
-export interface AgentMonitor {
-  readonly sessionId: string | undefined;
-  readonly lastToolUse: string | undefined;
-  readonly lastText: string | undefined;
-  readonly isRunning: boolean;
+interface MutableAgentMonitor {
+  sessionId: string | undefined;
+  lastToolUse: string | undefined;
+  lastText: string | undefined;
+  isRunning: boolean;
 }
+
+export type AgentMonitor = Readonly<MutableAgentMonitor>;
 
 /**
  * Attach stream monitoring to a spawned agent's child process.
@@ -215,7 +227,7 @@ export function attachStreamMonitor(
   onEvent?: (event: StreamEvent) => void,
   onExit?: (exitCode: number, state: AgentMonitor) => void,
 ): AgentMonitor {
-  const state: AgentMonitor = {
+  const state: MutableAgentMonitor = {
     sessionId: undefined,
     lastToolUse: undefined,
     lastText: undefined,
@@ -230,13 +242,13 @@ export function attachStreamMonitor(
     if (!event) return;
 
     if (event.sessionId) {
-      (state as { sessionId: string | undefined }).sessionId = event.sessionId;
+      state.sessionId = event.sessionId;
     }
     if (event.type === "tool_use" && event.toolName) {
-      (state as { lastToolUse: string | undefined }).lastToolUse = event.toolName;
+      state.lastToolUse = event.toolName;
     }
     if (event.type === "text" && event.text) {
-      (state as { lastText: string | undefined }).lastText = event.text;
+      state.lastText = event.text;
     }
 
     onEvent?.(event);
@@ -256,7 +268,7 @@ export function attachStreamMonitor(
     // Capture stderr as error text
     const text = chunk.toString().trim();
     if (text) {
-      (state as { lastText: string | undefined }).lastText = text;
+      state.lastText = text;
     }
   });
 
@@ -267,7 +279,7 @@ export function attachStreamMonitor(
       buffer = "";
     }
 
-    (state as { isRunning: boolean }).isRunning = false;
+    state.isRunning = false;
     onExit?.(code ?? 1, state);
   });
 
@@ -309,8 +321,8 @@ export function findUnprocessedResults(processedFiles: Set<string>): string[] {
  */
 export function readResultFile(path: string): AgentResultFile | undefined {
   try {
-    const raw = JSON.parse(readFileSync(path, "utf-8")) as AgentResultFile;
-    return raw;
+    const parsed = AGENT_RESULT_FILE_SCHEMA.safeParse(JSON.parse(readFileSync(path, "utf-8")));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { HogConfig } from "../../config.js";
 import type { EnrichmentData } from "../../enrichment.js";
-import { isSnoozed, markNudgeShown, saveEnrichment, snoozeIssue } from "../../enrichment.js";
+import { isSnoozed, markNudgeShown, snoozeIssue } from "../../enrichment.js";
 import type { GitHubIssue } from "../../github.js";
 import type { RepoData } from "../fetch.js";
 
@@ -79,7 +79,6 @@ export function useNudges({
       const updated = snoozeIssue(enrichmentRef.current, repo, issueNumber, days);
       enrichmentRef.current = updated;
       onEnrichmentChange(updated);
-      saveEnrichment(updated);
     },
     [onEnrichmentChange],
   );
@@ -88,7 +87,6 @@ export function useNudges({
     const updated = markNudgeShown(enrichmentRef.current);
     enrichmentRef.current = updated;
     onEnrichmentChange(updated);
-    saveEnrichment(updated);
   }, [onEnrichmentChange]);
 
   return { candidates, shouldShowDailyNudge, snooze, dismissNudge };

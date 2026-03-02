@@ -15,15 +15,14 @@ export type TriageAction =
 
 interface TriageOverlayProps {
   readonly candidates: NudgeCandidate[];
+  readonly phases: readonly string[];
   readonly onAction: (action: TriageAction) => void;
   readonly onCancel: () => void;
 }
 
-const TRIAGE_PHASES = ["research", "plan", "review"] as const;
-
 // ── Component ──
 
-function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
+function TriageOverlay({ candidates, phases, onAction, onCancel }: TriageOverlayProps) {
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
   const [cursorIdx, setCursorIdx] = useState(0);
   const [phaseIdx, setPhaseIdx] = useState(0);
@@ -59,7 +58,7 @@ function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
 
     // Cycle phase
     if (key.tab) {
-      setPhaseIdx((i) => (i + 1) % TRIAGE_PHASES.length);
+      setPhaseIdx((i) => (i + 1) % phases.length);
       return;
     }
 
@@ -67,7 +66,7 @@ function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
     if (input === "b" || key.return) {
       const selectedCandidates = getSelectedCandidates(candidates, selected, cursorIdx);
       if (selectedCandidates.length > 0) {
-        const phase = TRIAGE_PHASES[phaseIdx] ?? "research";
+        const phase = phases[phaseIdx] ?? phases[0] ?? "brainstorm";
         onAction({
           type: "launch",
           candidates: selectedCandidates,
@@ -82,7 +81,7 @@ function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
     if (input === "i") {
       const selectedCandidates = getSelectedCandidates(candidates, selected, cursorIdx);
       if (selectedCandidates.length > 0) {
-        const phase = TRIAGE_PHASES[phaseIdx] ?? "research";
+        const phase = phases[phaseIdx] ?? phases[0] ?? "brainstorm";
         onAction({
           type: "launch",
           candidates: [selectedCandidates[0]!],
@@ -107,7 +106,7 @@ function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
     }
   });
 
-  const currentPhase = TRIAGE_PHASES[phaseIdx] ?? "research";
+  const currentPhase = phases[phaseIdx] ?? phases[0] ?? "brainstorm";
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1}>
@@ -140,7 +139,7 @@ function TriageOverlay({ candidates, onAction, onCancel }: TriageOverlayProps) {
       <Text> </Text>
       <Box flexDirection="column">
         <Text dimColor>Space: Toggle selection</Text>
-        <Text dimColor>Tab: Cycle phase ({TRIAGE_PHASES.join("/")})</Text>
+        <Text dimColor>Tab: Cycle phase ({phases.join("/")})</Text>
         <Text dimColor>b/Enter: Launch selected as background agents</Text>
         <Text dimColor>i: Launch first selected interactively</Text>
         <Text dimColor>s: Snooze selected for 7 days</Text>

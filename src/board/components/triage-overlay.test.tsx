@@ -21,8 +21,12 @@ function makeCandidate(overrides: Partial<NudgeCandidate> = {}): NudgeCandidate 
   };
 }
 
+const DEFAULT_PHASES = ["brainstorm", "plan", "implement", "review"];
+
 function renderTriage(candidates: NudgeCandidate[], onAction = vi.fn(), onCancel = vi.fn()) {
-  return render(React.createElement(TriageOverlay, { candidates, onAction, onCancel }));
+  return render(
+    React.createElement(TriageOverlay, { candidates, phases: DEFAULT_PHASES, onAction, onCancel }),
+  );
 }
 
 describe("TriageOverlay", () => {
@@ -37,12 +41,12 @@ describe("TriageOverlay", () => {
   it("shows current phase", () => {
     const { lastFrame } = renderTriage([makeCandidate()]);
     const frame = lastFrame()!;
-    expect(frame).toContain("Phase: research");
+    expect(frame).toContain("Phase: brainstorm");
   });
 
-  it("shows default phase as research", () => {
+  it("shows default phase as first phase in the phases prop", () => {
     const { lastFrame } = renderTriage([makeCandidate()]);
-    expect(lastFrame()!).toContain("Phase: research");
+    expect(lastFrame()!).toContain("Phase: brainstorm");
   });
 
   it("shows unchecked checkbox by default", () => {
@@ -58,7 +62,7 @@ describe("TriageOverlay", () => {
     expect(onAction).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "launch",
-        phase: "research",
+        phase: "brainstorm",
         mode: "background",
       }),
     );

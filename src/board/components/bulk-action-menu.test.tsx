@@ -14,12 +14,6 @@ describe("getMenuItems", () => {
     expect(items.map((i) => i.action.type)).toEqual(["assign", "unassign", "statusChange"]);
   });
 
-  it("should return TickTick actions for ticktick selection", () => {
-    const items = getMenuItems("ticktick");
-    expect(items).toHaveLength(2);
-    expect(items.map((i) => i.action.type)).toEqual(["complete", "delete"]);
-  });
-
   it("should return empty array for mixed selection", () => {
     const items = getMenuItems("mixed");
     expect(items).toHaveLength(0);

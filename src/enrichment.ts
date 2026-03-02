@@ -117,17 +117,6 @@ export function findActiveSession(
   return data.sessions.find((s) => s.repo === repo && s.issueNumber === issueNumber && !s.exitedAt);
 }
 
-/** Find the most recent session for an issue (by startedAt). */
-export function findLatestSession(
-  data: EnrichmentData,
-  repo: string,
-  issueNumber: number,
-): AgentSession | undefined {
-  const sessions = findSessions(data, repo, issueNumber);
-  if (sessions.length === 0) return undefined;
-  return sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-}
-
 // ── Nudge helpers ──
 
 /** Build a snooze key for an issue. */

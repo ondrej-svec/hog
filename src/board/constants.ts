@@ -3,7 +3,7 @@
  * Extracted to prevent duplication across components and hooks.
  */
 
-/** Statuses that trigger completion actions (TickTick close, project complete). */
+/** Statuses that trigger completion actions (e.g. project complete). */
 export const TERMINAL_STATUS_RE = /^(done|shipped|won't|wont|closed|complete|completed)$/i;
 
 export function isTerminalStatus(status: string): boolean {

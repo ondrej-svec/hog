@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig } from "../../config.js";
 import { notify } from "../../notify.js";
-import type { AgentMonitor, SpawnAgentOptions, StreamEvent } from "../spawn-agent.js";
+import type { AgentMonitor, SpawnAgentOptions } from "../spawn-agent.js";
 import {
   attachStreamMonitor,
   findUnprocessedResults,
@@ -90,8 +90,6 @@ export function useAgentSessions(
         `Reconciled ${unprocessed.length} background agent result${unprocessed.length > 1 ? "s" : ""}`,
       );
     }
-    // Run once on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── PID polling for background sessions without tracked child ──
@@ -154,10 +152,6 @@ export function useAgentSessions(
         startedAt,
       });
 
-      const onEvent = (_event: StreamEvent): void => {
-        // Events update the monitor state in-place via attachStreamMonitor
-      };
-
       const onExit = (exitCode: number, monitor: AgentMonitor): void => {
         // Update enrichment with exit info
         const ws = workflowStateRef.current;
@@ -171,7 +165,6 @@ export function useAgentSessions(
           startedAt,
           completedAt: new Date().toISOString(),
           exitCode,
-          artifacts: [],
           summary: monitor.lastText,
         });
 
@@ -208,7 +201,7 @@ export function useAgentSessions(
         }
       };
 
-      const monitor = attachStreamMonitor(child, onEvent, onExit);
+      const monitor = attachStreamMonitor(child, undefined, onExit);
 
       const tracked: TrackedAgent = {
         sessionId: session.id,

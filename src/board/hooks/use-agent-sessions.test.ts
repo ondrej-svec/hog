@@ -151,7 +151,6 @@ describe("overnight result reconciliation", () => {
       startedAt: "2026-01-15T10:00:00Z",
       completedAt: "2026-01-15T10:45:00Z",
       exitCode: 0,
-      artifacts: ["docs/research/fix.md"],
       summary: "Research complete",
     };
 
@@ -175,7 +174,6 @@ describe("overnight result reconciliation", () => {
       startedAt: "2026-01-01T00:00:00Z",
       completedAt: "2026-01-01T01:00:00Z",
       exitCode: 0,
-      artifacts: [],
     };
     mockedReadFileSync.mockReturnValue(JSON.stringify(data));
 

@@ -118,7 +118,7 @@ export function buildPrompt(
     .replace(/\{repo\}/g, variables?.repo ?? "");
 }
 
-function isClaudeInPath(): boolean {
+export function isClaudeInPath(): boolean {
   const result = spawnSync("which", ["claude"], { stdio: "pipe" });
   return result.status === 0;
 }

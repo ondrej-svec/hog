@@ -25,7 +25,6 @@ const {
   findSession,
   findSessions,
   findActiveSession,
-  findLatestSession,
 } = await import("./enrichment.js");
 
 import type { AgentSession, EnrichmentData } from "./enrichment.js";
@@ -245,24 +244,5 @@ describe("findActiveSession", () => {
     const data = makeEnrichment();
 
     expect(findActiveSession(data, "owner/repo", 42)).toBeUndefined();
-  });
-});
-
-describe("findLatestSession", () => {
-  it("returns the most recently started session", () => {
-    const s1 = makeSession({ id: "s1", startedAt: "2026-01-15T10:00:00Z" });
-    const s2 = makeSession({ id: "s2", startedAt: "2026-01-15T12:00:00Z" });
-    const s3 = makeSession({ id: "s3", startedAt: "2026-01-15T11:00:00Z" });
-    const data = makeEnrichment([s1, s2, s3]);
-
-    const result = findLatestSession(data, "owner/repo", 42);
-
-    expect(result?.id).toBe("s2");
-  });
-
-  it("returns undefined when no sessions match", () => {
-    const data = makeEnrichment();
-
-    expect(findLatestSession(data, "owner/repo", 42)).toBeUndefined();
   });
 });

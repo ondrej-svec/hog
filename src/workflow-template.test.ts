@@ -107,18 +107,13 @@ describe("validateTemplate", () => {
 // ── BUILTIN_TEMPLATES ──
 
 describe("BUILTIN_TEMPLATES", () => {
-  it("should have 'full' and 'minimal' templates", () => {
+  it("should have 'full' template", () => {
     expect(BUILTIN_TEMPLATES).toHaveProperty("full");
-    expect(BUILTIN_TEMPLATES).toHaveProperty("minimal");
+    expect(BUILTIN_TEMPLATES).not.toHaveProperty("minimal");
   });
 
   it("full template should validate", () => {
     const result = validateTemplate(BUILTIN_TEMPLATES["full"]);
-    expect(result).not.toHaveProperty("error");
-  });
-
-  it("minimal template should validate", () => {
-    const result = validateTemplate(BUILTIN_TEMPLATES["minimal"]);
     expect(result).not.toHaveProperty("error");
   });
 });
@@ -256,8 +251,8 @@ describe("applyTemplateToBoard", () => {
   });
 
   it("should preserve existing board notifications", () => {
-    const template = BUILTIN_TEMPLATES["minimal"];
-    if (!template) throw new Error("minimal template not found");
+    const template = BUILTIN_TEMPLATES["full"];
+    if (!template) throw new Error("full template not found");
 
     const board: BoardConfig = {
       ...MINIMAL_BOARD,
@@ -273,8 +268,8 @@ describe("applyTemplateToBoard", () => {
   });
 
   it("should preserve maxConcurrentAgents if set", () => {
-    const template = BUILTIN_TEMPLATES["minimal"];
-    if (!template) throw new Error("minimal template not found");
+    const template = BUILTIN_TEMPLATES["full"];
+    if (!template) throw new Error("full template not found");
 
     const board: BoardConfig = {
       ...MINIMAL_BOARD,

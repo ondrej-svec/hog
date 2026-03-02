@@ -37,6 +37,8 @@ export interface UseWorkflowStateResult {
   readonly markSessionExited: (sessionId: string, exitCode: number) => void;
   /** Reload enrichment from disk. */
   readonly reload: () => void;
+  /** Update in-memory enrichment state and persist it to disk. */
+  readonly updateEnrichment: (data: EnrichmentData) => void;
 }
 
 // ── Helpers ──
@@ -122,11 +124,18 @@ export function useWorkflowState(config: HogConfig): UseWorkflowStateResult {
     saveEnrichment(result.data);
   }, []);
 
+  const updateEnrichment = useCallback((data: EnrichmentData) => {
+    setEnrichment(data);
+    enrichmentRef.current = data;
+    saveEnrichment(data);
+  }, []);
+
   return {
     enrichment,
     getIssueWorkflow,
     recordSession,
     markSessionExited,
     reload,
+    updateEnrichment,
   };
 }

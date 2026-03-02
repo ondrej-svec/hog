@@ -55,21 +55,8 @@ export function extractSlackUrl(body: string | undefined): string | undefined {
 }
 
 /** Extract issue numbers from a branch name (e.g. "feat/42-add-auth" → [42]) */
-export function extractIssueNumbersFromBranch(
-  branchName: string,
-  pattern?: string | undefined,
-): number[] {
-  if (pattern) {
-    try {
-      const re = new RegExp(pattern);
-      const match = branchName.match(re);
-      if (match?.[1]) return [parseInt(match[1], 10)];
-      return [];
-    } catch {
-      // Invalid regex — fall through to default
-    }
-  }
-  // Default: find numbers that look like issue numbers (1-5 digits, word boundary)
+export function extractIssueNumbersFromBranch(branchName: string): number[] {
+  // Find numbers that look like issue numbers (1-5 digits, word boundary)
   const matches = branchName.match(/\b(\d{1,5})\b/g);
   if (!matches) return [];
   return [...new Set(matches.map((m) => parseInt(m, 10)).filter((n) => n > 0))];
@@ -92,7 +79,8 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
       [
         "api",
         `repos/${repoName}/events`,
-        "--paginate",
+        "-f",
+        "per_page=30",
         "-q",
         '.[] | select(.type == "IssuesEvent" or .type == "IssueCommentEvent" or .type == "PullRequestEvent" or .type == "CreateEvent") | {type: .type, actor: .actor.login, action: .payload.action, number: (.payload.issue.number // .payload.pull_request.number), title: (.payload.issue.title // .payload.pull_request.title), body: (.payload.comment.body // .payload.pull_request.body), created_at: .created_at, ref: .payload.ref, ref_type: .payload.ref_type, merged: .payload.pull_request.merged}',
       ],

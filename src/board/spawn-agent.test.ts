@@ -78,13 +78,13 @@ describe("parseStreamLine", () => {
   });
 
   it("parses system event with session_id", () => {
-    const event = parseStreamLine(JSON.stringify({ type: "system", session_id: "abc123" }));
-    expect(event).toEqual({ type: "system", sessionId: "abc123" });
+    const event = parseStreamLine(JSON.stringify({ type: "system", session_id: "abc12345" }));
+    expect(event).toEqual({ type: "system", sessionId: "abc12345" });
   });
 
   it("parses result event with session_id", () => {
-    const event = parseStreamLine(JSON.stringify({ type: "result", session_id: "xyz789" }));
-    expect(event).toEqual({ type: "result", sessionId: "xyz789" });
+    const event = parseStreamLine(JSON.stringify({ type: "result", session_id: "xyz78901" }));
+    expect(event).toEqual({ type: "result", sessionId: "xyz78901" });
   });
 
   it("parses assistant text content", () => {
@@ -145,7 +145,6 @@ describe("writeResultFile", () => {
       startedAt: "2026-01-15T10:00:00Z",
       completedAt: "2026-01-15T10:30:00Z",
       exitCode: 0,
-      artifacts: [],
     };
 
     writeResultFile("/test/result.json", result);
@@ -257,10 +256,10 @@ describe("attachStreamMonitor", () => {
 
     child.stdout?.emit(
       "data",
-      Buffer.from(`${JSON.stringify({ type: "system", session_id: "sess-1" })}\n`),
+      Buffer.from(`${JSON.stringify({ type: "system", session_id: "sess-001-abc" })}\n`),
     );
 
-    expect(monitor.sessionId).toBe("sess-1");
+    expect(monitor.sessionId).toBe("sess-001-abc");
   });
 
   it("captures tool use events", () => {
@@ -397,7 +396,6 @@ describe("readResultFile", () => {
       startedAt: "2026-01-15T10:00:00Z",
       completedAt: "2026-01-15T10:30:00Z",
       exitCode: 0,
-      artifacts: [],
     };
     mockedReadFileSync.mockReturnValue(JSON.stringify(data));
 
@@ -427,7 +425,6 @@ describe("sessionFromResult", () => {
       startedAt: "2026-01-15T10:00:00Z",
       completedAt: "2026-01-15T10:30:00Z",
       exitCode: 0,
-      artifacts: [],
       summary: "Done",
     };
 

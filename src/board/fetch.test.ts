@@ -677,12 +677,8 @@ describe("extractIssueNumbersFromBranch", () => {
     expect(extractIssueNumbersFromBranch("feat/add-auth")).toEqual([]);
   });
 
-  it("uses custom pattern when provided", () => {
-    expect(extractIssueNumbersFromBranch("feat/PROJ-42", "PROJ-(\\d+)")).toEqual([42]);
-  });
-
-  it("falls back to default when custom pattern is invalid", () => {
-    expect(extractIssueNumbersFromBranch("feat/42-fix", "[invalid")).toEqual([42]);
+  it("extracts numbers using default pattern", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-fix")).toEqual([42]);
   });
 });
 

@@ -50,7 +50,7 @@ describe("HelpOverlay", () => {
     const frame = lastFrame() ?? "";
     expect(frame).toContain("Actions");
     expect(frame).toContain("p");
-    expect(frame).toContain("Pick issue (assign + TickTick)");
+    expect(frame).toContain("Pick issue (assign to self)");
     expect(frame).toContain("a");
     expect(frame).toContain("Assign to self");
   });

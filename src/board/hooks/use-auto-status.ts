@@ -9,14 +9,6 @@ import type { ToastAPI } from "./use-toast.js";
 
 // ── Types ──
 
-export interface AutoStatusEvent {
-  readonly repoName: string;
-  readonly issueNumber: number;
-  readonly fromStatus: string | undefined;
-  readonly toStatus: string;
-  readonly trigger: string;
-}
-
 interface UseAutoStatusOptions {
   config: HogConfig;
   data: DashboardData | null;
@@ -28,11 +20,6 @@ interface UseAutoStatusOptions {
     issueNumber: number,
     fields: { projectStatus?: string },
   ) => void;
-}
-
-export interface UseAutoStatusResult {
-  /** List of auto-status updates applied in this session */
-  autoStatusLog: readonly AutoStatusEvent[];
 }
 
 // ── Helpers ──
@@ -96,9 +83,8 @@ export function useAutoStatus({
   mutateData,
   pushEntry,
   registerPendingMutation,
-}: UseAutoStatusOptions): UseAutoStatusResult {
+}: UseAutoStatusOptions): void {
   const lastProcessedRef = useRef<number>(Date.now());
-  const autoStatusLogRef = useRef<AutoStatusEvent[]>([]);
   const processingRef = useRef<Set<string>>(new Set());
   const configRef = useRef(config);
   configRef.current = config;
@@ -114,7 +100,7 @@ export function useAutoStatus({
       if (newEvents.length === 0) return;
 
       // Update the cutoff to the latest event timestamp
-      const maxTs = Math.max(...newEvents.map((e) => e.timestamp.getTime()));
+      const maxTs = newEvents.reduce((max, e) => Math.max(max, e.timestamp.getTime()), 0);
       lastProcessedRef.current = maxTs;
 
       for (const event of newEvents) {
@@ -157,14 +143,6 @@ export function useAutoStatus({
           projectStatus: targetStatusName,
         });
 
-        const logEvent: AutoStatusEvent = {
-          repoName: repoConfig.name,
-          issueNumber: event.issueNumber,
-          fromStatus: currentStatus,
-          toStatus: targetStatusName,
-          trigger: event.type,
-        };
-
         const projectConfig: RepoProjectConfig = {
           projectNumber: repoConfig.projectNumber,
           statusFieldId: repoConfig.statusFieldId,
@@ -173,7 +151,6 @@ export function useAutoStatus({
 
         updateProjectItemStatusAsync(repoConfig.name, event.issueNumber, projectConfig)
           .then(() => {
-            autoStatusLogRef.current = [...autoStatusLogRef.current, logEvent];
             const desc = `auto: #${String(event.issueNumber)} → ${targetStatusName} (${event.type})`;
             toast.info(desc);
             pushEntryRef.current?.({
@@ -199,8 +176,4 @@ export function useAutoStatus({
     if (!data) return;
     processEvents(data.activity, data);
   }, [data, processEvents]);
-
-  return {
-    autoStatusLog: autoStatusLogRef.current,
-  };
 }
