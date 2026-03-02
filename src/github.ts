@@ -58,6 +58,50 @@ async function runGhJsonAsync<T>(args: string[]): Promise<T> {
   return JSON.parse(output) as T;
 }
 
+/**
+ * Run a GraphQL query via `gh api graphql`. Handles partial errors: when the
+ * query returns data for one alias but NOT_FOUND for another (e.g. org vs user
+ * owner), `gh` exits with code 1 but still emits valid JSON on stdout. This
+ * helper recovers that JSON from the error object instead of throwing.
+ */
+function runGhGraphQL<T>(args: string[]): T {
+  try {
+    return runGhJson<T>(args);
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "stdout" in err) {
+      const stdout = (err as { stdout: string | Buffer }).stdout;
+      const output = typeof stdout === "string" ? stdout : stdout?.toString("utf-8");
+      if (output) {
+        try {
+          return JSON.parse(output.trim()) as T;
+        } catch {
+          // stdout wasn't valid JSON — rethrow original
+        }
+      }
+    }
+    throw err;
+  }
+}
+
+async function runGhGraphQLAsync<T>(args: string[]): Promise<T> {
+  try {
+    return await runGhJsonAsync<T>(args);
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "stdout" in err) {
+      const stdout = (err as { stdout: string | Buffer }).stdout;
+      const output = typeof stdout === "string" ? stdout : stdout?.toString("utf-8");
+      if (output) {
+        try {
+          return JSON.parse(output.trim()) as T;
+        } catch {
+          // stdout wasn't valid JSON — rethrow original
+        }
+      }
+    }
+    throw err;
+  }
+}
+
 export function fetchAssignedIssues(repo: string, assignee: string): GitHubIssue[] {
   return runGhJson<GitHubIssue[]>([
     "issue",
@@ -361,46 +405,49 @@ export function fetchProjectEnrichment(
   const [owner] = repo.split("/");
   if (!owner) return new Map();
 
-  const query = `
-    query($owner: String!, $projectNumber: Int!, $cursor: String) {
-      organization(login: $owner) {
-        projectV2(number: $projectNumber) {
-          items(first: 100, after: $cursor) {
-            pageInfo { hasNextPage endCursor }
+  const projectItemsFragment = `
+    projectV2(number: $projectNumber) {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          content {
+            ... on Issue {
+              number
+            }
+          }
+          fieldValues(first: 20) {
             nodes {
-              content {
-                ... on Issue {
-                  number
-                }
+              ... on ProjectV2ItemFieldDateValue {
+                field { ... on ProjectV2Field { name } }
+                date
               }
-              fieldValues(first: 20) {
-                nodes {
-                  ... on ProjectV2ItemFieldDateValue {
-                    field { ... on ProjectV2Field { name } }
-                    date
-                  }
-                  ... on ProjectV2ItemFieldSingleSelectValue {
-                    field { ... on ProjectV2SingleSelectField { name } }
-                    name
-                  }
-                  ... on ProjectV2ItemFieldTextValue {
-                    field { ... on ProjectV2Field { name } }
-                    text
-                  }
-                  ... on ProjectV2ItemFieldNumberValue {
-                    field { ... on ProjectV2Field { name } }
-                    number
-                  }
-                  ... on ProjectV2ItemFieldIterationValue {
-                    field { ... on ProjectV2IterationField { name } }
-                    title
-                  }
-                }
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+              ... on ProjectV2ItemFieldTextValue {
+                field { ... on ProjectV2Field { name } }
+                text
+              }
+              ... on ProjectV2ItemFieldNumberValue {
+                field { ... on ProjectV2Field { name } }
+                number
+              }
+              ... on ProjectV2ItemFieldIterationValue {
+                field { ... on ProjectV2IterationField { name } }
+                title
               }
             }
           }
         }
       }
+    }
+  `;
+
+  const query = `
+    query($owner: String!, $projectNumber: Int!, $cursor: String) {
+      organization(login: $owner) { ${projectItemsFragment} }
+      user(login: $owner) { ${projectItemsFragment} }
     }
   `;
 
@@ -420,8 +467,9 @@ export function fetchProjectEnrichment(
         `projectNumber=${String(projectNumber)}`,
       ];
       if (cursor) args.push("-f", `cursor=${cursor}`);
-      const result = runGhJson<ProjectItemsResult>(args);
-      const page = result?.data?.organization?.projectV2?.items;
+      const result = runGhGraphQL<ProjectItemsResult>(args);
+      const ownerNode = result?.data?.organization ?? result?.data?.user;
+      const page = ownerNode?.projectV2?.items;
       const nodes = page?.nodes ?? [];
 
       for (const item of nodes) {
@@ -492,25 +540,28 @@ export function fetchProjectStatusOptions(
   const [owner] = repo.split("/");
   if (!owner) return [];
 
-  const query = `
-    query($owner: String!, $projectNumber: Int!) {
-      organization(login: $owner) {
-        projectV2(number: $projectNumber) {
-          field(name: "Status") {
-            ... on ProjectV2SingleSelectField {
-              options {
-                id
-                name
-              }
-            }
+  const statusFragment = `
+    projectV2(number: $projectNumber) {
+      field(name: "Status") {
+        ... on ProjectV2SingleSelectField {
+          options {
+            id
+            name
           }
         }
       }
     }
   `;
 
+  const query = `
+    query($owner: String!, $projectNumber: Int!) {
+      organization(login: $owner) { ${statusFragment} }
+      user(login: $owner) { ${statusFragment} }
+    }
+  `;
+
   try {
-    const result = runGhJson<ProjectStatusResult>([
+    const result = runGhGraphQL<ProjectStatusResult>([
       "api",
       "graphql",
       "-f",
@@ -521,7 +572,8 @@ export function fetchProjectStatusOptions(
       `projectNumber=${String(projectNumber)}`,
     ]);
 
-    return result?.data?.organization?.projectV2?.field?.options ?? [];
+    const ownerNode = result?.data?.organization ?? result?.data?.user;
+    return ownerNode?.projectV2?.field?.options ?? [];
   } catch {
     return [];
   }
@@ -569,17 +621,16 @@ async function getProjectNodeId(owner: string, projectNumber: number): Promise<s
   const cached = projectNodeIdCache.get(key);
   if (cached !== undefined) return cached;
 
+  const idFragment = `projectV2(number: $projectNumber) { id }`;
+
   const projectQuery = `
     query($owner: String!, $projectNumber: Int!) {
-      organization(login: $owner) {
-        projectV2(number: $projectNumber) {
-          id
-        }
-      }
+      organization(login: $owner) { ${idFragment} }
+      user(login: $owner) { ${idFragment} }
     }
   `;
 
-  const projectResult = await runGhJsonAsync<GraphQLProjectResult>([
+  const projectResult = await runGhGraphQLAsync<GraphQLProjectResult>([
     "api",
     "graphql",
     "-f",
@@ -590,7 +641,8 @@ async function getProjectNodeId(owner: string, projectNumber: number): Promise<s
     `projectNumber=${String(projectNumber)}`,
   ]);
 
-  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  const ownerNode = projectResult?.data?.organization ?? projectResult?.data?.user;
+  const projectId = ownerNode?.projectV2?.id;
   if (!projectId) return null;
   projectNodeIdCache.set(key, projectId);
   return projectId;
@@ -640,17 +692,16 @@ export function updateProjectItemStatus(
   if (!projectItem?.id) return;
 
   // Get the project ID
+  const idFragment = `projectV2(number: $projectNumber) { id }`;
+
   const projectQuery = `
     query($owner: String!, $projectNumber: Int!) {
-      organization(login: $owner) {
-        projectV2(number: $projectNumber) {
-          id
-        }
-      }
+      organization(login: $owner) { ${idFragment} }
+      user(login: $owner) { ${idFragment} }
     }
   `;
 
-  const projectResult = runGhJson<GraphQLProjectResult>([
+  const projectResult = runGhGraphQL<GraphQLProjectResult>([
     "api",
     "graphql",
     "-f",
@@ -661,7 +712,8 @@ export function updateProjectItemStatus(
     `projectNumber=${String(projectNumber)}`,
   ]);
 
-  const projectId = projectResult?.data?.organization?.projectV2?.id;
+  const projectOwner = projectResult?.data?.organization ?? projectResult?.data?.user;
+  const projectId = projectOwner?.projectV2?.id;
   if (!projectId) return;
 
   const statusFieldId = projectConfig.statusFieldId;
@@ -892,13 +944,16 @@ interface GraphQLResult {
   };
 }
 
+interface ProjectV2IdNode {
+  projectV2?: {
+    id?: string;
+  };
+}
+
 interface GraphQLProjectResult {
   data?: {
-    organization?: {
-      projectV2?: {
-        id?: string;
-      };
-    };
+    organization?: ProjectV2IdNode;
+    user?: ProjectV2IdNode;
   };
 }
 
@@ -907,27 +962,33 @@ interface ProjectItemNode {
   fieldValues?: { nodes?: (FieldValue | null)[] };
 }
 
+interface ProjectV2ItemsNode {
+  projectV2?: {
+    items?: {
+      pageInfo?: { hasNextPage: boolean; endCursor?: string };
+      nodes?: (ProjectItemNode | null)[];
+    };
+  };
+}
+
 interface ProjectItemsResult {
   data?: {
-    organization?: {
-      projectV2?: {
-        items?: {
-          pageInfo?: { hasNextPage: boolean; endCursor?: string };
-          nodes?: (ProjectItemNode | null)[];
-        };
-      };
+    organization?: ProjectV2ItemsNode;
+    user?: ProjectV2ItemsNode;
+  };
+}
+
+interface ProjectV2StatusNode {
+  projectV2?: {
+    field?: {
+      options?: StatusOption[];
     };
   };
 }
 
 interface ProjectStatusResult {
   data?: {
-    organization?: {
-      projectV2?: {
-        field?: {
-          options?: StatusOption[];
-        };
-      };
-    };
+    organization?: ProjectV2StatusNode;
+    user?: ProjectV2StatusNode;
   };
 }
