@@ -10,38 +10,20 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
-import { TickTickClient } from "./api.js";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
   clearLlmAuth,
   findRepo,
-  getConfig,
   getLlmAuth,
   loadFullConfig,
-  requireAuth,
   resolveProfile,
-  saveConfig,
   saveFullConfig,
   saveLlmAuth,
   validateRepoName,
 } from "./config.js";
 import { runInit, runReposAdd } from "./init.js";
 import { getActionLog } from "./log-persistence.js";
-import {
-  errorOut,
-  jsonOut,
-  printProjects,
-  printSuccess,
-  printSyncResult,
-  printSyncStatus,
-  printTask,
-  printTasks,
-  setFormat,
-  useJson,
-} from "./output.js";
-import { getSyncStatus, runSync } from "./sync.js";
-import type { CreateTaskInput, UpdateTaskInput } from "./types.js";
-import { Priority } from "./types.js";
+import { errorOut, jsonOut, printSuccess, setFormat, useJson } from "./output.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -54,35 +36,6 @@ interface GlobalOptions {
 
 interface InitOptions {
   force?: true;
-}
-
-interface AddOptions {
-  priority?: string;
-  date?: string;
-  start?: string;
-  content?: string;
-  tags?: string;
-  allDay?: true;
-  project?: string;
-}
-
-interface ListOptions {
-  project?: string;
-  all?: true;
-  priority?: string;
-  tag?: string;
-}
-
-interface ProjectScopedOptions {
-  project?: string;
-}
-
-interface UpdateOptions extends ProjectScopedOptions {
-  title?: string;
-  priority?: string;
-  date?: string;
-  content?: string;
-  tags?: string;
 }
 
 // -- Helpers --
@@ -99,41 +52,13 @@ async function resolveRef(
   }
 }
 
-const PRIORITY_MAP: Record<string, Priority | undefined> = {
-  none: Priority.None,
-  low: Priority.Low,
-  medium: Priority.Medium,
-  med: Priority.Medium,
-  high: Priority.High,
-};
-
-function parsePriority(value: string): Priority {
-  const p = PRIORITY_MAP[value.toLowerCase()];
-  if (p === undefined) {
-    errorOut(`Invalid priority: "${value}". Valid values: none, low, medium, high`);
-  }
-  return p;
-}
-
-function createClient(): TickTickClient {
-  const auth = requireAuth();
-  return new TickTickClient(auth.accessToken);
-}
-
-function resolveProjectId(projectId?: string): string {
-  if (projectId) return projectId;
-  const config = getConfig();
-  if (config.defaultProjectId) return config.defaultProjectId;
-  errorOut("No project selected. Run `hog task use-project <id>` or pass --project.");
-}
-
 // -- Program --
 
 const program = new Command();
 
 program
   .name("hog")
-  .description("Personal command deck — unified task dashboard for GitHub Projects + TickTick")
+  .description("Personal command deck — GitHub Projects dashboard with workflow orchestration")
   .version("1.20.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
@@ -151,175 +76,6 @@ program
   .option("--force", "Overwrite existing config without prompt")
   .action(async (opts: InitOptions) => {
     await runInit({ force: opts.force ?? false });
-  });
-
-// -- Task commands --
-
-const task = program.command("task").description("Manage TickTick tasks");
-
-task
-  .command("add <title>")
-  .description("Create a new task")
-  .option("-p, --priority <level>", "Priority: none, low, medium, high")
-  .option("-d, --date <date>", "Due date (ISO 8601)")
-  .option("--start <date>", "Start date (ISO 8601)")
-  .option("-c, --content <text>", "Task description/content")
-  .option("-t, --tags <tags>", "Comma-separated tags")
-  .option("--all-day", "Mark as all-day task")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (title: string, opts: AddOptions) => {
-    const api = createClient();
-    const input: CreateTaskInput = {
-      title,
-      projectId: resolveProjectId(opts.project),
-    };
-
-    if (opts.priority) input.priority = parsePriority(opts.priority);
-    if (opts.date) input.dueDate = opts.date;
-    if (opts.start) input.startDate = opts.start;
-    if (opts.content) input.content = opts.content;
-    if (opts.tags) input.tags = opts.tags.split(",").map((t) => t.trim());
-    if (opts.allDay) input.isAllDay = true;
-
-    const created = await api.createTask(input);
-    printSuccess(`Created: ${created.title}`, { task: created });
-  });
-
-task
-  .command("list")
-  .description("List tasks in a project")
-  .option("--project <id>", "Project ID (overrides default)")
-  .option("--all", "Include completed tasks")
-  .option("-p, --priority <level>", "Filter by minimum priority")
-  .option("-t, --tag <tag>", "Filter by tag")
-  .action(async (opts: ListOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    let tasks = await api.listTasks(projectId);
-
-    if (!opts.all) {
-      tasks = tasks.filter((t) => t.status !== 2);
-    }
-    if (opts.priority) {
-      const minPri = parsePriority(opts.priority);
-      tasks = tasks.filter((t) => t.priority >= minPri);
-    }
-    if (opts.tag) {
-      const tag = opts.tag;
-      tasks = tasks.filter((t) => t.tags.includes(tag));
-    }
-
-    printTasks(tasks);
-  });
-
-task
-  .command("show <taskId>")
-  .description("Show task details")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    const t = await api.getTask(projectId, taskId);
-    printTask(t);
-  });
-
-task
-  .command("complete <taskId>")
-  .description("Mark a task as completed")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    await api.completeTask(projectId, taskId);
-    printSuccess(`Completed task ${taskId}`, { taskId });
-  });
-
-task
-  .command("update <taskId>")
-  .description("Update a task")
-  .option("--title <title>", "New title")
-  .option("-p, --priority <level>", "New priority")
-  .option("-d, --date <date>", "New due date (ISO 8601)")
-  .option("-c, --content <text>", "New content")
-  .option("-t, --tags <tags>", "New comma-separated tags")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: UpdateOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    const input: UpdateTaskInput = { id: taskId, projectId };
-
-    if (opts.title) input.title = opts.title;
-    if (opts.priority) input.priority = parsePriority(opts.priority);
-    if (opts.date) input.dueDate = opts.date;
-    if (opts.content) input.content = opts.content;
-    if (opts.tags) input.tags = opts.tags.split(",").map((t) => t.trim());
-
-    const updated = await api.updateTask(input);
-    printSuccess(`Updated: ${updated.title}`, { task: updated });
-  });
-
-task
-  .command("delete <taskId>")
-  .description("Delete a task")
-  .option("--project <id>", "Project ID (overrides default)")
-  .action(async (taskId: string, opts: ProjectScopedOptions) => {
-    const api = createClient();
-    const projectId = resolveProjectId(opts.project);
-    await api.deleteTask(projectId, taskId);
-    printSuccess(`Deleted task ${taskId}`, { taskId });
-  });
-
-task
-  .command("projects")
-  .description("List all projects")
-  .action(async () => {
-    const api = createClient();
-    const projects = await api.listProjects();
-    printProjects(projects);
-  });
-
-task
-  .command("use-project <projectId>")
-  .description("Set the default project for task commands")
-  .action(async (projectId: string) => {
-    const api = createClient();
-    try {
-      const project = await api.getProject(projectId);
-      saveConfig({ defaultProjectId: project.id, defaultProjectName: project.name });
-      printSuccess(`Default project: ${project.name} (${project.id})`, {
-        projectId: project.id,
-        projectName: project.name,
-      });
-    } catch {
-      saveConfig({ defaultProjectId: projectId });
-      printSuccess(`Default project: ${projectId}`, { projectId });
-    }
-  });
-
-// -- Sync commands --
-
-interface SyncRunOptions {
-  dryRun?: true;
-}
-
-const sync = program.command("sync").description("Sync GitHub issues with TickTick");
-
-sync
-  .command("run", { isDefault: true })
-  .description("Run GitHub-TickTick sync")
-  .option("--dry-run", "Preview changes without applying them")
-  .action(async (opts: SyncRunOptions) => {
-    const dryRun = opts.dryRun ?? false;
-    const result = await runSync({ dryRun });
-    printSyncResult(result, dryRun);
-  });
-
-sync
-  .command("status")
-  .description("Show sync status and mappings")
-  .action(() => {
-    const { state, repos } = getSyncStatus();
-    printSyncStatus(state, repos);
   });
 
 // -- Board command --
@@ -372,7 +128,7 @@ program
 
 program
   .command("pick <issueRef>")
-  .description("Pick up an issue: assign to self + sync to TickTick (e.g., hog pick aibility/145)")
+  .description("Pick up an issue: assign to self on GitHub (e.g., hog pick myrepo/145)")
   .action(async (issueRef: string) => {
     const cfg = loadFullConfig();
     const { parseIssueRef, pickIssue } = await import("./pick.js");
@@ -384,16 +140,12 @@ program
         ok: result.success,
         data: {
           issue: result.issue,
-          ticktickTask: result.ticktickTask ?? null,
           warning: result.warning ?? null,
         },
       });
     } else {
       console.log(`Picked ${ref.repo.shortName}#${ref.issueNumber}: ${result.issue.title}`);
       console.log(`  GitHub: assigned to @me`);
-      if (result.ticktickTask) {
-        console.log(`  TickTick: task created`);
-      }
       if (result.warning) {
         console.log(`  Warning: ${result.warning}`);
       }
@@ -497,11 +249,9 @@ config
       jsonOut({ ok: true, data: cfg });
     } else {
       console.log("Version:", cfg.version);
-      console.log("Default project:", cfg.defaultProjectId ?? "(none)");
       console.log("Assignee:", cfg.board.assignee);
       console.log("Refresh interval:", `${cfg.board.refreshInterval}s`);
       console.log("Backlog limit:", cfg.board.backlogLimit);
-      console.log("TickTick:", cfg.ticktick.enabled ? "enabled" : "disabled");
       console.log("\nRepos:");
       for (const repo of cfg.repos) {
         console.log(`  ${repo.shortName} → ${repo.name} (project #${repo.projectNumber})`);
@@ -625,35 +375,6 @@ config
       jsonOut({ ok: true, message: `Removed ${removed.name}`, data: removed });
     } else {
       console.log(`Removed ${removed.shortName} → ${removed.name}`);
-      console.log("Note: Existing sync mappings for this repo remain in sync-state.json.");
-    }
-  });
-
-config
-  .command("ticktick:enable")
-  .description("Enable TickTick integration in the board")
-  .action(() => {
-    const cfg = loadFullConfig();
-    cfg.ticktick = { enabled: true };
-    saveFullConfig(cfg);
-    if (useJson()) {
-      jsonOut({ ok: true, message: "TickTick enabled" });
-    } else {
-      printSuccess("TickTick integration enabled.");
-    }
-  });
-
-config
-  .command("ticktick:disable")
-  .description("Disable TickTick integration in the board")
-  .action(() => {
-    const cfg = loadFullConfig();
-    cfg.ticktick = { enabled: false };
-    saveFullConfig(cfg);
-    if (useJson()) {
-      jsonOut({ ok: true, message: "TickTick disabled" });
-    } else {
-      printSuccess("TickTick integration disabled. Board will no longer show TickTick tasks.");
     }
   });
 
@@ -742,7 +463,6 @@ config
     cfg.profiles[name] = {
       repos: [...cfg.repos],
       board: { ...cfg.board },
-      ticktick: { ...cfg.ticktick },
     };
     saveFullConfig(cfg);
 
@@ -1454,6 +1174,80 @@ issueCommand
     outputBulkResults(results);
   });
 
+// -- Issue snooze command --
+
+interface IssueSnoozeOptions {
+  days: string;
+  list?: true;
+}
+
+issueCommand
+  .command("snooze [issueRef]")
+  .description("Snooze an issue to suppress staleness nudges for N days")
+  .option("--days <n>", "Number of days to snooze", "7")
+  .option("--list", "List all currently snoozed issues")
+  .action(async (issueRef: string | undefined, opts: IssueSnoozeOptions) => {
+    const { loadEnrichment, saveEnrichment, snoozeIssue, isSnoozed } = await import(
+      "./enrichment.js"
+    );
+    const enrichment = loadEnrichment();
+
+    if (opts.list) {
+      const snoozed = Object.entries(enrichment.nudgeState.snoozedIssues)
+        .filter(([, until]) => new Date(until).getTime() > Date.now())
+        .map(([key, until]) => ({ issue: key, snoozedUntil: until }));
+
+      if (useJson()) {
+        jsonOut({ ok: true, data: { snoozed } });
+      } else if (snoozed.length === 0) {
+        console.log("No issues currently snoozed.");
+      } else {
+        console.log("Snoozed issues:");
+        for (const { issue, snoozedUntil } of snoozed) {
+          const until = new Date(snoozedUntil).toLocaleDateString();
+          console.log(`  ${issue} — until ${until}`);
+        }
+      }
+      return;
+    }
+
+    if (!issueRef) {
+      errorOut("issueRef required unless using --list");
+    }
+
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const days = Number.parseInt(opts.days, 10);
+
+    if (Number.isNaN(days) || days < 1) {
+      errorOut(`Invalid --days value: "${opts.days}". Must be a positive integer.`);
+    }
+
+    const alreadySnoozed = isSnoozed(enrichment, ref.repo.name, ref.issueNumber);
+    const updated = snoozeIssue(enrichment, ref.repo.name, ref.issueNumber, days);
+    saveEnrichment(updated);
+
+    const until = new Date(Date.now() + days * 86_400_000).toLocaleDateString();
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          repo: ref.repo.name,
+          issueNumber: ref.issueNumber,
+          days,
+          snoozedUntil: new Date(Date.now() + days * 86_400_000).toISOString(),
+          wasAlreadySnoozed: alreadySnoozed,
+        },
+      });
+    } else {
+      const verb = alreadySnoozed ? "Re-snoozed" : "Snoozed";
+      console.log(
+        `${verb} ${ref.repo.shortName}#${ref.issueNumber} for ${days} days (until ${until})`,
+      );
+    }
+  });
+
 program.addCommand(issueCommand);
 
 // -- Log commands --
@@ -1483,6 +1277,472 @@ logCommand
         const ts = new Date(e.timestamp).toLocaleString();
         console.log(`${prefix} [${ts}] ${e.description}`);
       }
+    }
+  });
+
+// -- Workflow commands --
+
+const workflowCommand = program.command("workflow").description("Workflow orchestration commands");
+
+workflowCommand
+  .command("status [issueRef]")
+  .description("Show workflow session history for an issue or all tracked issues")
+  .action(async (issueRef?: string) => {
+    const { loadEnrichment, findSessions } = await import("./enrichment.js");
+    const enrichment = loadEnrichment();
+
+    if (issueRef) {
+      const cfg = loadFullConfig();
+      const ref = await resolveRef(issueRef, cfg);
+      const sessions = findSessions(enrichment, ref.repo.name, ref.issueNumber);
+
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          data: {
+            repo: ref.repo.name,
+            issueNumber: ref.issueNumber,
+            sessions,
+          },
+        });
+      } else {
+        if (sessions.length === 0) {
+          console.log(`No workflow sessions for ${ref.repo.shortName}#${ref.issueNumber}`);
+          return;
+        }
+        console.log(`Workflow sessions for ${ref.repo.shortName}#${ref.issueNumber}:\n`);
+        for (const s of sessions) {
+          const status = s.exitedAt ? `exited (code ${s.exitCode ?? "?"})` : "active";
+          const started = new Date(s.startedAt).toLocaleString();
+          console.log(`  ${s.phase} [${s.mode}] — ${status}`);
+          console.log(`    started: ${started}`);
+          if (s.exitedAt) console.log(`    exited:  ${new Date(s.exitedAt).toLocaleString()}`);
+          if (s.claudeSessionId) console.log(`    session: ${s.claudeSessionId}`);
+          console.log();
+        }
+      }
+    } else {
+      // Show all sessions grouped by issue
+      if (useJson()) {
+        jsonOut({ ok: true, data: { sessions: enrichment.sessions } });
+      } else {
+        if (enrichment.sessions.length === 0) {
+          console.log("No workflow sessions recorded.");
+          return;
+        }
+
+        const grouped = new Map<string, typeof enrichment.sessions>();
+        for (const s of enrichment.sessions) {
+          const key = `${s.repo}#${s.issueNumber}`;
+          const list = grouped.get(key) ?? [];
+          list.push(s);
+          grouped.set(key, list);
+        }
+
+        for (const [key, sessions] of grouped) {
+          console.log(`${key}:`);
+          for (const s of sessions) {
+            const status = s.exitedAt ? `exited (code ${s.exitCode ?? "?"})` : "active";
+            console.log(
+              `  ${s.phase} [${s.mode}] — ${status} — ${new Date(s.startedAt).toLocaleString()}`,
+            );
+          }
+          console.log();
+        }
+      }
+    }
+  });
+
+workflowCommand
+  .command("triage")
+  .description("List stale issues and optionally launch background agents")
+  .option("-r, --repo <name>", "Filter to a specific repo")
+  .option("-p, --phase <phase>", "Phase to run (research, plan, review)", "research")
+  .option("-l, --launch", "Launch background agents for all stale issues")
+  .action(async (opts: { repo?: string; phase?: string; launch?: boolean }) => {
+    const cfg = loadFullConfig();
+    const { loadEnrichment, isSnoozed } = await import("./enrichment.js");
+    const { fetchDashboard } = await import("./board/fetch.js");
+
+    const data = await fetchDashboard(cfg, {});
+    const enrichment = loadEnrichment();
+    const warningDays = cfg.board.workflow?.staleness?.warningDays ?? 7;
+
+    type StaleIssue = {
+      repo: string;
+      number: number;
+      title: string;
+      url: string;
+      ageDays: number;
+    };
+
+    const staleIssues: StaleIssue[] = [];
+    for (const rd of data.repos) {
+      if (opts.repo && rd.repo.name !== opts.repo && rd.repo.shortName !== opts.repo) continue;
+      for (const issue of rd.issues) {
+        if (isSnoozed(enrichment, rd.repo.name, issue.number)) continue;
+        const ageDays = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / 86_400_000);
+        if (ageDays >= warningDays) {
+          staleIssues.push({
+            repo: rd.repo.name,
+            number: issue.number,
+            title: issue.title,
+            url: issue.url,
+            ageDays,
+          });
+        }
+      }
+    }
+
+    staleIssues.sort((a, b) => b.ageDays - a.ageDays);
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { issues: staleIssues } });
+      return;
+    }
+
+    if (staleIssues.length === 0) {
+      console.log("No stale issues found.");
+      return;
+    }
+
+    console.log(`Found ${staleIssues.length} stale issue${staleIssues.length > 1 ? "s" : ""}:\n`);
+    for (const issue of staleIssues) {
+      const color = issue.ageDays >= 14 ? "\x1b[31m" : "\x1b[33m";
+      console.log(
+        `  ${color}[${issue.ageDays}d]\x1b[0m #${issue.number} ${issue.title} (${issue.repo})`,
+      );
+    }
+
+    if (opts.launch) {
+      const { spawnBackgroundAgent } = await import("./board/spawn-agent.js");
+      const phase = opts.phase ?? "research";
+      console.log(`\nLaunching ${phase} agents...\n`);
+
+      let launched = 0;
+      for (const issue of staleIssues) {
+        const rc = cfg.repos.find((r) => r.name === issue.repo);
+        if (!rc?.localPath) {
+          console.log(`  Skip #${issue.number} — no localPath configured for ${issue.repo}`);
+          continue;
+        }
+        const result = spawnBackgroundAgent({
+          localPath: rc.localPath,
+          repoFullName: issue.repo,
+          issueNumber: issue.number,
+          issueTitle: issue.title,
+          issueUrl: issue.url,
+          phase,
+        });
+        if (result.ok) {
+          const pid = result.value.pid;
+          console.log(`  Started ${phase} agent for #${issue.number} (PID ${pid})`);
+          // Detach child so CLI can exit
+          result.value.child.unref();
+          launched++;
+        } else {
+          console.log(`  Failed #${issue.number}: ${result.error.message}`);
+        }
+      }
+      console.log(`\nLaunched ${launched} agent${launched !== 1 ? "s" : ""}.`);
+    } else {
+      console.log(`\nRun with --launch to start background agents.`);
+    }
+  });
+
+// -- Workflow launch command --
+
+interface WorkflowLaunchOptions {
+  phase: string;
+  mode?: string;
+}
+
+workflowCommand
+  .command("launch <issueRef>")
+  .description("Launch a background Claude agent for a workflow phase on an issue")
+  .requiredOption(
+    "--phase <phase>",
+    "Workflow phase to run (research, brainstorm, plan, implement, review, compound, completion-check)",
+  )
+  .option("--mode <mode>", "Launch mode: background (default)", "background")
+  .action(async (issueRef: string, opts: WorkflowLaunchOptions) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const rc = ref.repo;
+
+    if (!rc.localPath) {
+      errorOut(
+        `Set localPath for ${rc.shortName} in ~/.config/hog/config.json to enable agent launch`,
+        { repo: rc.shortName },
+      );
+    }
+
+    const { fetchIssueAsync } = await import("./github.js");
+    const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
+
+    const { spawnBackgroundAgent } = await import("./board/spawn-agent.js");
+    const { DEFAULT_PHASE_PROMPTS } = await import("./board/launch-claude.js");
+
+    const phaseTemplate = DEFAULT_PHASE_PROMPTS[opts.phase];
+
+    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+
+    const result = spawnBackgroundAgent({
+      localPath: rc.localPath,
+      repoFullName: rc.name,
+      issueNumber: ref.issueNumber,
+      issueTitle: issue.title,
+      issueUrl: issue.url,
+      phase: opts.phase,
+      promptTemplate: phaseTemplate,
+      promptVariables: { phase: opts.phase, repo: rc.name },
+      ...(startCommand ? { startCommand } : {}),
+    });
+
+    if (!result.ok) {
+      errorOut(result.error.message, { kind: result.error.kind });
+    }
+
+    // Detach child so CLI can exit immediately
+    result.value.child.unref();
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          pid: result.value.pid,
+          phase: opts.phase,
+          repo: rc.shortName,
+          issueNumber: ref.issueNumber,
+          resultFile: result.value.resultFilePath,
+        },
+      });
+    } else {
+      console.log(
+        `Started ${opts.phase} agent for ${rc.shortName}#${ref.issueNumber} (PID ${result.value.pid})`,
+      );
+      console.log(`  Result file: ${result.value.resultFilePath}`);
+    }
+  });
+
+// -- Workflow resume command --
+
+interface WorkflowResumeOptions {
+  session?: string;
+}
+
+workflowCommand
+  .command("resume <issueRef>")
+  .description("Resume an interactive Claude Code session for an issue")
+  .option("--session <id>", "Claude session ID to resume (default: latest session for issue)")
+  .action(async (issueRef: string, opts: WorkflowResumeOptions) => {
+    const cfg = loadFullConfig();
+    const ref = await resolveRef(issueRef, cfg);
+    const rc = ref.repo;
+
+    if (!rc.localPath) {
+      errorOut(
+        `Set localPath for ${rc.shortName} in ~/.config/hog/config.json to enable Claude Code launch`,
+        { repo: rc.shortName },
+      );
+    }
+
+    let sessionId = opts.session;
+
+    if (!sessionId) {
+      const { loadEnrichment, findSessions } = await import("./enrichment.js");
+      const enrichment = loadEnrichment();
+      const sessions = findSessions(enrichment, rc.name, ref.issueNumber);
+      const latest = sessions.sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+
+      if (!latest?.claudeSessionId) {
+        errorOut(
+          `No previous session found for ${rc.shortName}#${ref.issueNumber}. Use --session <id> to specify one.`,
+          { repo: rc.shortName, issueNumber: ref.issueNumber },
+        );
+      }
+
+      sessionId = latest.claudeSessionId;
+    }
+
+    const { launchClaude } = await import("./board/launch-claude.js");
+    const { fetchIssueAsync } = await import("./github.js");
+
+    const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
+    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
+    const terminalApp = cfg.board.claudeTerminalApp;
+
+    const result = launchClaude({
+      localPath: rc.localPath,
+      issue: { number: issue.number, title: issue.title, url: issue.url },
+      promptTemplate: `--resume ${sessionId}`,
+      ...(startCommand ? { startCommand } : {}),
+      launchMode,
+      ...(terminalApp ? { terminalApp } : {}),
+      repoFullName: rc.name,
+    });
+
+    if (!result.ok) {
+      errorOut(result.error.message, { kind: result.error.kind });
+    }
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: { repo: rc.shortName, issueNumber: ref.issueNumber, sessionId },
+      });
+    } else {
+      console.log(
+        `Resuming Claude Code session ${sessionId} for ${rc.shortName}#${ref.issueNumber}`,
+      );
+    }
+  });
+
+workflowCommand
+  .command("show")
+  .description("Show current workflow config for a repo")
+  .argument("[repo]", "Repo short name or owner/repo")
+  .action(async (repoRef?: string) => {
+    const cfg = loadFullConfig();
+
+    if (repoRef) {
+      const repo = findRepo(cfg, repoRef);
+      if (!repo) {
+        errorOut(`Repo "${repoRef}" not found in config`);
+      }
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          data: {
+            repo: repo.name,
+            workflow: repo.workflow,
+            autoStatus: repo.autoStatus,
+            boardWorkflow: cfg.board.workflow,
+          },
+        });
+      } else {
+        console.log(`Workflow config for ${repo.name}:\n`);
+        console.log(`  Repo-level workflow:`);
+        console.log(`    ${JSON.stringify(repo.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`);
+        console.log(`\n  Auto-status:`);
+        console.log(
+          `    ${JSON.stringify(repo.autoStatus ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+        );
+        console.log(`\n  Board-level workflow:`);
+        console.log(
+          `    ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+        );
+      }
+    } else if (useJson()) {
+      // Show board-level workflow config
+      jsonOut({ ok: true, data: { boardWorkflow: cfg.board.workflow } });
+    } else {
+      console.log("Board-level workflow config:\n");
+      console.log(`  ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
+    }
+  });
+
+workflowCommand
+  .command("export")
+  .description("Export workflow config as a shareable template")
+  .argument("<repo>", "Repo short name or owner/repo")
+  .option("-o, --output <file>", "Write to file instead of stdout")
+  .option("-n, --name <name>", "Template name", "Exported Workflow")
+  .action(async (repoRef: string, opts: { output?: string; name?: string }) => {
+    const cfg = loadFullConfig();
+    const repo = findRepo(cfg, repoRef);
+    if (!repo) {
+      errorOut(`Repo "${repoRef}" not found in config`);
+    }
+
+    const { exportTemplate } = await import("./workflow-template.js");
+    const template = exportTemplate(opts.name ?? "Exported Workflow", repo, cfg.board);
+
+    if (opts.output) {
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(opts.output, `${JSON.stringify(template, null, 2)}\n`);
+      if (useJson()) {
+        jsonOut({ ok: true, data: { file: opts.output, template } });
+      } else {
+        printSuccess(`Template exported to ${opts.output}`);
+      }
+    } else if (useJson()) {
+      jsonOut({ ok: true, data: template });
+    } else {
+      console.log(JSON.stringify(template, null, 2));
+    }
+  });
+
+workflowCommand
+  .command("import")
+  .description("Import a workflow template into config")
+  .argument("<file>", "Path to template JSON file")
+  .option("-r, --repo <name>", "Apply to specific repo (otherwise board-level only)")
+  .option("--dry-run", "Show what would change without modifying config")
+  .action(async (file: string, opts: { repo?: string; dryRun?: true }) => {
+    const { importTemplate, applyTemplateToBoard, applyTemplateToRepo } = await import(
+      "./workflow-template.js"
+    );
+
+    const result = importTemplate(file);
+    if ("error" in result) {
+      errorOut(result.error);
+    }
+
+    const cfg = loadFullConfig();
+
+    if (opts.dryRun) {
+      if (useJson()) {
+        jsonOut({ ok: true, data: { dryRun: true, template: result } });
+      } else {
+        console.log("Template validated successfully:\n");
+        console.log(`  Name: ${result.name}`);
+        if (result.description) console.log(`  Description: ${result.description}`);
+        console.log(`  Phases: ${result.workflow.phases.join(", ")}`);
+        console.log(`  Mode: ${result.workflow.mode}`);
+        if (result.staleness) {
+          console.log(
+            `  Staleness: warning ${result.staleness.warningDays}d, critical ${result.staleness.criticalDays}d`,
+          );
+        }
+        if (result.autoStatus) {
+          console.log(`  Auto-status triggers: ${Object.keys(result.autoStatus).join(", ")}`);
+        }
+        console.log("\nRun without --dry-run to apply.");
+      }
+      return;
+    }
+
+    // Apply to board config
+    const updatedBoard = applyTemplateToBoard(result, cfg.board);
+    const updatedConfig = { ...cfg, board: updatedBoard };
+
+    // Optionally apply to a specific repo
+    if (opts.repo) {
+      const repoIdx = updatedConfig.repos.findIndex(
+        (r) => r.shortName === opts.repo || r.name === opts.repo,
+      );
+      if (repoIdx < 0) {
+        errorOut(`Repo "${opts.repo}" not found in config`);
+      }
+      const existingRepo = updatedConfig.repos[repoIdx];
+      if (existingRepo) {
+        updatedConfig.repos = [...updatedConfig.repos];
+        updatedConfig.repos[repoIdx] = applyTemplateToRepo(result, existingRepo);
+      }
+    }
+
+    saveFullConfig(updatedConfig);
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { imported: result.name, repo: opts.repo ?? null } });
+    } else {
+      printSuccess(`Imported template "${result.name}"`);
+      if (opts.repo) {
+        console.log(`  Applied to repo: ${opts.repo}`);
+      }
+      console.log("  Applied to board-level workflow config.");
     }
   });
 

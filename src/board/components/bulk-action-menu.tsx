@@ -11,7 +11,7 @@ export type BulkAction =
 interface BulkActionMenuProps {
   readonly count: number;
   /** What kinds of items are selected */
-  readonly selectionType: "github" | "ticktick" | "mixed";
+  readonly selectionType: "github" | "mixed";
   readonly onSelect: (action: BulkAction) => void;
   readonly onCancel: () => void;
 }
@@ -21,18 +21,12 @@ interface MenuItem {
   action: BulkAction;
 }
 
-function getMenuItems(selectionType: "github" | "ticktick" | "mixed"): MenuItem[] {
+function getMenuItems(selectionType: "github" | "mixed"): MenuItem[] {
   if (selectionType === "github") {
     return [
       { label: "Assign all to me", action: { type: "assign" } },
       { label: "Unassign all from me", action: { type: "unassign" } },
       { label: "Move status (all)", action: { type: "statusChange" } },
-    ];
-  }
-  if (selectionType === "ticktick") {
-    return [
-      { label: "Complete all", action: { type: "complete" } },
-      { label: "Delete all", action: { type: "delete" } },
     ];
   }
   // Mixed: only show actions valid for all types — none in our case

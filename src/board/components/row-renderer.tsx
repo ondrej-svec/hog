@@ -23,7 +23,15 @@ export type FlatRow =
       count?: number;
       isCollapsed?: boolean;
     }
-  | { type: "issue"; key: string; navId: string; issue: GitHubIssue; repoName: string }
+  | {
+      type: "issue";
+      key: string;
+      navId: string;
+      issue: GitHubIssue;
+      repoName: string;
+      phaseIndicator?: string | undefined;
+      statusAgeDays?: number | undefined;
+    }
   | { type: "activity"; key: string; navId: null; event: ActivityEvent }
   | { type: "error"; key: string; navId: null; text: string }
   | { type: "gap"; key: string; navId: null };
@@ -35,6 +43,8 @@ interface RowRendererProps {
   readonly isMultiSelected?: boolean | undefined;
   /** Outer issues panel width — passed to IssueRow for single-line truncation. */
   readonly panelWidth?: number | undefined;
+  /** Staleness thresholds for age color coding. */
+  readonly stalenessConfig?: { warningDays: number; criticalDays: number } | undefined;
 }
 
 export function RowRenderer({
@@ -43,6 +53,7 @@ export function RowRenderer({
   selfLogin,
   isMultiSelected,
   panelWidth = 120,
+  stalenessConfig,
 }: RowRendererProps) {
   switch (row.type) {
     case "sectionHeader": {
@@ -94,6 +105,9 @@ export function RowRenderer({
             selfLogin={selfLogin}
             isSelected={selectedId === row.navId}
             panelWidth={panelWidth}
+            phaseIndicator={row.phaseIndicator}
+            statusAgeDays={row.statusAgeDays}
+            stalenessConfig={stalenessConfig}
           />
         </Box>
       );

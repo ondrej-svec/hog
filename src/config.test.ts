@@ -22,14 +22,9 @@ const {
   resolveProfile,
   validateRepoName,
   findRepo,
-  getAuth,
-  saveAuth,
   getLlmAuth,
   saveLlmAuth,
   clearLlmAuth,
-  getConfig,
-  saveConfig,
-  requireAuth,
 } = await import("./config.js");
 
 import type { HogConfig } from "./config.js";
@@ -39,32 +34,12 @@ describe("config migration", () => {
     vi.clearAllMocks();
   });
 
-  it("should migrate v2 config to v3 with ticktick.enabled=true when auth.json exists", () => {
+  it("should migrate v2 config to v4 (removing ticktick fields)", () => {
     const v2Config = {
       version: 2,
       repos: [],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
-    };
-
-    mockedExistsSync.mockImplementation((p) => {
-      const path = String(p);
-      if (path.endsWith("config.json")) return true;
-      if (path.endsWith("auth.json")) return true;
-      return false;
-    });
-    mockedReadFileSync.mockReturnValue(JSON.stringify(v2Config));
-
-    const result = loadFullConfig();
-
-    expect(result.version).toBe(3);
-    expect(result.ticktick).toEqual({ enabled: true });
-  });
-
-  it("should migrate v2 config to v3 with ticktick.enabled=false when auth.json missing", () => {
-    const v2Config = {
-      version: 2,
-      repos: [],
-      board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
+      ticktick: { enabled: true },
     };
 
     mockedExistsSync.mockImplementation((p) => {
@@ -77,11 +52,11 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(3);
-    expect(result.ticktick).toEqual({ enabled: false });
+    expect(result.version).toBe(4);
+    expect(result).not.toHaveProperty("ticktick");
   });
 
-  it("should not re-migrate v3 config", () => {
+  it("should migrate v3 config to v4 (removing ticktick fields)", () => {
     const v3Config = {
       version: 3,
       repos: [],
@@ -98,13 +73,32 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(3);
-    expect(result.ticktick).toEqual({ enabled: false });
+    expect(result.version).toBe(4);
+    expect(result).not.toHaveProperty("ticktick");
+  });
+
+  it("should not re-migrate v4 config", () => {
+    const v4Config = {
+      version: 4,
+      repos: [],
+      board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
+
+    const result = loadFullConfig();
+
+    expect(result.version).toBe(4);
     // Should NOT have called writeFileSync (no migration needed)
     expect(writeFileSync).not.toHaveBeenCalled();
   });
 
-  it("should preserve all v2 fields during migration to v3", () => {
+  it("should preserve all v2 fields during migration to v4", () => {
     const v2Config = {
       version: 2,
       defaultProjectId: "proj123",
@@ -124,26 +118,26 @@ describe("config migration", () => {
     mockedExistsSync.mockImplementation((p) => {
       const path = String(p);
       if (path.endsWith("config.json")) return true;
-      if (path.endsWith("auth.json")) return true;
+      if (path.endsWith("auth.json")) return false;
       return false;
     });
     mockedReadFileSync.mockReturnValue(JSON.stringify(v2Config));
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(3);
-    expect(result.defaultProjectId).toBe("proj123");
-    expect(result.defaultProjectName).toBe("My Project");
+    expect(result.version).toBe(4);
     expect(result.repos).toHaveLength(1);
     expect(result.repos[0]?.name).toBe("owner/repo");
     expect(result.board.refreshInterval).toBe(30);
     expect(result.board.backlogLimit).toBe(10);
     expect(result.board.assignee).toBe("test-user");
     expect(result.board.focusDuration).toBe(900);
-    expect(result.ticktick).toEqual({ enabled: true });
+    expect(result).not.toHaveProperty("ticktick");
+    expect(result).not.toHaveProperty("defaultProjectId");
+    expect(result).not.toHaveProperty("defaultProjectName");
   });
 
-  it("should migrate v1 config all the way to v3", () => {
+  it("should migrate v1 config all the way to v4", () => {
     const v1Config = {
       defaultProjectId: "inbox",
     };
@@ -158,18 +152,17 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(3);
+    expect(result.version).toBe(4);
     expect(result.repos).toEqual([]); // no legacy repos
     expect(result.board.assignee).toBe("unknown"); // placeholder default
-    expect(result.ticktick).toEqual({ enabled: false }); // no auth.json
+    expect(result).not.toHaveProperty("ticktick");
   });
 
   it("should default profiles to empty object and defaultProfile to undefined", () => {
-    const v3Config = {
-      version: 3,
+    const v4Config = {
+      version: 4,
       repos: [],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
-      ticktick: { enabled: true },
     };
 
     mockedExistsSync.mockImplementation((p) => {
@@ -177,7 +170,7 @@ describe("config migration", () => {
       if (path.endsWith("config.json")) return true;
       return false;
     });
-    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
 
     const result = loadFullConfig();
 
@@ -195,7 +188,7 @@ describe("config migration", () => {
     mockedExistsSync.mockImplementation((p) => {
       const path = String(p);
       if (path.endsWith("config.json")) return true;
-      if (path.endsWith("auth.json")) return true;
+      if (path.endsWith("auth.json")) return false;
       return false;
     });
     mockedReadFileSync.mockReturnValue(JSON.stringify(v2Config));
@@ -205,18 +198,18 @@ describe("config migration", () => {
     expect(mkdirSync).toHaveBeenCalled();
     expect(writeFileSync).toHaveBeenCalledTimes(1);
 
-    // Verify the saved config is v3
+    // Verify the saved config is v4
     const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
     const saved = JSON.parse(savedJson);
-    expect(saved.version).toBe(3);
-    expect(saved.ticktick).toEqual({ enabled: true });
+    expect(saved.version).toBe(4);
+    expect(saved).not.toHaveProperty("ticktick");
   });
 });
 
 describe("resolveProfile", () => {
   function makeBaseConfig(): HogConfig {
     return {
-      version: 3,
+      version: 4,
       repos: [
         {
           name: "owner/main-repo",
@@ -227,7 +220,6 @@ describe("resolveProfile", () => {
         },
       ],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
-      ticktick: { enabled: true },
       profiles: {
         work: {
           repos: [
@@ -245,7 +237,6 @@ describe("resolveProfile", () => {
             assignee: "ondrej-work",
             focusDuration: 900,
           },
-          ticktick: { enabled: false },
         },
         personal: {
           repos: [
@@ -263,7 +254,6 @@ describe("resolveProfile", () => {
             assignee: "ondrej-personal",
             focusDuration: 1800,
           },
-          ticktick: { enabled: true },
         },
       },
       defaultProfile: "work",
@@ -289,7 +279,6 @@ describe("resolveProfile", () => {
     expect(activeProfile).toBe("work");
     expect(resolved.board.assignee).toBe("ondrej-work");
     expect(resolved.repos[0]?.shortName).toBe("work-repo");
-    expect(resolved.ticktick.enabled).toBe(false);
   });
 
   it("should resolve explicit profile over defaultProfile", () => {
@@ -300,17 +289,14 @@ describe("resolveProfile", () => {
     expect(activeProfile).toBe("personal");
     expect(resolved.board.assignee).toBe("ondrej-personal");
     expect(resolved.repos[0]?.shortName).toBe("personal-repo");
-    expect(resolved.ticktick.enabled).toBe(true);
   });
 
-  it("should preserve non-profile fields (version, defaultProjectId) from base config", () => {
+  it("should preserve non-profile fields (version) from base config", () => {
     const config = makeBaseConfig();
-    config.defaultProjectId = "inbox123";
 
     const { resolved } = resolveProfile(config, "work");
 
-    expect(resolved.version).toBe(3);
-    expect(resolved.defaultProjectId).toBe("inbox123");
+    expect(resolved.version).toBe(4);
     expect(resolved.profiles).toEqual(config.profiles);
   });
 
@@ -344,27 +330,13 @@ describe("loadFullConfig with no config file", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(3);
+    expect(result.version).toBe(4);
     expect(result.repos).toEqual([]);
     expect(result.board.assignee).toBe("unknown");
-    expect(result.ticktick).toEqual({ enabled: false });
+    expect(result).not.toHaveProperty("ticktick");
     // Should have saved to disk
     expect(mkdirSync).toHaveBeenCalled();
     expect(writeFileSync).toHaveBeenCalledTimes(1);
-  });
-
-  it("should return default config with ticktick.enabled=true when auth.json exists but no config", () => {
-    mockedExistsSync.mockImplementation((p) => {
-      const path = String(p);
-      if (path.endsWith("config.json")) return false;
-      if (path.endsWith("auth.json")) return true;
-      return false;
-    });
-
-    const result = loadFullConfig();
-
-    expect(result.version).toBe(3);
-    expect(result.ticktick).toEqual({ enabled: true });
   });
 
   it("should return empty object and default config when config.json has malformed JSON", () => {
@@ -378,7 +350,7 @@ describe("loadFullConfig with no config file", () => {
     const result = loadFullConfig();
 
     // malformed JSON returns {} from loadRawConfig, triggers migration
-    expect(result.version).toBe(3);
+    expect(result.version).toBe(4);
     expect(result.repos).toEqual([]);
   });
 });
@@ -389,8 +361,8 @@ describe("claudePrompt config field", () => {
   });
 
   it("claudePrompt is undefined when absent from config", () => {
-    const v3Config = {
-      version: 3,
+    const v4Config = {
+      version: 4,
       repos: [
         {
           name: "owner/repo",
@@ -401,7 +373,6 @@ describe("claudePrompt config field", () => {
         },
       ],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
-      ticktick: { enabled: true },
     };
 
     mockedExistsSync.mockImplementation((p) => {
@@ -409,7 +380,7 @@ describe("claudePrompt config field", () => {
       if (path.endsWith("config.json")) return true;
       return false;
     });
-    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
 
     const result = loadFullConfig();
 
@@ -418,8 +389,8 @@ describe("claudePrompt config field", () => {
   });
 
   it("claudePrompt is parsed when present in board config", () => {
-    const v3Config = {
-      version: 3,
+    const v4Config = {
+      version: 4,
       repos: [],
       board: {
         refreshInterval: 60,
@@ -427,7 +398,6 @@ describe("claudePrompt config field", () => {
         assignee: "ondrej",
         claudePrompt: "Work on #{number}: {title}",
       },
-      ticktick: { enabled: true },
     };
 
     mockedExistsSync.mockImplementation((p) => {
@@ -435,7 +405,7 @@ describe("claudePrompt config field", () => {
       if (path.endsWith("config.json")) return true;
       return false;
     });
-    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
 
     const result = loadFullConfig();
 
@@ -443,8 +413,8 @@ describe("claudePrompt config field", () => {
   });
 
   it("claudePrompt is parsed when present in repo config", () => {
-    const v3Config = {
-      version: 3,
+    const v4Config = {
+      version: 4,
       repos: [
         {
           name: "owner/repo",
@@ -456,7 +426,6 @@ describe("claudePrompt config field", () => {
         },
       ],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej" },
-      ticktick: { enabled: true },
     };
 
     mockedExistsSync.mockImplementation((p) => {
@@ -464,7 +433,7 @@ describe("claudePrompt config field", () => {
       if (path.endsWith("config.json")) return true;
       return false;
     });
-    mockedReadFileSync.mockReturnValue(JSON.stringify(v3Config));
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
 
     const result = loadFullConfig();
 
@@ -474,7 +443,7 @@ describe("claudePrompt config field", () => {
 
 describe("findRepo", () => {
   const baseConfig: HogConfig = {
-    version: 3,
+    version: 4,
     repos: [
       {
         name: "owner/my-repo",
@@ -492,7 +461,6 @@ describe("findRepo", () => {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "user", focusDuration: 1500 },
-    ticktick: { enabled: true },
     profiles: {},
   };
 
@@ -517,87 +485,6 @@ describe("findRepo", () => {
   });
 });
 
-describe("getAuth", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return null when auth.json does not exist", () => {
-    mockedExistsSync.mockReturnValue(false);
-
-    const result = getAuth();
-
-    expect(result).toBeNull();
-  });
-
-  it("should return parsed auth data when auth.json exists", () => {
-    const authData = {
-      accessToken: "tok123",
-      clientId: "cid",
-      clientSecret: "secret",
-    };
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify(authData));
-
-    const result = getAuth();
-
-    expect(result).toEqual(authData);
-  });
-
-  it("should return null when auth.json contains malformed JSON", () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue("{ broken json");
-
-    const result = getAuth();
-
-    expect(result).toBeNull();
-  });
-
-  it("should include optional openrouterApiKey when present", () => {
-    const authData = {
-      accessToken: "tok",
-      clientId: "cid",
-      clientSecret: "sec",
-      openrouterApiKey: "or-key-xyz",
-    };
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify(authData));
-
-    const result = getAuth();
-
-    expect(result?.openrouterApiKey).toBe("or-key-xyz");
-  });
-});
-
-describe("saveAuth", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should write auth data to auth.json with mode 0o600", () => {
-    const authData = { accessToken: "tok", clientId: "cid", clientSecret: "sec" };
-
-    saveAuth(authData);
-
-    expect(mkdirSync).toHaveBeenCalled();
-    expect(mockedWriteFileSync).toHaveBeenCalledWith(
-      expect.stringContaining("auth.json"),
-      expect.stringContaining('"accessToken": "tok"'),
-      { mode: 0o600 },
-    );
-  });
-
-  it("should serialize auth data as formatted JSON", () => {
-    const authData = { accessToken: "a", clientId: "b", clientSecret: "c" };
-
-    saveAuth(authData);
-
-    const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
-    const parsed = JSON.parse(written);
-    expect(parsed).toEqual(authData);
-  });
-});
-
 describe("getLlmAuth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -613,9 +500,7 @@ describe("getLlmAuth", () => {
 
   it("should return null when auth exists but has no openrouterApiKey", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ accessToken: "tok", clientId: "cid", clientSecret: "sec" }),
-    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({}));
 
     const result = getLlmAuth();
 
@@ -626,9 +511,6 @@ describe("getLlmAuth", () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(
       JSON.stringify({
-        accessToken: "tok",
-        clientId: "cid",
-        clientSecret: "sec",
         openrouterApiKey: "or-abc",
       }),
     );
@@ -646,16 +528,13 @@ describe("saveLlmAuth", () => {
 
   it("should merge openrouterApiKey into existing auth data", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ accessToken: "tok", clientId: "cid", clientSecret: "sec" }),
-    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ openrouterApiKey: "old-key" }));
 
     saveLlmAuth("new-or-key");
 
     const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(written);
     expect(parsed.openrouterApiKey).toBe("new-or-key");
-    expect(parsed.accessToken).toBe("tok");
   });
 
   it("should create minimal auth data when no existing auth file", () => {
@@ -666,9 +545,6 @@ describe("saveLlmAuth", () => {
     const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(written);
     expect(parsed.openrouterApiKey).toBe("brand-new-key");
-    expect(parsed.accessToken).toBe("");
-    expect(parsed.clientId).toBe("");
-    expect(parsed.clientSecret).toBe("");
   });
 });
 
@@ -677,21 +553,21 @@ describe("clearLlmAuth", () => {
     vi.clearAllMocks();
   });
 
-  it("should do nothing when no auth file exists", () => {
+  it("should write empty auth when no auth file exists", () => {
     mockedExistsSync.mockReturnValue(false);
 
     clearLlmAuth();
 
-    expect(mockedWriteFileSync).not.toHaveBeenCalled();
+    // clearLlmAuth always saves (even if no file existed), writing empty auth
+    const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
+    const parsed = JSON.parse(written);
+    expect(parsed).not.toHaveProperty("openrouterApiKey");
   });
 
   it("should remove openrouterApiKey from auth data and save", () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(
       JSON.stringify({
-        accessToken: "tok",
-        clientId: "cid",
-        clientSecret: "sec",
         openrouterApiKey: "or-key",
       }),
     );
@@ -701,14 +577,11 @@ describe("clearLlmAuth", () => {
     const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(written);
     expect(parsed).not.toHaveProperty("openrouterApiKey");
-    expect(parsed.accessToken).toBe("tok");
   });
 
   it("should preserve auth data without openrouterApiKey when key was not set", () => {
     mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ accessToken: "tok", clientId: "cid", clientSecret: "sec" }),
-    );
+    mockedReadFileSync.mockReturnValue(JSON.stringify({}));
 
     clearLlmAuth();
 
@@ -716,103 +589,6 @@ describe("clearLlmAuth", () => {
     const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
     const parsed = JSON.parse(written);
     expect(parsed).not.toHaveProperty("openrouterApiKey");
-    expect(parsed.accessToken).toBe("tok");
-  });
-});
-
-describe("getConfig (legacy)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return empty object when config.json does not exist", () => {
-    mockedExistsSync.mockReturnValue(false);
-
-    const result = getConfig();
-
-    expect(result).toEqual({});
-  });
-
-  it("should return parsed config data when file exists", () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ defaultProjectId: "proj-1", defaultProjectName: "Main" }),
-    );
-
-    const result = getConfig();
-
-    expect(result.defaultProjectId).toBe("proj-1");
-    expect(result.defaultProjectName).toBe("Main");
-  });
-
-  it("should return empty object when config.json has malformed JSON", () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue("definitely not json");
-
-    const result = getConfig();
-
-    expect(result).toEqual({});
-  });
-});
-
-describe("saveConfig (legacy)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should merge new data with existing config and write to disk", () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(
-      JSON.stringify({ defaultProjectId: "old-id", defaultProjectName: "Old Name" }),
-    );
-
-    saveConfig({ defaultProjectId: "new-id" });
-
-    const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
-    const parsed = JSON.parse(written);
-    expect(parsed.defaultProjectId).toBe("new-id");
-    expect(parsed.defaultProjectName).toBe("Old Name");
-  });
-
-  it("should write config when no existing file", () => {
-    mockedExistsSync.mockReturnValue(false);
-
-    saveConfig({ defaultProjectId: "proj-x" });
-
-    expect(mkdirSync).toHaveBeenCalled();
-    const written = mockedWriteFileSync.mock.calls[0]?.[1] as string;
-    const parsed = JSON.parse(written);
-    expect(parsed.defaultProjectId).toBe("proj-x");
-  });
-});
-
-describe("requireAuth", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should return auth data when auth.json exists", () => {
-    const authData = { accessToken: "tok", clientId: "cid", clientSecret: "sec" };
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify(authData));
-
-    const result = requireAuth();
-
-    expect(result).toEqual(authData);
-  });
-
-  it("should exit with error message when auth.json does not exist", () => {
-    mockedExistsSync.mockReturnValue(false);
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("process.exit");
-    });
-    const mockError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    expect(() => requireAuth()).toThrow("process.exit");
-    expect(mockError).toHaveBeenCalledWith(expect.stringContaining("hog init"));
-
-    mockExit.mockRestore();
-    mockError.mockRestore();
   });
 });
 

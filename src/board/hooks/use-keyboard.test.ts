@@ -70,6 +70,9 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
     enterFuzzyPicker: vi.fn(),
     enterEditIssue: vi.fn(),
     enterDetail: vi.fn(),
+    enterWorkflow: vi.fn(),
+    enterNudge: vi.fn(),
+    enterTriage: vi.fn(),
     toggleHelp: vi.fn(),
     exitOverlay: vi.fn(),
     exitToNormal: vi.fn(),
@@ -129,6 +132,8 @@ function makeActions() {
     handleUndo: vi.fn(),
     handleToggleLog: vi.fn(),
     handleLaunchClaude: vi.fn(),
+    handleEnterWorkflow: vi.fn(),
+    handleEnterTriage: vi.fn(),
   };
 }
 

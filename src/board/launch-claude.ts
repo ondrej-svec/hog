@@ -29,13 +29,81 @@ export interface LaunchClaudeOptions {
   readonly terminalApp?: string | undefined;
   readonly repoFullName?: string | undefined;
   readonly promptTemplate?: string | undefined;
+  readonly promptVariables?: PromptVariables | undefined;
 }
 
+// ── Phase Prompt Templates ──
+
+export const DEFAULT_PHASE_PROMPTS: Record<string, string> = {
+  research: [
+    "Research context for Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "Explore the codebase and gather context that would help brainstorm this issue.",
+    "Write a short research summary to docs/research/{slug}.md.",
+    "Do NOT implement anything. Just gather information.",
+  ].join("\n"),
+
+  brainstorm: ["Let's brainstorm Issue #{number}: {title}", "URL: {url}", "", "{body}"].join("\n"),
+
+  plan: [
+    "Create an implementation plan for Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "If a brainstorm doc exists in docs/brainstorms/, use it as context.",
+    "Write the plan to docs/plans/.",
+  ].join("\n"),
+
+  implement: [
+    "Implement Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "If a plan exists in docs/plans/, follow it.",
+    "Commit frequently. Create a PR when done.",
+  ].join("\n"),
+
+  review: [
+    "Review the changes for Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "Check the current branch diff against main.",
+    "Run tests and linting.",
+    "Write a review summary.",
+  ].join("\n"),
+
+  compound: [
+    "Document the solution for Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "Write a solution document to docs/solutions/.",
+    "Include: symptoms, root cause, solution, prevention.",
+  ].join("\n"),
+
+  "completion-check": [
+    "Check the status of Issue #{number}: {title}",
+    "URL: {url}",
+    "",
+    "Read the plan doc if it exists in docs/plans/.",
+    "Run `git diff main...HEAD --stat` to see what's changed.",
+    "Run the project's test suite.",
+    "Report: what's done, what's remaining, what's blocking.",
+  ].join("\n"),
+};
+
 // ── Helpers ──
+
+/** Extra variables for prompt template interpolation beyond the base issue fields. */
+export interface PromptVariables {
+  readonly body?: string | undefined;
+  readonly slug?: string | undefined;
+  readonly phase?: string | undefined;
+  readonly repo?: string | undefined;
+}
 
 export function buildPrompt(
   issue: Pick<BoardIssue, "number" | "title" | "url">,
   template?: string | undefined,
+  variables?: PromptVariables | undefined,
 ): string {
   if (!template) {
     return `Issue #${issue.number}: ${issue.title}\nURL: ${issue.url}`;
@@ -43,10 +111,14 @@ export function buildPrompt(
   return template
     .replace(/\{number\}/g, String(issue.number))
     .replace(/\{title\}/g, issue.title)
-    .replace(/\{url\}/g, issue.url);
+    .replace(/\{url\}/g, issue.url)
+    .replace(/\{body\}/g, variables?.body ?? "")
+    .replace(/\{slug\}/g, variables?.slug ?? "")
+    .replace(/\{phase\}/g, variables?.phase ?? "")
+    .replace(/\{repo\}/g, variables?.repo ?? "");
 }
 
-function isClaudeInPath(): boolean {
+export function isClaudeInPath(): boolean {
   const result = spawnSync("which", ["claude"], { stdio: "pipe" });
   return result.status === 0;
 }
@@ -74,7 +146,7 @@ function resolveCommand(opts: LaunchClaudeOptions): {
 function launchViaTmux(opts: LaunchClaudeOptions): LaunchResult {
   const { localPath, issue, repoFullName } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue, opts.promptTemplate);
+  const prompt = buildPrompt(issue, opts.promptTemplate, opts.promptVariables);
 
   const windowName = `claude-${issue.number}`;
   const tmuxArgs = [
@@ -108,7 +180,7 @@ function shellQuote(s: string): string {
 function launchViaTerminalApp(terminalApp: string, opts: LaunchClaudeOptions): LaunchResult {
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue, opts.promptTemplate);
+  const prompt = buildPrompt(issue, opts.promptTemplate, opts.promptVariables);
 
   switch (terminalApp) {
     case "iTerm": {
@@ -237,7 +309,7 @@ function launchViaDetectedTerminal(opts: LaunchClaudeOptions): LaunchResult {
   // Linux: try xdg-terminal-exec with cwd via spawn option + safe argv
   const { localPath, issue } = opts;
   const { command, extraArgs } = resolveCommand(opts);
-  const prompt = buildPrompt(issue, opts.promptTemplate);
+  const prompt = buildPrompt(issue, opts.promptTemplate, opts.promptVariables);
 
   const child = spawn("xdg-terminal-exec", [command, ...extraArgs, "--", prompt], {
     stdio: "ignore",

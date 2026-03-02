@@ -4,6 +4,7 @@ import { Box, Text, useApp, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import type { EnrichmentData } from "../../enrichment.js";
 import type { GitHubIssue, IssueComment, LabelOption, StatusOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
 import type { PanelId } from "../constants.js";
@@ -11,20 +12,26 @@ import { isHeaderId, isTerminalStatus, timeAgo } from "../constants.js";
 import type { ActivityEvent, FetchOptions, RepoData } from "../fetch.js";
 import { useActionLog } from "../hooks/use-action-log.js";
 import { useActions } from "../hooks/use-actions.js";
+import { useAgentSessions } from "../hooks/use-agent-sessions.js";
+import { useAutoStatus } from "../hooks/use-auto-status.js";
 import { refreshAgeColor, useData } from "../hooks/use-data.js";
 import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import type { NavItem } from "../hooks/use-navigation.js";
 import { useNavigation } from "../hooks/use-navigation.js";
+import { useNudges } from "../hooks/use-nudges.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
-import { launchClaude } from "../launch-claude.js";
+import { useWorkflowState } from "../hooks/use-workflow-state.js";
+import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
+import { AgentActivityPanel } from "./agent-activity-panel.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { DetailPanel } from "./detail-panel.js";
 import type { FocusEndAction } from "./focus-mode.js";
 import { HintBar } from "./hint-bar.js";
+import type { NudgeAction } from "./nudge-overlay.js";
 import { OverlayRenderer } from "./overlay-renderer.js";
 import { Panel } from "./panel.js";
 import {
@@ -39,6 +46,8 @@ import type { FlatRow } from "./row-renderer.js";
 import { RowRenderer } from "./row-renderer.js";
 import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
+import type { TriageAction } from "./triage-overlay.js";
+import type { WorkflowAction } from "./workflow-overlay.js";
 
 // ── Types ──
 
@@ -49,6 +58,27 @@ interface DashboardProps {
 }
 
 // ── Helpers ──
+
+/** Resolve launch config for a workflow phase (template + start command + slug). */
+function resolvePhaseConfig(
+  rc: RepoConfig,
+  config: HogConfig,
+  issueTitle: string,
+  phase: string,
+): {
+  template: string | undefined;
+  startCommand: { command: string; extraArgs: readonly string[] } | undefined;
+  slug: string;
+} {
+  const phasePrompts = rc.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
+  const template = phasePrompts[phase] ?? DEFAULT_PHASE_PROMPTS[phase];
+  const startCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+  const slug = issueTitle
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return { template, startCommand, slug };
+}
 
 interface StatusGroup {
   label: string;
@@ -370,6 +400,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // UI state machine
   const ui = useUIState();
 
+  // Workflow state (enrichment.json)
+  const workflowState = useWorkflowState(config);
+
+  // Toast notification system (replaces old statusMessage) — declared early for agent sessions
+  const { toasts, toast, handleErrorAction } = useToast();
+
+  // Background agent sessions
+  const agentSessions = useAgentSessions(config, workflowState, toast);
+
   // Panel focus state — default to Issues panel [3]
   const [activePanelId, setActivePanelId] = useState<PanelId>(3);
   const focusPanel = useCallback((id: PanelId) => setActivePanelId(id), []);
@@ -384,25 +423,50 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     setMineOnly((prev) => !prev);
   }, []);
 
-  // Toast notification system (replaces old statusMessage)
-  const { toasts, toast, handleErrorAction } = useToast();
-
   // Action log
   const [logVisible, setLogVisible] = useState(false);
   const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
+
+  // Auto-status updates — detects branch/PR events and updates GitHub Project status
+  useAutoStatus({
+    config,
+    data,
+    toast,
+    mutateData,
+    pushEntry,
+    registerPendingMutation,
+  });
+
+  // Stable callback to avoid invalidating useCallbacks in use-nudges.ts
+  const handleEnrichmentChange = useCallback(
+    (data: EnrichmentData) => {
+      workflowState.updateEnrichment(data);
+    },
+    [workflowState],
+  );
+
+  // Nudge system — staleness detection and snooze tracking
+  const nudges = useNudges({
+    config,
+    repos: allRepos,
+    enrichment: workflowState.enrichment,
+    onEnrichmentChange: handleEnrichmentChange,
+  });
+
+  // Auto-show daily nudge on first board open today
+  const dailyNudgeShownRef = useRef(false);
+  useEffect(() => {
+    if (nudges.shouldShowDailyNudge && !dailyNudgeShownRef.current && ui.canAct) {
+      dailyNudgeShownRef.current = true;
+      ui.enterNudge();
+    }
+  }, [nudges.shouldShowDailyNudge, ui]);
 
   // Auto-expand log when an error entry is pushed
   useEffect(() => {
     const last = logEntries[logEntries.length - 1];
     if (last?.status === "error") setLogVisible(true);
   }, [logEntries]);
-
-  // After data loads, surface TickTick errors
-  useEffect(() => {
-    if (data?.ticktickError) {
-      toast.error(`TickTick sync failed: ${data.ticktickError}`);
-    }
-  }, [data?.ticktickError, toast.error]);
 
   // Filter by search query and/or mineOnly
   const repos = useMemo(() => {
@@ -591,7 +655,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     import("../../pick.js").then(({ pickIssue }) =>
       pickIssue(config, { repo: rc, issueNumber: pending.issueNumber })
         .then((result) => {
-          const msg = `Picked ${rc.shortName}#${pending.issueNumber} — assigned + synced to TickTick`;
+          const msg = `Picked ${rc.shortName}#${pending.issueNumber} — assigned on GitHub`;
           t.resolve(result.warning ? `${msg} (${result.warning})` : msg);
           refresh();
         })
@@ -705,11 +769,28 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   );
   const issuesPanelHeight = Math.max(5, totalPanelHeight - ACTIVITY_HEIGHT);
 
-  // Build flat rows for issues panel
-  const flatRows = useMemo(
-    () => buildFlatRowsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId),
-    [boardTree.sections, selectedRepoName, selectedStatusGroupId],
-  );
+  // Build flat rows for issues panel, enriched with phase indicators and age
+  const flatRows = useMemo(() => {
+    const rows = buildFlatRowsForRepo(boardTree.sections, selectedRepoName, selectedStatusGroupId);
+    return rows.map((row) => {
+      if (row.type !== "issue") return row;
+      // Phase indicator: derive from enrichment sessions
+      const wf = workflowState.getIssueWorkflow(
+        row.repoName,
+        row.issue.number,
+        config.repos.find((r) => r.name === row.repoName),
+      );
+      const activePhase = wf.phases.find((p) => p.state === "active");
+      const lastCompleted = [...wf.phases].reverse().find((p) => p.state === "completed");
+      const phaseIndicator = activePhase?.name ?? lastCompleted?.name;
+
+      // Status age: days since last update (approximation for time in current status)
+      const updatedMs = new Date(row.issue.updatedAt).getTime();
+      const statusAgeDays = Math.floor((Date.now() - updatedMs) / 86_400_000);
+
+      return { ...row, phaseIndicator, statusAgeDays };
+    });
+  }, [boardTree.sections, selectedRepoName, selectedStatusGroupId, workflowState, config.repos]);
 
   // Scroll offset - tracks viewport position
   const scrollRef = useRef(0);
@@ -773,6 +854,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     if (!selectedItem.repoName) return null;
     return config.repos.find((r) => r.name === selectedItem.repoName) ?? null;
   }, [selectedItem.repoName, config.repos]);
+
+  // Memoize workflow lookup for the selected issue to avoid repeated linear scans
+  const selectedIssueWorkflow = useMemo(() => {
+    if (!selectedItem.issue || !selectedItem.repoName) return null;
+    return workflowState.getIssueWorkflow(
+      selectedItem.repoName,
+      selectedItem.issue.number,
+      selectedRepoConfig ?? undefined,
+    );
+  }, [selectedItem.issue, selectedItem.repoName, selectedRepoConfig, workflowState]);
 
   // Status options for the selected issue's repo (for status picker, single or bulk)
   const selectedRepoStatusOptions = useMemo(() => {
@@ -852,13 +943,254 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     toast.info(`Claude Code session opened in ${rc.shortName ?? found.repoName}`);
   }, [repos, nav.selectedId, config.repos, config.board, toast]);
 
-  // Multi-select selection type (for bulk action menu)
-  const multiSelectType = useMemo((): "github" | "ticktick" | "mixed" => {
-    for (const id of multiSelect.selected) {
-      if (id.startsWith("tt:")) return "ticktick";
+  // Workflow overlay handlers
+  const handleEnterWorkflow = useCallback(() => {
+    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+    if (!found) return;
+    ui.enterWorkflow();
+  }, [repos, nav.selectedId, ui]);
+
+  const handleWorkflowAction = useCallback(
+    (action: WorkflowAction) => {
+      const found = findSelectedIssueWithRepo(repos, nav.selectedId);
+      if (!found) return;
+
+      const rc = config.repos.find((r) => r.name === found.repoName);
+
+      if (action.type === "resume") {
+        if (!rc?.localPath) {
+          toast.info(
+            `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+          );
+          ui.exitOverlay();
+          return;
+        }
+        const resolvedStartCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+        const result = launchClaude({
+          localPath: rc.localPath,
+          issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
+          ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
+          launchMode: config.board.claudeLaunchMode ?? "auto",
+          ...(config.board.claudeTerminalApp
+            ? { terminalApp: config.board.claudeTerminalApp }
+            : {}),
+          repoFullName: found.repoName,
+          promptTemplate: `--resume ${action.sessionId}`,
+        });
+        if (!result.ok) {
+          toast.error(result.error.message);
+        } else {
+          toast.info(`Resumed Claude Code session`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
+      // Completion check — launch background agent with completion-check phase
+      if (action.type === "completion-check") {
+        if (!rc?.localPath) {
+          toast.info(
+            `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+          );
+          ui.exitOverlay();
+          return;
+        }
+        const { template, startCommand, slug } = resolvePhaseConfig(
+          rc,
+          config,
+          found.issue.title,
+          "completion-check",
+        );
+        const agentResult = agentSessions.launchAgent({
+          localPath: rc.localPath,
+          repoFullName: found.repoName,
+          issueNumber: found.issue.number,
+          issueTitle: found.issue.title,
+          issueUrl: found.issue.url,
+          phase: "completion-check",
+          promptTemplate: template,
+          promptVariables: { slug, phase: "completion-check", repo: found.repoName },
+          ...(startCommand ? { startCommand } : {}),
+        });
+        if (typeof agentResult === "object" && "error" in agentResult) {
+          toast.error(agentResult.error);
+        } else {
+          toast.info(`Completion check started for #${found.issue.number}`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
+      // Launch phase
+      if (!rc?.localPath) {
+        toast.info(
+          `Set localPath for ${rc?.shortName ?? found.repoName} to enable Claude Code launch`,
+        );
+        ui.exitOverlay();
+        return;
+      }
+
+      const { template, startCommand, slug } = resolvePhaseConfig(
+        rc,
+        config,
+        found.issue.title,
+        action.phase,
+      );
+
+      if (action.mode === "background") {
+        const agentResult = agentSessions.launchAgent({
+          localPath: rc.localPath,
+          repoFullName: found.repoName,
+          issueNumber: found.issue.number,
+          issueTitle: found.issue.title,
+          issueUrl: found.issue.url,
+          phase: action.phase,
+          promptTemplate: template,
+          promptVariables: { slug, phase: action.phase, repo: found.repoName },
+          ...(startCommand ? { startCommand } : {}),
+        });
+
+        if (typeof agentResult === "object" && "error" in agentResult) {
+          toast.error(agentResult.error);
+        } else {
+          toast.info(`Background agent started: ${action.phase} for #${found.issue.number}`);
+        }
+        ui.exitOverlay();
+        return;
+      }
+
+      // Interactive: launch in terminal/tmux
+      const result = launchClaude({
+        localPath: rc.localPath,
+        issue: { number: found.issue.number, title: found.issue.title, url: found.issue.url },
+        ...(startCommand ? { startCommand } : {}),
+        launchMode: config.board.claudeLaunchMode ?? "auto",
+        ...(config.board.claudeTerminalApp ? { terminalApp: config.board.claudeTerminalApp } : {}),
+        repoFullName: found.repoName,
+        promptTemplate: template,
+        promptVariables: { slug, phase: action.phase, repo: found.repoName },
+      });
+
+      if (!result.ok) {
+        toast.error(result.error.message);
+        ui.exitOverlay();
+        return;
+      }
+
+      // Record interactive session in enrichment
+      workflowState.recordSession({
+        repo: found.repoName,
+        issueNumber: found.issue.number,
+        phase: action.phase,
+        mode: "interactive",
+        startedAt: new Date().toISOString(),
+      });
+
+      toast.info(`${action.phase} session opened for #${found.issue.number}`);
+      ui.exitOverlay();
+    },
+    [repos, nav.selectedId, config, ui, toast, workflowState, agentSessions],
+  );
+
+  // Nudge action handler
+  const handleNudgeAction = useCallback(
+    (action: NudgeAction) => {
+      if (action.type === "snooze") {
+        nudges.snooze(action.repo, action.issueNumber, action.days);
+        toast.info(`Snoozed #${action.issueNumber} for ${action.days}d`);
+      } else {
+        nudges.dismissNudge();
+      }
+    },
+    [nudges, toast],
+  );
+
+  // Triage action handler
+  const handleTriageAction = useCallback(
+    (action: TriageAction) => {
+      if (action.type === "snooze") {
+        nudges.snooze(action.repo, action.issueNumber, action.days);
+        toast.info(`Snoozed #${action.issueNumber} for ${action.days}d`);
+        return;
+      }
+
+      // Launch agents for selected candidates
+      let launched = 0;
+      for (const candidate of action.candidates) {
+        const rc = config.repos.find((r) => r.name === candidate.repo);
+        if (!rc?.localPath) continue;
+
+        const { template, startCommand, slug } = resolvePhaseConfig(
+          rc,
+          config,
+          candidate.issue.title,
+          action.phase,
+        );
+
+        if (action.mode === "background") {
+          const result = agentSessions.launchAgent({
+            localPath: rc.localPath,
+            repoFullName: candidate.repo,
+            issueNumber: candidate.issue.number,
+            issueTitle: candidate.issue.title,
+            issueUrl: candidate.issue.url,
+            phase: action.phase,
+            promptTemplate: template,
+            promptVariables: { slug, phase: action.phase, repo: candidate.repo },
+            ...(startCommand ? { startCommand } : {}),
+          });
+          if (typeof result === "string") launched++;
+        } else {
+          // Interactive: launch first only
+          const result = launchClaude({
+            localPath: rc.localPath,
+            issue: {
+              number: candidate.issue.number,
+              title: candidate.issue.title,
+              url: candidate.issue.url,
+            },
+            ...(startCommand ? { startCommand } : {}),
+            launchMode: config.board.claudeLaunchMode ?? "auto",
+            ...(config.board.claudeTerminalApp
+              ? { terminalApp: config.board.claudeTerminalApp }
+              : {}),
+            repoFullName: candidate.repo,
+            promptTemplate: template,
+            promptVariables: { slug, phase: action.phase, repo: candidate.repo },
+          });
+          if (result.ok) {
+            workflowState.recordSession({
+              repo: candidate.repo,
+              issueNumber: candidate.issue.number,
+              phase: action.phase,
+              mode: "interactive",
+              startedAt: new Date().toISOString(),
+            });
+            launched++;
+          }
+          break; // Only one interactive launch
+        }
+      }
+
+      if (launched > 0) {
+        toast.info(`Launched ${launched} ${action.phase} agent${launched > 1 ? "s" : ""}`);
+      }
+      ui.exitOverlay();
+    },
+    [config, agentSessions, workflowState, nudges, toast, ui],
+  );
+
+  // Triage entry point handler
+  const handleEnterTriage = useCallback(() => {
+    if (nudges.candidates.length === 0) {
+      toast.info("No stale issues to triage");
+      return;
     }
-    return "github";
-  }, [multiSelect.selected]);
+    ui.enterTriage();
+  }, [nudges.candidates.length, toast, ui]);
+
+  // Multi-select selection type (for bulk action menu)
+  const multiSelectType = "github" as const;
 
   // Bulk action handler (called from BulkActionMenu)
   const handleBulkAction = useCallback(
@@ -980,6 +1312,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleUndo: undoLast,
       handleToggleLog: () => setLogVisible((v) => !v),
       handleLaunchClaude,
+      handleEnterWorkflow,
+      handleEnterTriage,
     },
     onSearchEscape,
     panelFocus,
@@ -1063,6 +1397,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           selectedId={nav.selectedId}
           selfLogin={config.board.assignee}
           panelWidth={issuesPanelWidth}
+          stalenessConfig={config.board.workflow?.staleness}
           isMultiSelected={
             ui.state.mode === "multiSelect" && row.navId
               ? multiSelect.isSelected(row.navId)
@@ -1091,13 +1426,20 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   ) : null;
 
   const activityPanel = (
-    <ActivityPanel
-      events={boardTree.activity}
-      selectedIdx={clampedActivityIdx}
-      isActive={panelFocus.activePanelId === 4}
-      height={ACTIVITY_HEIGHT}
-      width={activityPanelWidth}
-    />
+    <Box flexDirection="column">
+      {agentSessions.agents.length > 0 ? (
+        <AgentActivityPanel agents={agentSessions.agents} maxHeight={2} />
+      ) : null}
+      <ActivityPanel
+        events={boardTree.activity}
+        selectedIdx={clampedActivityIdx}
+        isActive={panelFocus.activePanelId === 4}
+        height={
+          agentSessions.agents.length > 0 ? Math.max(1, ACTIVITY_HEIGHT - 2) : ACTIVITY_HEIGHT
+        }
+        width={activityPanelWidth}
+      />
+    </Box>
   );
 
   return (
@@ -1126,6 +1468,12 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         )}
         {autoRefreshPaused ? (
           <Text color="yellow"> Auto-refresh paused — press r to retry</Text>
+        ) : null}
+        {agentSessions.runningCount > 0 ? (
+          <Text color="magenta">
+            {" "}
+            [{agentSessions.runningCount} agent{agentSessions.runningCount > 1 ? "s" : ""}]
+          </Text>
         ) : null}
       </Box>
 
@@ -1170,6 +1518,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         onToastInfo={toast.info}
         onToastError={toast.error}
         onPushEntry={pushEntry}
+        workflowPhases={selectedIssueWorkflow?.phases ?? []}
+        workflowLatestSessionId={selectedIssueWorkflow?.latestSessionId}
+        onWorkflowAction={handleWorkflowAction}
+        nudgeCandidates={nudges.candidates}
+        onNudgeAction={handleNudgeAction}
+        triageCandidates={nudges.candidates}
+        onTriageAction={handleTriageAction}
       />
 
       {/* Detail overlay — full-screen on narrow layouts (no side panel) */}
@@ -1193,6 +1548,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:bulkAction" &&
       ui.state.mode !== "overlay:confirmPick" &&
       ui.state.mode !== "overlay:detail" &&
+      ui.state.mode !== "overlay:nudge" &&
+      ui.state.mode !== "overlay:triage" &&
       ui.state.mode !== "focus" ? (
         <PanelLayout
           cols={termSize.cols}

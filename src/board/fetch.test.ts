@@ -16,25 +16,14 @@ vi.mock("../github.js", () => ({
   fetchProjectStatusOptions: (...args: unknown[]) => mockFetchProjectStatusOptions(...args),
 }));
 
-const mockListTasks = vi.fn();
-
-vi.mock("../api.js", () => ({
-  // biome-ignore lint/complexity/useArrowFunction: vitest 4 requires function keyword for constructor mocks
-  TickTickClient: vi.fn().mockImplementation(function () {
-    return { listTasks: mockListTasks };
-  }),
-}));
-
-const mockRequireAuth = vi.fn();
-
-vi.mock("../config.js", () => ({
-  requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
-}));
-
 import { execFileSync } from "node:child_process";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { Priority, TaskStatus } from "../types.js";
-import { fetchDashboard, fetchRecentActivity } from "./fetch.js";
+import {
+  extractIssueNumbersFromBranch,
+  extractLinkedIssueNumbers,
+  fetchDashboard,
+  fetchRecentActivity,
+} from "./fetch.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
 
@@ -53,11 +42,9 @@ function makeRepo(overrides: Partial<RepoConfig> = {}): RepoConfig {
 
 function makeConfig(overrides: Partial<HogConfig> = {}): HogConfig {
   return {
-    version: 3,
+    version: 4,
     repos: [makeRepo()],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "test-user", focusDuration: 1500 },
-    ticktick: { enabled: true },
-    defaultProjectId: "proj-1",
     profiles: {},
     ...overrides,
   };
@@ -77,29 +64,6 @@ function makeGitHubIssue(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeTask(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "tt-1",
-    projectId: "proj-1",
-    title: "Do the thing",
-    content: "",
-    desc: "",
-    isAllDay: false,
-    startDate: "",
-    dueDate: "",
-    completedTime: "",
-    priority: Priority.None,
-    reminders: [],
-    repeatFlag: "",
-    sortOrder: 0,
-    status: TaskStatus.Active,
-    timeZone: "UTC",
-    tags: [],
-    items: [],
-    ...overrides,
-  };
-}
-
 // ── fetchDashboard ─────────────────────────────────────────────────────────────
 
 describe("fetchDashboard", () => {
@@ -110,21 +74,12 @@ describe("fetchDashboard", () => {
     mockFetchProjectStatusOptions.mockReturnValue([]);
     // By default, silence the fetchRecentActivity execFileSync call
     mockExecFileSync.mockReturnValue("");
-    mockRequireAuth.mockReturnValue({
-      accessToken: "test-token",
-      clientId: "cid",
-      clientSecret: "csec",
-    });
-    mockListTasks.mockResolvedValue([]);
   });
 
-  it("returns repos, ticktick, activity, and fetchedAt on happy path with both sources", async () => {
+  it("returns repos, activity, and fetchedAt on happy path", async () => {
     const issue = makeGitHubIssue();
     mockFetchRepoIssues.mockReturnValue([issue]);
     mockFetchProjectStatusOptions.mockReturnValue([{ id: "opt-1", name: "In Progress" }]);
-
-    const task = makeTask();
-    mockListTasks.mockResolvedValue([task]);
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -134,22 +89,7 @@ describe("fetchDashboard", () => {
     expect(result.repos[0]?.issues).toHaveLength(1);
     expect(result.repos[0]?.issues[0]?.number).toBe(42);
     expect(result.repos[0]?.statusOptions).toEqual([{ id: "opt-1", name: "In Progress" }]);
-    expect(result.ticktick).toHaveLength(1);
-    expect(result.ticktick[0]?.id).toBe("tt-1");
-    expect(result.ticktickError).toBeNull();
     expect(result.fetchedAt).toBeInstanceOf(Date);
-  });
-
-  it("returns empty ticktick when ticktick is disabled", async () => {
-    const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-
-    const config = makeConfig({ ticktick: { enabled: false } });
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBeNull();
-    expect(mockListTasks).not.toHaveBeenCalled();
   });
 
   it("returns empty issues for a repo that errors, with error message", async () => {
@@ -181,7 +121,6 @@ describe("fetchDashboard", () => {
     const result = await fetchDashboard(config);
 
     expect(result.repos).toHaveLength(0);
-    expect(result.ticktick).toHaveLength(0);
     expect(result.activity).toHaveLength(0);
   });
 
@@ -288,46 +227,6 @@ describe("fetchDashboard", () => {
     const result = await fetchDashboard(config);
 
     expect(result.repos[0]?.issues[0]?.slackThreadUrl).toBeUndefined();
-  });
-
-  it("filters out completed TickTick tasks", async () => {
-    const activeTask = makeTask({ id: "tt-active", status: TaskStatus.Active });
-    const completedTask = makeTask({ id: "tt-done", status: TaskStatus.Completed });
-    mockListTasks.mockResolvedValue([activeTask, completedTask]);
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(1);
-    expect(result.ticktick[0]?.id).toBe("tt-active");
-  });
-
-  it("returns ticktickError when TickTick API throws", async () => {
-    mockListTasks.mockRejectedValue(new Error("Network timeout"));
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBe("Network timeout");
-  });
-
-  it("returns ticktickError as string when a non-Error is thrown", async () => {
-    mockListTasks.mockRejectedValue("quota exceeded");
-
-    const config = makeConfig();
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktickError).toBe("quota exceeded");
-  });
-
-  it("returns empty ticktick when no defaultProjectId is configured", async () => {
-    const config = makeConfig({ defaultProjectId: undefined });
-    const result = await fetchDashboard(config);
-
-    expect(result.ticktick).toHaveLength(0);
-    expect(result.ticktickError).toBeNull();
-    expect(mockListTasks).not.toHaveBeenCalled();
   });
 
   it("sorts activity events by timestamp descending", async () => {
@@ -553,16 +452,109 @@ describe("fetchRecentActivity", () => {
     expect(events).toHaveLength(0);
   });
 
-  it("skips non-IssueCommentEvent and non-IssuesEvent event types", () => {
+  it("parses PullRequestEvent opened", () => {
     const nowMs = Date.now();
     const line = JSON.stringify({
       type: "PullRequestEvent",
       actor: "grace",
       action: "opened",
       number: 12,
+      title: "Fix #42 auth bug",
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    // Linked issue #42 from title
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("pr_opened");
+    expect(events[0]?.issueNumber).toBe(42);
+    expect(events[0]?.prNumber).toBe(12);
+  });
+
+  it("parses PullRequestEvent merged", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "PullRequestEvent",
+      actor: "grace",
+      action: "closed",
+      number: 15,
+      title: "Add feature",
+      body: "Closes #7",
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: true,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("pr_merged");
+    expect(events[0]?.issueNumber).toBe(7);
+    expect(events[0]?.prNumber).toBe(15);
+  });
+
+  it("parses CreateEvent branch with issue number", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "CreateEvent",
+      actor: "bob",
+      action: null,
+      number: null,
       title: null,
       body: null,
       created_at: new Date(nowMs - 1000).toISOString(),
+      ref: "feat/42-add-auth",
+      ref_type: "branch",
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe("branch_created");
+    expect(events[0]?.issueNumber).toBe(42);
+    expect(events[0]?.branchName).toBe("feat/42-add-auth");
+  });
+
+  it("skips CreateEvent for tags", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "CreateEvent",
+      actor: "bob",
+      action: null,
+      number: null,
+      title: null,
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: "v1.0.0",
+      ref_type: "tag",
+      merged: null,
+    });
+    mockExecFileSync.mockReturnValue(line);
+
+    const events = fetchRecentActivity("test-org/backend", "backend");
+    expect(events).toHaveLength(0);
+  });
+
+  it("skips unknown event types", () => {
+    const nowMs = Date.now();
+    const line = JSON.stringify({
+      type: "WatchEvent",
+      actor: "grace",
+      action: "started",
+      number: null,
+      title: null,
+      body: null,
+      created_at: new Date(nowMs - 1000).toISOString(),
+      ref: null,
+      ref_type: null,
+      merged: null,
     });
     mockExecFileSync.mockReturnValue(line);
 
@@ -660,5 +652,55 @@ describe("fetchRecentActivity", () => {
     expect(events[0]?.summary).toContain("commented on #7");
     // No body preview appended
     expect(events[0]?.summary).not.toContain('"');
+  });
+});
+
+describe("extractIssueNumbersFromBranch", () => {
+  it("extracts issue number from typical branch names", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-add-auth")).toEqual([42]);
+    expect(extractIssueNumbersFromBranch("fix/123-broken-login")).toEqual([123]);
+    expect(extractIssueNumbersFromBranch("issue-7-bugfix")).toEqual([7]);
+  });
+
+  it("extracts multiple issue numbers", () => {
+    const result = extractIssueNumbersFromBranch("feat/42-and-43");
+    expect(result).toContain(42);
+    expect(result).toContain(43);
+  });
+
+  it("deduplicates issue numbers", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-issue-42")).toEqual([42]);
+  });
+
+  it("returns empty for branches without numbers", () => {
+    expect(extractIssueNumbersFromBranch("main")).toEqual([]);
+    expect(extractIssueNumbersFromBranch("feat/add-auth")).toEqual([]);
+  });
+
+  it("extracts numbers using default pattern", () => {
+    expect(extractIssueNumbersFromBranch("feat/42-fix")).toEqual([42]);
+  });
+});
+
+describe("extractLinkedIssueNumbers", () => {
+  it("extracts issue numbers from title", () => {
+    expect(extractLinkedIssueNumbers("Fix #42 auth bug", null)).toEqual([42]);
+  });
+
+  it("extracts issue numbers from body", () => {
+    expect(extractLinkedIssueNumbers(null, "Closes #7 and fixes #12")).toEqual([7, 12]);
+  });
+
+  it("extracts from both title and body", () => {
+    expect(extractLinkedIssueNumbers("PR for #5", "Also fixes #10")).toEqual([5, 10]);
+  });
+
+  it("deduplicates", () => {
+    expect(extractLinkedIssueNumbers("Fix #42", "Closes #42")).toEqual([42]);
+  });
+
+  it("returns empty when no issue references", () => {
+    expect(extractLinkedIssueNumbers("Add feature", "No issues here")).toEqual([]);
+    expect(extractLinkedIssueNumbers(null, null)).toEqual([]);
   });
 });

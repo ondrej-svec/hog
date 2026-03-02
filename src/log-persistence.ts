@@ -34,7 +34,7 @@ function readLog(): PersistedLogEntry[] {
 
 function writeLog(entries: PersistedLogEntry[]): void {
   mkdirSync(dirname(LOG_FILE), { recursive: true });
-  writeFileSync(LOG_FILE, JSON.stringify(entries, null, 2), "utf-8");
+  writeFileSync(LOG_FILE, JSON.stringify(entries, null, 2), { encoding: "utf-8", mode: 0o600 });
 }
 
 export function appendActionLog(entry: PersistedLogEntry): void {

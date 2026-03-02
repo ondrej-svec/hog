@@ -107,7 +107,7 @@ describe("hog init wizard", () => {
     const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
     const saved = JSON.parse(savedJson);
 
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     expect(saved.repos).toHaveLength(1);
     expect(saved.repos[0].name).toBe("org/repo-one");
     expect(saved.repos[0].shortName).toBe("repo-one");
@@ -117,7 +117,6 @@ describe("hog init wizard", () => {
     expect(saved.board.assignee).toBe("test-user");
     expect(saved.board.refreshInterval).toBe(60);
     expect(saved.board.focusDuration).toBe(1500);
-    expect(saved.ticktick.enabled).toBe(false);
   });
 
   it("should prompt for overwrite when config exists and force not set", async () => {

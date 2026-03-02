@@ -36,7 +36,7 @@ function makeUiState(overrides: Partial<UIState> = {}): UIState {
 }
 
 const BASE_CONFIG: HogConfig = {
-  version: 3,
+  version: 4,
   repos: [],
   board: {
     assignee: "me",
@@ -44,7 +44,6 @@ const BASE_CONFIG: HogConfig = {
     backlogLimit: 20,
     focusDuration: 1500,
   },
-  ticktick: { enabled: false },
   profiles: {},
 };
 
@@ -85,6 +84,12 @@ function makeBaseProps(overrides: Partial<OverlayRendererProps> = {}): OverlayRe
     selectedRepoConfig: null,
     onToastInfo: vi.fn(),
     onToastError: vi.fn(),
+    workflowPhases: [],
+    onWorkflowAction: vi.fn(),
+    nudgeCandidates: [],
+    onNudgeAction: vi.fn(),
+    triageCandidates: [],
+    onTriageAction: vi.fn(),
     ...overrides,
   };
 }

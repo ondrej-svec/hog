@@ -175,6 +175,57 @@ function createDateField(owner: string, projectNumber: number, fieldName: string
   }
 }
 
+// ── Auto-Status setup ──
+
+async function promptAutoStatus(
+  statusOptions: GhProjectFieldOption[],
+): Promise<RepoConfig["autoStatus"]> {
+  const enableAutoStatus = await confirm({
+    message: "  Enable auto-status updates (move issues on branch/PR events)?",
+    default: false,
+  });
+  if (!enableAutoStatus) return undefined;
+
+  if (statusOptions.length === 0) {
+    console.log("  No status options detected — skipping trigger configuration.");
+    return { enabled: true };
+  }
+
+  const noChange = "__none__";
+  const choices = [
+    { name: "(no auto-change)", value: noChange },
+    ...statusOptions.map((o) => ({ name: o.name, value: o.name })),
+  ];
+
+  const branchCreated = await select<string>({
+    message: "  When a branch is created → move to:",
+    choices,
+    default: statusOptions.find((o) => /in.?progress/i.test(o.name))?.name ?? noChange,
+  });
+
+  const prOpened = await select<string>({
+    message: "  When a PR is opened → move to:",
+    choices,
+    default: statusOptions.find((o) => /review/i.test(o.name))?.name ?? noChange,
+  });
+
+  const prMerged = await select<string>({
+    message: "  When a PR is merged → move to:",
+    choices,
+    default: statusOptions.find((o) => /done/i.test(o.name))?.name ?? noChange,
+  });
+
+  const triggers: Record<string, string> = {};
+  if (branchCreated !== noChange) triggers["branchCreated"] = branchCreated;
+  if (prOpened !== noChange) triggers["prOpened"] = prOpened;
+  if (prMerged !== noChange) triggers["prMerged"] = prMerged;
+
+  return {
+    enabled: true,
+    ...(Object.keys(triggers).length > 0 ? { triggers } : {}),
+  };
+}
+
 // ── Wizard ──
 
 export interface InitOptions {
@@ -359,6 +410,9 @@ async function runWizard(opts: InitOptions): Promise<void> {
       default: name,
     });
 
+    // Auto-status updates
+    const autoStatus = await promptAutoStatus(statusInfo?.options ?? []);
+
     repos.push({
       name: repoName,
       shortName,
@@ -366,18 +420,11 @@ async function runWizard(opts: InitOptions): Promise<void> {
       statusFieldId,
       ...(dueDateFieldId ? { dueDateFieldId } : {}),
       completionAction,
+      ...(autoStatus ? { autoStatus } : {}),
     });
   }
 
-  // Step 6: TickTick integration (disabled by default, enable with `hog config ticktick:enable`)
-  const ticktickAlreadyEnabled = existsSync(`${CONFIG_DIR}/auth.json`);
-  let ticktickAuth = false;
-  if (ticktickAlreadyEnabled) {
-    ticktickAuth = true;
-    console.log("TickTick auth found — integration enabled.");
-  }
-
-  // Step 7: Board defaults
+  // Step 6: Board defaults
   console.log("\nBoard settings:");
   const refreshInterval = await input({
     message: "  Refresh interval (seconds):",
@@ -416,20 +463,54 @@ async function runWizard(opts: InitOptions): Promise<void> {
     console.log("  Skipped. You can add it later: hog config ai:set-key");
   }
 
-  // Step 9: Build and write config
+  // Step 9: Workflow template selection
+  console.log("\nWorkflow template (optional):");
+  console.log(
+    "  Workflow templates configure AI agent phases (brainstorm, plan, implement, review)",
+  );
+  console.log("  and auto-status transitions for your issues.\n");
+  const { BUILTIN_TEMPLATES, applyTemplateToBoard } = await import("./workflow-template.js");
+  const templateChoice = await select<string>({
+    message: "Choose a workflow template:",
+    choices: [
+      {
+        name: "Full — brainstorm, plan, implement, review, compound",
+        value: "full",
+      },
+      { name: "None — configure manually later", value: "none" },
+    ],
+  });
+
+  let boardWorkflow: HogConfig["board"]["workflow"];
+  if (templateChoice !== "none") {
+    const template = BUILTIN_TEMPLATES[templateChoice];
+    if (template) {
+      const baseBoard = {
+        refreshInterval: Number.parseInt(refreshInterval, 10) || 60,
+        backlogLimit: Number.parseInt(backlogLimit, 10) || 20,
+        assignee: login,
+        focusDuration: Number.parseInt(focusDuration, 10) || 1500,
+      };
+      const applied = applyTemplateToBoard(template, baseBoard);
+      boardWorkflow = applied.workflow;
+      console.log(`  Applied "${template.name}" template.`);
+    }
+  } else {
+    console.log("  Skipped. You can import a template later: hog workflow import <file>");
+  }
+
+  // Step 10: Build and write config
   const existingConfig = configExists ? loadFullConfig() : undefined;
   const config: HogConfig = {
-    version: 3,
-    defaultProjectId: existingConfig?.defaultProjectId,
-    defaultProjectName: existingConfig?.defaultProjectName,
+    version: 4,
     repos,
     board: {
       refreshInterval: Number.parseInt(refreshInterval, 10) || 60,
       backlogLimit: Number.parseInt(backlogLimit, 10) || 20,
       assignee: login,
       focusDuration: Number.parseInt(focusDuration, 10) || 1500,
+      workflow: boardWorkflow,
     },
-    ticktick: { enabled: ticktickAuth },
     profiles: existingConfig?.profiles ?? {},
   };
 
@@ -437,7 +518,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
   console.log(`\nConfig written to ${CONFIG_DIR}/config.json`);
   console.log("\nSetup complete! Try:\n");
   console.log("  hog board --live    # Interactive dashboard");
-  console.log("  hog task list       # List TickTick tasks");
   console.log("  hog config show     # View configuration\n");
 }
 
@@ -588,6 +668,9 @@ async function runReposAddWizard(initialRepoName?: string): Promise<void> {
     default: name,
   });
 
+  // Auto-status updates
+  const autoStatus = await promptAutoStatus(statusInfo?.options ?? []);
+
   const newRepo: RepoConfig = {
     name: repoName,
     shortName,
@@ -595,6 +678,7 @@ async function runReposAddWizard(initialRepoName?: string): Promise<void> {
     statusFieldId,
     ...(dueDateFieldId ? { dueDateFieldId } : {}),
     completionAction,
+    ...(autoStatus ? { autoStatus } : {}),
   };
 
   cfg.repos.push(newRepo);

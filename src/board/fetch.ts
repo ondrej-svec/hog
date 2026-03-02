@@ -1,11 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { TickTickClient } from "../api.js";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { requireAuth } from "../config.js";
 import type { GitHubIssue, StatusOption } from "../github.js";
 import { fetchProjectEnrichment, fetchProjectStatusOptions, fetchRepoIssues } from "../github.js";
-import type { Task } from "../types.js";
-import { TaskStatus } from "../types.js";
 import { formatError } from "../utils.js";
 
 export interface RepoData {
@@ -16,18 +12,30 @@ export interface RepoData {
 }
 
 export interface ActivityEvent {
-  type: "comment" | "status" | "assignment" | "opened" | "closed" | "labeled";
+  type:
+    | "comment"
+    | "status"
+    | "assignment"
+    | "opened"
+    | "closed"
+    | "labeled"
+    | "branch_created"
+    | "pr_opened"
+    | "pr_merged"
+    | "pr_closed";
   repoShortName: string;
   issueNumber: number;
   actor: string;
   summary: string;
   timestamp: Date;
+  /** For branch_created events: the full branch name */
+  branchName?: string | undefined;
+  /** For pr_* events: the PR number (distinct from linked issueNumber) */
+  prNumber?: number | undefined;
 }
 
 export interface DashboardData {
   repos: RepoData[];
-  ticktick: Task[];
-  ticktickError: string | null;
   activity: ActivityEvent[];
   fetchedAt: Date;
 }
@@ -46,6 +54,22 @@ export function extractSlackUrl(body: string | undefined): string | undefined {
   return match?.[0];
 }
 
+/** Extract issue numbers from a branch name (e.g. "feat/42-add-auth" → [42]) */
+export function extractIssueNumbersFromBranch(branchName: string): number[] {
+  // Find numbers that look like issue numbers (1-5 digits, word boundary)
+  const matches = branchName.match(/\b(\d{1,5})\b/g);
+  if (!matches) return [];
+  return [...new Set(matches.map((m) => parseInt(m, 10)).filter((n) => n > 0))];
+}
+
+/** Extract issue numbers linked in PR title/body (e.g. "Fixes #42" → [42]) */
+export function extractLinkedIssueNumbers(title: string | null, body: string | null): number[] {
+  const text = `${title ?? ""} ${body ?? ""}`;
+  const matches = text.match(/#(\d{1,5})\b/g);
+  if (!matches) return [];
+  return [...new Set(matches.map((m) => parseInt(m.slice(1), 10)).filter((n) => n > 0))];
+}
+
 /** Fetch recent activity events for a repo (last 24h, max 30 events) */
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub event types
 export function fetchRecentActivity(repoName: string, shortName: string): ActivityEvent[] {
@@ -55,9 +79,10 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
       [
         "api",
         `repos/${repoName}/events`,
-        "--paginate",
+        "-f",
+        "per_page=30",
         "-q",
-        '.[] | select(.type == "IssuesEvent" or .type == "IssueCommentEvent" or .type == "PullRequestEvent") | {type: .type, actor: .actor.login, action: .payload.action, number: (.payload.issue.number // .payload.pull_request.number), title: (.payload.issue.title // .payload.pull_request.title), body: .payload.comment.body, created_at: .created_at}',
+        '.[] | select(.type == "IssuesEvent" or .type == "IssueCommentEvent" or .type == "PullRequestEvent" or .type == "CreateEvent") | {type: .type, actor: .actor.login, action: .payload.action, number: (.payload.issue.number // .payload.pull_request.number), title: (.payload.issue.title // .payload.pull_request.title), body: (.payload.comment.body // .payload.pull_request.body), created_at: .created_at, ref: .payload.ref, ref_type: .payload.ref_type, merged: .payload.pull_request.merged}',
       ],
       { encoding: "utf-8", timeout: 15_000 },
     );
@@ -76,14 +101,38 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
           title: string | null;
           body: string | null;
           created_at: string;
+          ref: string | null;
+          ref_type: string | null;
+          merged: boolean | null;
         };
 
         const timestamp = new Date(ev.created_at);
         if (timestamp.getTime() < cutoff) continue;
+
+        // CreateEvent (branch creation) has no issue/PR number — handled separately
+        if (ev.type === "CreateEvent") {
+          if (ev.ref_type !== "branch" || !ev.ref) continue;
+          // Extract issue numbers from branch name (e.g. "feat/42-add-auth" → 42)
+          const issueNumbers = extractIssueNumbersFromBranch(ev.ref);
+          for (const num of issueNumbers) {
+            events.push({
+              type: "branch_created",
+              repoShortName: shortName,
+              issueNumber: num,
+              actor: ev.actor,
+              summary: `created branch ${ev.ref}`,
+              timestamp,
+              branchName: ev.ref,
+            });
+          }
+          continue;
+        }
+
         if (!ev.number) continue;
 
         let eventType: ActivityEvent["type"];
         let summary: string;
+        let extras: Partial<Pick<ActivityEvent, "prNumber">> = {};
 
         if (ev.type === "IssueCommentEvent") {
           eventType = "comment";
@@ -110,6 +159,48 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
             default:
               continue;
           }
+        } else if (ev.type === "PullRequestEvent") {
+          const prNumber = ev.number;
+          extras = { prNumber };
+          if (ev.action === "opened") {
+            eventType = "pr_opened";
+            summary = `opened PR #${prNumber}: ${ev.title ?? ""}`;
+          } else if (ev.action === "closed" && ev.merged) {
+            eventType = "pr_merged";
+            summary = `merged PR #${prNumber}: ${ev.title ?? ""}`;
+          } else if (ev.action === "closed") {
+            eventType = "pr_closed";
+            summary = `closed PR #${prNumber}`;
+          } else {
+            continue;
+          }
+
+          // For PR events, also create events for each linked issue number
+          const linkedIssues = extractLinkedIssueNumbers(ev.title, ev.body);
+          for (const issueNum of linkedIssues) {
+            events.push({
+              type: eventType,
+              repoShortName: shortName,
+              issueNumber: issueNum,
+              actor: ev.actor,
+              summary,
+              timestamp,
+              prNumber,
+            });
+          }
+          // If no linked issues, use the PR number as issueNumber
+          if (linkedIssues.length === 0) {
+            events.push({
+              type: eventType,
+              repoShortName: shortName,
+              issueNumber: prNumber,
+              actor: ev.actor,
+              summary,
+              timestamp,
+              prNumber,
+            });
+          }
+          continue;
         } else {
           continue;
         }
@@ -121,6 +212,7 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
           actor: ev.actor,
           summary,
           timestamp,
+          ...extras,
         });
       } catch {
         // Skip malformed event
@@ -188,22 +280,6 @@ export async function fetchDashboard(
     }
   });
 
-  // TickTick: async (uses HTTP API) — skip when disabled in config
-  let ticktick: Task[] = [];
-  let ticktickError: string | null = null;
-  if (config.ticktick.enabled) {
-    try {
-      const auth = requireAuth();
-      const api = new TickTickClient(auth.accessToken);
-      if (config.defaultProjectId) {
-        const tasks = await api.listTasks(config.defaultProjectId);
-        ticktick = tasks.filter((t) => t.status !== TaskStatus.Completed);
-      }
-    } catch (err) {
-      ticktickError = formatError(err);
-    }
-  }
-
   // Activity: fetch recent events from all repos (non-blocking, best-effort)
   const activity: ActivityEvent[] = [];
   for (const repo of repos) {
@@ -215,8 +291,6 @@ export async function fetchDashboard(
 
   return {
     repos: repoData,
-    ticktick,
-    ticktickError,
     activity: activity.slice(0, 15),
     fetchedAt: new Date(),
   };

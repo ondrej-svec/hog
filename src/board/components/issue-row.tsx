@@ -7,6 +7,12 @@ interface IssueRowProps {
   readonly isSelected: boolean;
   /** Outer panel width (including border chars). Used to compute title column width. */
   readonly panelWidth: number;
+  /** Short phase indicator (e.g. "plan", "impl") from enrichment sessions */
+  readonly phaseIndicator?: string | undefined;
+  /** Days the issue has been in its current status */
+  readonly statusAgeDays?: number | undefined;
+  /** Staleness thresholds (days) for color coding */
+  readonly stalenessConfig?: { warningDays: number; criticalDays: number } | undefined;
 }
 
 function truncate(s: string, max: number): string {
@@ -76,14 +82,39 @@ function labelColor(name: string): string {
   return "cyan";
 }
 
+/** Abbreviate phase name to 2-4 chars for compact display. */
+const PHASE_ABBREVS: Record<string, string> = {
+  research: "rs",
+  brainstorm: "bs",
+  plan: "pl",
+  implement: "im",
+  review: "rv",
+  compound: "cp",
+};
+
+export function abbreviatePhase(phase: string): string {
+  return PHASE_ABBREVS[phase] ?? phase.slice(0, 2);
+}
+
+/** Compute age color based on staleness thresholds. */
+export function ageColor(
+  days: number,
+  config?: { warningDays: number; criticalDays: number },
+): string | undefined {
+  const warning = config?.warningDays ?? 7;
+  const critical = config?.criticalDays ?? 14;
+  if (days >= critical) return "red";
+  if (days >= warning) return "yellow";
+  return undefined;
+}
+
 // ── Fixed column widths ──────────────────────────────────────────────────────
 //
 //   ► #1234  <title…>              [sM] [p:H]  username      in 4d
 //   2    7      titleW             13      1    10     1      10
 //
-// Inner width  = panelWidth - 2  (subtract │ on each side)
-// Fixed overhead = 2 + 7 + 1 + LABEL_W + 1 + ASSIGN_W + 1 + DATE_W = 35
-// titleW = innerW - fixed overhead
+// Phase indicator and age suffix are appended after the date column
+// only when present, using variable width (not fixed).
 //
 const CURSOR_W = 2; // "► " or "  "
 const NUM_W = 7; // "#xxxx  " (padEnd(5) + 1 space)
@@ -92,7 +123,15 @@ const ASSIGN_W = 10;
 const DATE_W = 10; // "3d overdue" fits in 10
 const FIXED_OVERHEAD = CURSOR_W + NUM_W + 1 + LABEL_W + 1 + ASSIGN_W + 1 + DATE_W;
 
-function IssueRow({ issue, selfLogin, isSelected, panelWidth }: IssueRowProps) {
+function IssueRow({
+  issue,
+  selfLogin,
+  isSelected,
+  panelWidth,
+  phaseIndicator,
+  statusAgeDays,
+  stalenessConfig,
+}: IssueRowProps) {
   const assignees = issue.assignees ?? [];
   const isSelf = assignees.some((a) => a.login === selfLogin);
   const isUnassigned = assignees.length === 0;
@@ -110,6 +149,9 @@ function IssueRow({ issue, selfLogin, isSelected, panelWidth }: IssueRowProps) {
   const titleW = Math.max(8, innerW - FIXED_OVERHEAD);
   const titleStr = truncate(issue.title, titleW).padEnd(titleW);
   const dateStr = date.text.padStart(DATE_W);
+
+  // Age suffix — only shown when stale (above warning threshold)
+  const ageColorVal = statusAgeDays != null ? ageColor(statusAgeDays, stalenessConfig) : undefined;
 
   return (
     <Box>
@@ -157,6 +199,14 @@ function IssueRow({ issue, selfLogin, isSelected, panelWidth }: IssueRowProps) {
 
       {/* Date — target date takes priority over updatedAt */}
       <Text color={date.color}>{dateStr}</Text>
+
+      {/* Phase indicator — appended after date, only when present */}
+      {phaseIndicator ? <Text color="magenta"> {abbreviatePhase(phaseIndicator)}</Text> : null}
+
+      {/* Age suffix — only shown when stale (above warning threshold) */}
+      {ageColorVal && statusAgeDays != null ? (
+        <Text color={ageColorVal}> [{String(statusAgeDays)}d]</Text>
+      ) : null}
     </Box>
   );
 }

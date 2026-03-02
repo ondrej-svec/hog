@@ -35,7 +35,7 @@ const SHORTCUTS = [
   {
     category: "Actions",
     items: [
-      { key: "p", desc: "Pick issue (assign + TickTick)" },
+      { key: "p", desc: "Pick issue (assign to self)" },
       { key: "a", desc: "Assign to self (no-op if already assigned)" },
       { key: "u", desc: "Undo last reversible action" },
       { key: "e", desc: "Edit issue in $EDITOR (title, assignee, status, labels)" },
@@ -48,6 +48,8 @@ const SHORTCUTS = [
       { key: "I", desc: "Natural-language issue create" },
       { key: "l", desc: "Manage labels" },
       { key: "C", desc: "Launch Claude Code session for this issue" },
+      { key: "W", desc: "Open workflow overlay (phase-aware launch)" },
+      { key: "T", desc: "Open triage overlay (batch agent launch)" },
     ],
   },
   {

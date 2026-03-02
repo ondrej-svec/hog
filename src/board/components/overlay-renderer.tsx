@@ -2,7 +2,9 @@ import type { HogConfig, RepoConfig } from "../../config.js";
 import type { GitHubIssue, LabelOption, StatusOption } from "../../github.js";
 import type { RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "../hooks/use-action-log.js";
+import type { NudgeCandidate } from "../hooks/use-nudges.js";
 import type { UIState } from "../hooks/use-ui-state.js";
+import type { PhaseStatus } from "../hooks/use-workflow-state.js";
 import type { BulkAction } from "./bulk-action-menu.js";
 import { BulkActionMenu } from "./bulk-action-menu.js";
 import { CommentInput } from "./comment-input.js";
@@ -15,8 +17,14 @@ import { FuzzyPicker } from "./fuzzy-picker.js";
 import { HelpOverlay } from "./help-overlay.js";
 import { LabelPicker } from "./label-picker.js";
 import { NlCreateOverlay } from "./nl-create-overlay.js";
+import type { NudgeAction } from "./nudge-overlay.js";
+import { NudgeOverlay } from "./nudge-overlay.js";
 import { SearchBar } from "./search-bar.js";
 import { StatusPicker } from "./status-picker.js";
+import type { TriageAction } from "./triage-overlay.js";
+import { TriageOverlay } from "./triage-overlay.js";
+import type { WorkflowAction } from "./workflow-overlay.js";
+import { WorkflowOverlay } from "./workflow-overlay.js";
 
 export interface OverlayRendererProps {
   readonly uiState: UIState;
@@ -44,7 +52,7 @@ export interface OverlayRendererProps {
   readonly onCancelPick: () => void;
   // Bulk action
   readonly multiSelectCount: number;
-  readonly multiSelectType: "github" | "ticktick" | "mixed";
+  readonly multiSelectType: "github" | "mixed";
   readonly onBulkAction: (action: BulkAction) => void;
   // Focus mode
   readonly focusLabel: string | null;
@@ -73,6 +81,16 @@ export interface OverlayRendererProps {
   readonly onToastInfo: (msg: string) => void;
   readonly onToastError: (msg: string) => void;
   readonly onPushEntry?: ((entry: ActionLogEntry) => void) | undefined;
+  // Workflow overlay
+  readonly workflowPhases: PhaseStatus[];
+  readonly workflowLatestSessionId?: string | undefined;
+  readonly onWorkflowAction: (action: WorkflowAction) => void;
+  // Nudge overlay
+  readonly nudgeCandidates: NudgeCandidate[];
+  readonly onNudgeAction: (action: NudgeAction) => void;
+  // Triage overlay
+  readonly triageCandidates: NudgeCandidate[];
+  readonly onTriageAction: (action: TriageAction) => void;
 }
 
 /** Renders whichever overlay is active based on uiMode. */
@@ -114,6 +132,13 @@ function OverlayRenderer({
   onToastInfo,
   onToastError,
   onPushEntry,
+  workflowPhases,
+  workflowLatestSessionId,
+  onWorkflowAction,
+  nudgeCandidates,
+  onNudgeAction,
+  triageCandidates,
+  onTriageAction,
 }: OverlayRendererProps) {
   const { mode, helpVisible } = uiState;
 
@@ -234,6 +259,39 @@ function OverlayRenderer({
           onToastInfo={onToastInfo}
           onToastError={onToastError}
           {...(onPushEntry ? { onPushEntry } : {})}
+        />
+      ) : null}
+
+      {/* Workflow overlay */}
+      {mode === "overlay:workflow" && selectedIssue && selectedRepoName ? (
+        <WorkflowOverlay
+          issue={selectedIssue}
+          repoName={selectedRepoName}
+          phases={workflowPhases}
+          latestSessionId={workflowLatestSessionId}
+          onAction={onWorkflowAction}
+          onCancel={onExitOverlay}
+        />
+      ) : null}
+
+      {/* Nudge overlay */}
+      {mode === "overlay:nudge" && nudgeCandidates.length > 0 ? (
+        <NudgeOverlay
+          candidates={nudgeCandidates}
+          onAction={onNudgeAction}
+          onCancel={onExitOverlay}
+        />
+      ) : null}
+
+      {/* Triage overlay */}
+      {mode === "overlay:triage" && triageCandidates.length > 0 ? (
+        <TriageOverlay
+          candidates={triageCandidates}
+          phases={
+            config.board.workflow?.defaultPhases ?? ["brainstorm", "plan", "implement", "review"]
+          }
+          onAction={onTriageAction}
+          onCancel={onExitOverlay}
         />
       ) : null}
     </>

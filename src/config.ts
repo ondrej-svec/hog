@@ -8,9 +8,6 @@ const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
 const AUTH_SCHEMA = z.object({
-  accessToken: z.string(),
-  clientId: z.string(),
-  clientSecret: z.string(),
   openrouterApiKey: z.string().optional(),
 });
 
@@ -31,6 +28,36 @@ const CLAUDE_START_COMMAND_SCHEMA = z.object({
   extraArgs: z.array(z.string()),
 });
 
+export const AUTO_STATUS_SCHEMA = z
+  .object({
+    enabled: z.boolean().default(false),
+    triggers: z
+      .object({
+        branchCreated: z.string().optional(),
+        prOpened: z.string().optional(),
+        prMerged: z.string().optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
+export const WORKFLOW_CONFIG_SCHEMA = z
+  .object({
+    mode: z.enum(["suggested", "freeform"]).default("suggested"),
+    phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
+    phasePrompts: z.record(z.string(), z.string()).optional(),
+    phaseDefaults: z
+      .record(
+        z.string(),
+        z.object({
+          mode: z.enum(["interactive", "background", "either"]).default("either"),
+          allowedTools: z.array(z.string()).optional(),
+        }),
+      )
+      .optional(),
+  })
+  .optional();
+
 const REPO_CONFIG_SCHEMA = z.object({
   name: z.string().regex(REPO_NAME_PATTERN, "Must be owner/repo format"),
   shortName: z.string().min(1),
@@ -49,6 +76,8 @@ const REPO_CONFIG_SCHEMA = z.object({
     .optional(),
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
+  workflow: WORKFLOW_CONFIG_SCHEMA,
+  autoStatus: AUTO_STATUS_SCHEMA,
 });
 
 const BOARD_CONFIG_SCHEMA = z.object({
@@ -62,25 +91,37 @@ const BOARD_CONFIG_SCHEMA = z.object({
   claudeTerminalApp: z
     .enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"])
     .optional(),
-});
-
-const TICKTICK_CONFIG_SCHEMA = z.object({
-  enabled: z.boolean().default(true),
+  workflow: z
+    .object({
+      defaultMode: z.enum(["suggested", "freeform"]).default("suggested"),
+      defaultPhases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
+      phasePrompts: z.record(z.string(), z.string()).optional(),
+      staleness: z
+        .object({
+          warningDays: z.number().default(7),
+          criticalDays: z.number().default(14),
+        })
+        .optional(),
+      maxConcurrentAgents: z.number().default(3),
+      notifications: z
+        .object({
+          os: z.boolean().default(false),
+          sound: z.boolean().default(false),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 const PROFILE_SCHEMA = z.object({
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
   board: BOARD_CONFIG_SCHEMA,
-  ticktick: TICKTICK_CONFIG_SCHEMA.default({ enabled: true }),
 });
 
 const HOG_CONFIG_SCHEMA = z.object({
-  version: z.number().int().default(3),
-  defaultProjectId: z.string().optional(),
-  defaultProjectName: z.string().optional(),
+  version: z.number().int().default(4),
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
   board: BOARD_CONFIG_SCHEMA,
-  ticktick: TICKTICK_CONFIG_SCHEMA.default({ enabled: true }),
   profiles: z.record(z.string(), PROFILE_SCHEMA).default({}),
   defaultProfile: z.string().optional(),
 });
@@ -110,14 +151,29 @@ function migrateConfig(raw: Record<string, unknown>): HogConfig {
     };
   }
 
-  const currentVersion = typeof raw["version"] === "number" ? raw["version"] : 2;
-  if (currentVersion < 3) {
-    // v2 → v3: Add ticktick config, infer enabled from auth.json presence
-    raw = {
-      ...raw,
-      version: 3,
-      ticktick: { enabled: existsSync(AUTH_FILE) },
-    };
+  const v2Version = typeof raw["version"] === "number" ? raw["version"] : 2;
+  if (v2Version < 3) {
+    raw = { ...raw, version: 3 };
+  }
+
+  const v3Version = typeof raw["version"] === "number" ? raw["version"] : 3;
+  if (v3Version < 4) {
+    // v3 → v4: Remove TickTick fields, add workflow schema fields
+    const { ticktick: _, defaultProjectId: _dpid, defaultProjectName: _dpn, ...rest } = raw;
+    raw = { ...rest, version: 4 };
+
+    // Clean up auth.json: remove TickTick OAuth fields
+    if (existsSync(AUTH_FILE)) {
+      try {
+        const authRaw = JSON.parse(readFileSync(AUTH_FILE, "utf-8")) as Record<string, unknown>;
+        const { accessToken: _at, clientId: _ci, clientSecret: _cs, ...authRest } = authRaw;
+        if (Object.keys(authRest).length > 0) {
+          writeFileSync(AUTH_FILE, `${JSON.stringify(authRest, null, 2)}\n`, { mode: 0o600 });
+        }
+      } catch {
+        // Ignore auth.json parse errors during migration
+      }
+    }
   }
 
   return HOG_CONFIG_SCHEMA.parse(raw);
@@ -136,7 +192,7 @@ export function loadFullConfig(): HogConfig {
   }
 
   const version = typeof raw["version"] === "number" ? raw["version"] : 1;
-  if (version < 3) {
+  if (version < 4) {
     const migrated = migrateConfig(raw);
     saveFullConfig(migrated);
     return migrated;
@@ -162,7 +218,7 @@ function loadRawConfig(): Record<string, unknown> {
 /**
  * Resolve a profile from the config.
  * Priority: explicit profileName > config.defaultProfile > top-level config.
- * Returns a HogConfig with the resolved profile's repos/board/ticktick.
+ * Returns a HogConfig with the resolved profile's repos/board.
  */
 export function resolveProfile(
   config: HogConfig,
@@ -183,7 +239,7 @@ export function resolveProfile(
   }
 
   return {
-    resolved: { ...config, repos: profile.repos, board: profile.board, ticktick: profile.ticktick },
+    resolved: { ...config, repos: profile.repos, board: profile.board },
     activeProfile: name,
   };
 }
@@ -196,78 +252,41 @@ export function validateRepoName(name: string): boolean {
   return REPO_NAME_PATTERN.test(name);
 }
 
-// ── Legacy Config Access (backward compat) ──
-
-interface ConfigData {
-  defaultProjectId?: string;
-  defaultProjectName?: string;
-}
+// ── Auth Access ──
 
 function ensureDir(): void {
   mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
-export function getAuth(): AuthData | null {
-  if (!existsSync(AUTH_FILE)) return null;
+function loadAuth(): AuthData {
+  if (!existsSync(AUTH_FILE)) return {};
   try {
     const raw: unknown = JSON.parse(readFileSync(AUTH_FILE, "utf-8"));
     const result = AUTH_SCHEMA.safeParse(raw);
-    return result.success ? result.data : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveAuth(data: AuthData): void {
-  ensureDir();
-  writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, {
-    mode: 0o600,
-  });
-}
-
-export function getLlmAuth(): { provider: "openrouter"; apiKey: string } | null {
-  const auth = getAuth();
-  if (auth?.openrouterApiKey) return { provider: "openrouter", apiKey: auth.openrouterApiKey };
-  return null;
-}
-
-export function saveLlmAuth(openrouterApiKey: string): void {
-  const existing = getAuth();
-  const updated: AuthData = existing
-    ? { ...existing, openrouterApiKey }
-    : { accessToken: "", clientId: "", clientSecret: "", openrouterApiKey };
-  saveAuth(updated);
-}
-
-export function clearLlmAuth(): void {
-  const existing = getAuth();
-  if (!existing) return;
-  const { openrouterApiKey: _, ...rest } = existing;
-  saveAuth(rest as AuthData);
-}
-
-export function getConfig(): ConfigData {
-  if (!existsSync(CONFIG_FILE)) return {};
-  try {
-    return JSON.parse(readFileSync(CONFIG_FILE, "utf-8"));
+    return result.success ? result.data : {};
   } catch {
     return {};
   }
 }
 
-export function saveConfig(data: ConfigData): void {
+function saveAuth(data: AuthData): void {
   ensureDir();
-  const existing = getConfig();
-  writeFileSync(CONFIG_FILE, `${JSON.stringify({ ...existing, ...data }, null, 2)}\n`, {
-    mode: 0o600,
-  });
+  writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
 }
 
-export function requireAuth(): AuthData {
-  const auth = getAuth();
-  if (!auth) {
-    console.error("Not authenticated. Run `hog init` first.");
-    process.exit(1);
-  }
-  return auth;
+export function getLlmAuth(): { provider: "openrouter"; apiKey: string } | null {
+  const auth = loadAuth();
+  if (auth.openrouterApiKey) return { provider: "openrouter", apiKey: auth.openrouterApiKey };
+  return null;
+}
+
+export function saveLlmAuth(openrouterApiKey: string): void {
+  const existing = loadAuth();
+  saveAuth({ ...existing, openrouterApiKey });
+}
+
+export function clearLlmAuth(): void {
+  const existing = loadAuth();
+  const { openrouterApiKey: _, ...rest } = existing;
+  saveAuth(rest);
 }
