@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.21.0](https://github.com/ondrej-svec/hog/compare/hog-v1.20.0...hog-v1.21.0) (2026-03-02)
+
+
+### Features
+
+* **agents:** add background agent spawner, session hook, and activity panel ([79f0a41](https://github.com/ondrej-svec/hog/commit/79f0a418e42a5ac671adce1aaa05069a14a18c7f))
+* **agents:** wire background agent launch into dashboard ([229f360](https://github.com/ondrej-svec/hog/commit/229f360a21d6e5e616e0ba1aedc36eb907ba78d0))
+* **auto-status:** add useAutoStatus hook with event matching ([93697ee](https://github.com/ondrej-svec/hog/commit/93697eef8babbd0263463fbca9044500543f51fa))
+* **auto-status:** wire useAutoStatus hook and enrich issue rows ([c7332bd](https://github.com/ondrej-svec/hog/commit/c7332bd90f43687252b8a111dd101c4689eb405d))
+* **board:** add phase indicator and age suffix to issue rows ([edd114c](https://github.com/ondrej-svec/hog/commit/edd114c7df5cf3ce20396af51f6c473641fa124d))
+* **cli:** add workflow:show, workflow:export, workflow:import subcommands ([6a3a6ca](https://github.com/ondrej-svec/hog/commit/6a3a6cadf8c7147b4bc363f496b779220982913e))
+* **enrichment:** add enrichment state module and extend prompt templates ([500263c](https://github.com/ondrej-svec/hog/commit/500263cf7eb475883f1ae0cc494f0740a5b2c5f5))
+* **events:** add branch/PR event parsing to fetchRecentActivity ([26e17f2](https://github.com/ondrej-svec/hog/commit/26e17f2fabebbae96d101b2868274c17d4637bde))
+* **init:** add auto-status configuration to setup wizard ([0dce15c](https://github.com/ondrej-svec/hog/commit/0dce15cbe063baeb3bd42fecb86699ef8de12419))
+* **init:** add workflow template selection to setup wizard ([9c1562e](https://github.com/ondrej-svec/hog/commit/9c1562e85530cf9ad5e5a62e35078a6d67aa5494))
+* **notify:** add OS notification and sound support for agent completion ([80b9c2f](https://github.com/ondrej-svec/hog/commit/80b9c2f65f259e09fadee27caf81c44dc6e770ad))
+* **nudges:** add nudge system, triage overlay, and completion check ([df5b192](https://github.com/ondrej-svec/hog/commit/df5b192ced4d1147537ce9d55c3cfe4a9cd1cf99))
+* **templates:** add workflow template export/import/validate module ([933ca57](https://github.com/ondrej-svec/hog/commit/933ca5780b1cd0cfb15e0151681974da6fd709c7))
+* Workflow Conductor — remove TickTick, add workflow orchestration system ([1290e1f](https://github.com/ondrej-svec/hog/commit/1290e1f6ff44fc908495ec89176fa705f9aa0b93))
+* **workflow:** add hog workflow status CLI subcommand ([badb05e](https://github.com/ondrej-svec/hog/commit/badb05e3b722c5f991e38b621c31555b209967c5))
+* **workflow:** add workflow overlay, UI state, and workflow hook ([d355353](https://github.com/ondrej-svec/hog/commit/d355353a30a69d514e7937abd411acf3e13b3aa6))
+* **workflow:** wire workflow overlay into dashboard, keyboard, and help ([87663e3](https://github.com/ondrej-svec/hog/commit/87663e3c378ed5c0ba9d8f933524f892fbb2a10d))
+
+
+### Bug Fixes
+
+* resolve 22 code review findings (security, performance, quality) ([13a13f4](https://github.com/ondrej-svec/hog/commit/13a13f44834090315132af3f5837403788d2eae0))
+
 ## [1.20.0](https://github.com/ondrej-svec/hog/compare/hog-v1.19.0...hog-v1.20.0) (2026-02-28)
 
 

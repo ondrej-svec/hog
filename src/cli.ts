@@ -59,7 +59,7 @@ const program = new Command();
 program
   .name("hog")
   .description("Personal command deck — GitHub Projects dashboard with workflow orchestration")
-  .version("1.20.0") // x-release-please-version
+  .version("1.21.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
   .hook("preAction", (thisCommand) => {
