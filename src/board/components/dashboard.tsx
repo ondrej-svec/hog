@@ -453,15 +453,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     onEnrichmentChange: handleEnrichmentChange,
   });
 
-  // Auto-show daily nudge on first board open today
-  const dailyNudgeShownRef = useRef(false);
-  useEffect(() => {
-    if (nudges.shouldShowDailyNudge && !dailyNudgeShownRef.current && ui.canAct) {
-      dailyNudgeShownRef.current = true;
-      ui.enterNudge();
-    }
-  }, [nudges.shouldShowDailyNudge, ui]);
-
   // Auto-expand log when an error entry is pushed
   useEffect(() => {
     const last = logEntries[logEntries.length - 1];
@@ -768,6 +759,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     termSize.rows - CHROME_ROWS - overlayBarRows - toastRows - logPaneRows,
   );
   const issuesPanelHeight = Math.max(5, totalPanelHeight - ACTIVITY_HEIGHT);
+  // Rows available for content inside the Panel (title row + bottom border = 2 rows of chrome)
+  const contentRowCount = Math.max(1, issuesPanelHeight - 2);
 
   // Build flat rows for issues panel, enriched with phase indicators and age
   const flatRows = useMemo(() => {
@@ -812,18 +805,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   if (selectedRowIdx >= 0) {
     if (selectedRowIdx < scrollRef.current) {
       scrollRef.current = selectedRowIdx;
-    } else if (selectedRowIdx >= scrollRef.current + issuesPanelHeight) {
-      scrollRef.current = selectedRowIdx - issuesPanelHeight + 1;
+    } else if (selectedRowIdx >= scrollRef.current + contentRowCount) {
+      scrollRef.current = selectedRowIdx - contentRowCount + 1;
     }
   }
-  const maxOffset = Math.max(0, flatRows.length - issuesPanelHeight);
+  const maxOffset = Math.max(0, flatRows.length - contentRowCount);
   scrollRef.current = Math.max(0, Math.min(scrollRef.current, maxOffset));
 
-  const visibleRows = flatRows.slice(scrollRef.current, scrollRef.current + issuesPanelHeight);
+  const visibleRows = flatRows.slice(scrollRef.current, scrollRef.current + contentRowCount);
   const hasMoreAbove = scrollRef.current > 0;
-  const hasMoreBelow = scrollRef.current + issuesPanelHeight < flatRows.length;
+  const hasMoreBelow = scrollRef.current + contentRowCount < flatRows.length;
   const aboveCount = scrollRef.current;
-  const belowCount = flatRows.length - scrollRef.current - issuesPanelHeight;
+  const belowCount = flatRows.length - scrollRef.current - contentRowCount;
 
   // Find selected item for detail panel and overlays
   const selectedItem = useMemo((): {

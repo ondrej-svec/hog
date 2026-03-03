@@ -40,7 +40,7 @@ export interface RepoProjectConfig {
 const DATE_FIELD_NAME_RE = /^(target\s*date|due\s*date|due|deadline)$/i;
 
 function runGh(args: string[]): string {
-  return execFileSync("gh", args, { encoding: "utf-8", timeout: 30_000 }).trim();
+  return execFileSync("gh", args, { encoding: "utf-8", timeout: 30_000, stdio: "pipe" }).trim();
 }
 
 function runGhJson<T>(args: string[]): T {

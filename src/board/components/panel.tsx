@@ -40,7 +40,9 @@ export function Panel({ title, isActive, width, height, flexGrow, children }: Pa
 
   return (
     <Box flexDirection="column" width={width} height={height} flexGrow={flexGrow} overflow="hidden">
-      <Text color={color}>{topLine}</Text>
+      <Box flexShrink={0}>
+        <Text color={color}>{topLine}</Text>
+      </Box>
       <Box
         borderStyle="round"
         borderTop={false}
