@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.21.1](https://github.com/ondrej-svec/hog/compare/hog-v1.21.0...hog-v1.21.1) (2026-03-03)
+
+
+### Bug Fixes
+
+* **board:** restore issues panel top border and suppress gh stderr ([59668cb](https://github.com/ondrej-svec/hog/commit/59668cbc187a7ff487b93658bb7f08f67c366774))
+* **board:** suppress gh stderr in fetchRecentActivity ([006abb3](https://github.com/ondrej-svec/hog/commit/006abb34ca51c99350d326ae6d6e5990b07b1815))
+
 ## [1.21.0](https://github.com/ondrej-svec/hog/compare/hog-v1.20.0...hog-v1.21.0) (2026-03-02)
 
 
