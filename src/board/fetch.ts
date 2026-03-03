@@ -84,7 +84,7 @@ export function fetchRecentActivity(repoName: string, shortName: string): Activi
         "-q",
         '.[] | select(.type == "IssuesEvent" or .type == "IssueCommentEvent" or .type == "PullRequestEvent" or .type == "CreateEvent") | {type: .type, actor: .actor.login, action: .payload.action, number: (.payload.issue.number // .payload.pull_request.number), title: (.payload.issue.title // .payload.pull_request.title), body: (.payload.comment.body // .payload.pull_request.body), created_at: .created_at, ref: .payload.ref, ref_type: .payload.ref_type, merged: .payload.pull_request.merged}',
       ],
-      { encoding: "utf-8", timeout: 15_000 },
+      { encoding: "utf-8", timeout: 15_000, stdio: "pipe" },
     );
 
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
