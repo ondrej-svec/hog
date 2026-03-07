@@ -28,6 +28,8 @@ const SHORTCUTS = [
       { key: "F", desc: "Fuzzy find issue (telescope-style)" },
       { key: "t", desc: "Toggle @me filter (my issues only)" },
       { key: "f", desc: "Focus mode" },
+      { key: "Z", desc: "Zen mode (tmux split with Claude Code)" },
+      { key: "H", desc: "Toggle left panel (repos/statuses)" },
       { key: "?", desc: "Toggle help" },
       { key: "Esc", desc: "Close overlay / Back to normal" },
     ],

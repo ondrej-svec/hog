@@ -423,6 +423,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     setMineOnly((prev) => !prev);
   }, []);
 
+  // Left panel visibility
+  const [leftPanelHidden, setLeftPanelHidden] = useState(false);
+  const handleToggleLeftPanel = useCallback(() => {
+    setLeftPanelHidden((v) => !v);
+    // Auto-switch to issues panel if currently focused on a hidden panel
+    setActivePanelId((id) => (id === 1 || id === 2 ? 3 : id));
+  }, []);
+
   // Action log
   const [logVisible, setLogVisible] = useState(false);
   const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
@@ -739,12 +747,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Explicit widths for title-in-border rendering (usableWidth = cols - 2 for paddingX={1})
   const usableWidth = termSize.cols - 2;
+  const effectiveLeftWidth = leftPanelHidden ? 0 : LEFT_COL_WIDTH;
   const issuesPanelWidth = Math.max(
     20,
     layoutMode === "wide"
-      ? usableWidth - LEFT_COL_WIDTH - getDetailWidth(termSize.cols)
+      ? usableWidth - effectiveLeftWidth - getDetailWidth(termSize.cols)
       : layoutMode === "medium"
-        ? usableWidth - LEFT_COL_WIDTH
+        ? usableWidth - effectiveLeftWidth
         : usableWidth,
   );
   const activityPanelWidth = usableWidth;
@@ -1182,6 +1191,27 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     ui.enterTriage();
   }, [nudges.candidates.length, toast, ui]);
 
+  // Zen mode handlers
+  const handleExitZen = useCallback(() => {
+    ui.exitZen();
+  }, [ui]);
+
+  const handleEnterZen = useCallback(() => {
+    if (ui.state.mode === "zen") {
+      handleExitZen();
+      return;
+    }
+    if (!process.env["TMUX"]) {
+      toast.error("Zen mode requires tmux");
+      return;
+    }
+    if (termSize.cols < 100) {
+      toast.error("Terminal too narrow for Zen mode");
+      return;
+    }
+    ui.enterZen();
+  }, [ui, toast, termSize.cols, handleExitZen]);
+
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = "github" as const;
 
@@ -1307,6 +1337,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleLaunchClaude,
       handleEnterWorkflow,
       handleEnterTriage,
+      handleToggleLeftPanel,
+      handleToggleZen: handleEnterZen,
     },
     onSearchEscape,
     panelFocus,
@@ -1533,6 +1565,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         />
       ) : null}
 
+      {/* Zen mode: compact issue list only (right pane is a tmux split) */}
+      {ui.state.mode === "zen" ? (
+        <Box flexDirection="column" height={issuesPanelHeight + ACTIVITY_HEIGHT}>
+          <Panel title="Issues (Zen)" isActive width={usableWidth}>
+            {visibleRows.map((row) => (
+              <RowRenderer
+                key={row.key}
+                row={row}
+                selectedId={nav.selectedId}
+                selfLogin={config.board.assignee}
+                panelWidth={usableWidth}
+                stalenessConfig={config.board.workflow?.staleness}
+              />
+            ))}
+          </Panel>
+        </Box>
+      ) : null}
+
       {/* Main content: 5-panel layout (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
@@ -1543,7 +1593,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:detail" &&
       ui.state.mode !== "overlay:nudge" &&
       ui.state.mode !== "overlay:triage" &&
-      ui.state.mode !== "focus" ? (
+      ui.state.mode !== "focus" &&
+      ui.state.mode !== "zen" ? (
         <PanelLayout
           cols={termSize.cols}
           issuesPanelHeight={issuesPanelHeight}
@@ -1552,6 +1603,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           issuesPanel={issuesPanel}
           detailPanel={detailPanel}
           activityPanel={activityPanel}
+          hideLeftPanel={leftPanelHidden}
         />
       ) : null}
 

@@ -35,6 +35,10 @@ describe("canNavigate", () => {
     ).toBe(false);
   });
 
+  it("returns true for zen mode", () => {
+    expect(canNavigate({ mode: "zen", helpVisible: false, previousMode: "normal" })).toBe(true);
+  });
+
   it("returns false for search", () => {
     expect(canNavigate({ mode: "search", helpVisible: false, previousMode: "normal" })).toBe(false);
   });
@@ -813,6 +817,74 @@ describe("useUIState hook", () => {
     ui.exitOverlay();
     await delay(50);
     expect(instance.lastFrame()!).toContain("mode:multiSelect");
+
+    instance.unmount();
+  });
+
+  it("should transition to zen mode from normal", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterZen();
+    await delay(50);
+
+    const frame = instance.lastFrame()!;
+    expect(frame).toContain("mode:zen");
+    expect(frame).toContain("canNav:yes");
+    expect(frame).toContain("canAct:no");
+    expect(frame).toContain("isOverlay:no");
+
+    instance.unmount();
+  });
+
+  it("should block enterZen from non-normal mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterSearch();
+    await delay(50);
+
+    ui.enterZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
+
+  it("should return from zen to normal via exitZen", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:zen");
+
+    ui.exitZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("should ignore exitZen when not in zen mode", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.exitZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
 
     instance.unmount();
   });
