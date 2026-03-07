@@ -118,6 +118,23 @@ describe("tmux-pane utilities", () => {
       );
     });
 
+    it("passes title and url as separate printf args to prevent shell injection", () => {
+      execFileSync.mockClear();
+      execFileSync.mockReturnValue("%8\n");
+      const maliciousTitle = "$(rm -rf /)";
+      splitWithInfo({ title: maliciousTitle, url: "https://example.com" }, 65);
+      const args = execFileSync.mock.calls[0]?.[1] as string[];
+      // Title and URL must be separate argv elements after the printf format string
+      expect(args).toContain(maliciousTitle);
+      expect(args).toContain("https://example.com");
+      // The format string must use %s placeholders, not interpolated values
+      const fmtIdx = args.indexOf("printf");
+      expect(fmtIdx).toBeGreaterThan(-1);
+      const fmtStr = args[fmtIdx + 1];
+      expect(fmtStr).toContain("%s");
+      expect(fmtStr).not.toContain(maliciousTitle);
+    });
+
     it("returns null on failure", () => {
       execFileSync.mockImplementation(() => {
         throw new Error("split failed");

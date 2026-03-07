@@ -1313,6 +1313,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       setZenIsAgentPane(false);
     }
 
+    if (!newPaneId) {
+      // Pane creation failed — exit zen to avoid broken state
+      setZenPaneId(null);
+      setZenIsAgentPane(false);
+      ui.exitZen();
+      toast.error("Zen pane lost — exiting zen mode");
+      return;
+    }
+
     setZenPaneId(newPaneId);
   }, [ui.state.mode, zenPaneId, zenIsAgentPane, nav.selectedId, repos]);
 

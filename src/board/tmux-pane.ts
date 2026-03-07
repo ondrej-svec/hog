@@ -83,7 +83,8 @@ export function splitWithInfo(
   widthPercent: number,
 ): string | null {
   try {
-    const infoText = `Issue: ${info.title}\n\nURL: ${info.url}\n\nNo Claude Code session active.\nPress C to launch one.`;
+    // Use printf with %s to safely inject user-controlled text (title/url)
+    // without shell interpretation. Each %s is a separate argv element.
     const paneId = execFileSync(
       "tmux",
       [
@@ -95,10 +96,10 @@ export function splitWithInfo(
         "-P",
         "-F",
         "#{pane_id}",
-        "echo",
-        infoText,
-        "&&",
-        "read",
+        "printf",
+        "Issue: %s\\n\\nURL: %s\\n\\nNo Claude Code session active.\\nPress C to launch one.\\n",
+        info.title,
+        info.url,
       ],
       {
         encoding: "utf-8",
