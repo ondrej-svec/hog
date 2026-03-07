@@ -872,7 +872,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Memoize workflow lookup for the selected issue to avoid repeated linear scans
   const selectedIssueWorkflow = useMemo(() => {
-    if (!selectedItem.issue || !selectedItem.repoName) return null;
+    if (!(selectedItem.issue && selectedItem.repoName)) return null;
     return workflowState.getIssueWorkflow(
       selectedItem.repoName,
       selectedItem.issue.number,
@@ -974,7 +974,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         }
       }, 500);
     }
-  }, [repos, nav.selectedId, config.repos, config.board, toast, ui.state.mode, zenPaneId, zenIsAgentPane]);
+  }, [
+    repos,
+    nav.selectedId,
+    config.repos,
+    config.board,
+    toast,
+    ui.state.mode,
+    zenPaneId,
+    zenIsAgentPane,
+  ]);
 
   // Workflow overlay handlers
   const handleEnterWorkflow = useCallback(() => {
@@ -1258,10 +1267,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       paneId = joinAgentPane(winName, 65);
       setZenIsAgentPane(true);
     } else {
-      paneId = splitWithInfo(
-        { title: found?.issue.title ?? "", url: found?.issue.url ?? "" },
-        65,
-      );
+      paneId = splitWithInfo({ title: found?.issue.title ?? "", url: found?.issue.url ?? "" }, 65);
       setZenIsAgentPane(false);
     }
 
