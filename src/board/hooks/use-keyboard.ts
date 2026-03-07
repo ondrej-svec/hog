@@ -56,6 +56,8 @@ interface UseKeyboardOptions {
   onActivityEnter: () => void;
   /** Whether the detail panel is visible as a side-by-side column (wide layout). */
   showDetailPanel: boolean;
+  /** Whether the left panel (repos/statuses) is hidden. */
+  leftPanelHidden: boolean;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -75,6 +77,7 @@ export function useKeyboard({
   onStatusEnter,
   onActivityEnter,
   showDetailPanel,
+  leftPanelHidden,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -273,8 +276,12 @@ export function useKeyboard({
       if (ui.canAct) {
         // Digit 0-4: focus panel by number.
         // On narrow layouts digit 0 opens the detail overlay (panel is not visible).
+        // When left panel is hidden, digits 1 and 2 are no-ops.
         const digit = parseInt(input, 10);
         if (!Number.isNaN(digit) && digit >= 0 && digit <= 4) {
+          if (leftPanelHidden && (digit === 1 || digit === 2)) {
+            return; // No-op: left panel is hidden
+          }
           if (digit === 0 && !showDetailPanel) {
             ui.enterDetail();
           } else {
@@ -431,6 +438,7 @@ export function useKeyboard({
       handleToggleLeftPanel,
       handleToggleZen,
       showDetailPanel,
+      leftPanelHidden,
     ],
   );
 

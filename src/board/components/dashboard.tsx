@@ -1459,6 +1459,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     onStatusEnter,
     onActivityEnter,
     showDetailPanel,
+    leftPanelHidden,
   });
 
   // Loading state

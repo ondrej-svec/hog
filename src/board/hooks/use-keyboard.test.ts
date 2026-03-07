@@ -162,6 +162,7 @@ interface HarnessOptions {
   multiSelectCount?: number;
   activePanelId?: PanelId;
   showDetailPanel?: boolean;
+  leftPanelHidden?: boolean;
 }
 
 interface Harness {
@@ -192,6 +193,7 @@ function setup(opts: HarnessOptions = {}): Harness {
     multiSelectCount = 0,
     activePanelId = 3,
     showDetailPanel = true,
+    leftPanelHidden = false,
   } = opts;
 
   // Clear captured handlers before each render
@@ -228,6 +230,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       onStatusEnter,
       onActivityEnter,
       showDetailPanel,
+      leftPanelHidden,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -943,6 +946,28 @@ describe("useKeyboard", () => {
       const { actions, fire } = setup({ mode: "zen" });
       fire("H");
       expect(actions.handleToggleLeftPanel).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Left panel hidden — digit guards ──
+
+  describe("digit keys when left panel is hidden", () => {
+    it("1 is a no-op when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("1");
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
+    });
+
+    it("2 is a no-op when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("2");
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
+    });
+
+    it("3 still works when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("3");
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(3);
     });
   });
 
