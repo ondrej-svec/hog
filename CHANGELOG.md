@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/ondrej-svec/hog/compare/hog-v1.22.0...hog-v1.22.1) (2026-03-07)
+
+
+### Bug Fixes
+
+* **board:** keep zen info pane alive with read after printf ([c7a475a](https://github.com/ondrej-svec/hog/commit/c7a475a5d328ba9c6e6e575fba62501ad5abeae8))
+
 ## [1.22.0](https://github.com/ondrej-svec/hog/compare/hog-v1.21.1...hog-v1.22.0) (2026-03-07)
 
 
