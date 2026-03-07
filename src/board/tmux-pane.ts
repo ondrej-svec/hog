@@ -83,8 +83,10 @@ export function splitWithInfo(
   widthPercent: number,
 ): string | null {
   try {
-    // Use printf with %s to safely inject user-controlled text (title/url)
-    // without shell interpretation. Each %s is a separate argv element.
+    // Use sh -c with positional parameters ($1, $2) to safely inject
+    // user-controlled text without shell interpretation. The title and url
+    // are passed as argv elements after "--", never parsed by the shell.
+    // `read _` keeps the pane alive until the user presses Enter or the pane is killed.
     const paneId = execFileSync(
       "tmux",
       [
@@ -96,8 +98,10 @@ export function splitWithInfo(
         "-P",
         "-F",
         "#{pane_id}",
-        "printf",
-        "Issue: %s\\n\\nURL: %s\\n\\nNo Claude Code session active.\\nPress C to launch one.\\n",
+        "sh",
+        "-c",
+        'printf "Issue: %s\\n\\nURL: %s\\n\\nNo Claude Code session active.\\nPress C to launch one.\\n" "$1" "$2"; read _',
+        "--",
         info.title,
         info.url,
       ],
