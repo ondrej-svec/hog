@@ -23,16 +23,8 @@ import { useNudges } from "../hooks/use-nudges.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
+import { useZenMode } from "../hooks/use-zen-mode.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
-import {
-  agentWindowName,
-  breakPane,
-  isPaneAlive,
-  joinAgentPane,
-  killPane,
-  splitWithInfo,
-  windowExists,
-} from "../tmux-pane.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
 import { AgentActivityPanel } from "./agent-activity-panel.js";
@@ -440,10 +432,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     setActivePanelId((id) => (id === 1 || id === 2 ? 3 : id));
   }, []);
 
-  // Zen mode tmux state (declared early so handleLaunchClaude can reference it)
-  const [zenPaneId, setZenPaneId] = useState<string | null>(null);
-  const [zenIsAgentPane, setZenIsAgentPane] = useState(false);
-
   // Action log
   const [logVisible, setLogVisible] = useState(false);
   const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
@@ -753,6 +741,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     };
   }, [stdout]);
 
+  // Zen mode (tmux pane orchestration)
+  const zen = useZenMode({
+    ui,
+    toast,
+    termCols: termSize.cols,
+    repos,
+    selectedId: nav.selectedId,
+  });
+
   const layoutMode = getLayoutMode(termSize.cols);
   const detailPanelWidth =
     layoutMode === "wide" ? getDetailWidth(termSize.cols) : Math.floor(termSize.cols * 0.35);
@@ -958,32 +955,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     toast.info(`Claude Code session opened in ${rc.shortName ?? found.repoName}`);
 
     // In zen mode: swap right pane to show the newly launched agent
-    if (ui.state.mode === "zen" && zenPaneId) {
-      if (zenIsAgentPane) {
-        breakPane(zenPaneId);
-      } else {
-        killPane(zenPaneId);
-      }
-      // Small delay for tmux window to be created
-      setTimeout(() => {
-        const winName = agentWindowName(found.issue.number);
-        if (windowExists(winName)) {
-          const newPaneId = joinAgentPane(winName, 65);
-          setZenPaneId(newPaneId);
-          setZenIsAgentPane(true);
-        }
-      }, 500);
-    }
-  }, [
-    repos,
-    nav.selectedId,
-    config.repos,
-    config.board,
-    toast,
-    ui.state.mode,
-    zenPaneId,
-    zenIsAgentPane,
-  ]);
+    zen.swapToAgent(found.issue.number);
+  }, [repos, nav.selectedId, config.repos, config.board, toast, zen]);
 
   // Workflow overlay handlers
   const handleEnterWorkflow = useCallback(() => {
@@ -1231,112 +1204,6 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     ui.enterTriage();
   }, [nudges.candidates.length, toast, ui]);
 
-  const handleExitZen = useCallback(() => {
-    if (zenPaneId) {
-      if (zenIsAgentPane) {
-        breakPane(zenPaneId);
-      } else {
-        killPane(zenPaneId);
-      }
-      setZenPaneId(null);
-      setZenIsAgentPane(false);
-    }
-    ui.exitZen();
-  }, [ui, zenPaneId, zenIsAgentPane]);
-
-  const handleEnterZen = useCallback(() => {
-    if (ui.state.mode === "zen") {
-      handleExitZen();
-      return;
-    }
-    if (!process.env["TMUX"]) {
-      toast.error("Zen mode requires tmux");
-      return;
-    }
-    if (termSize.cols < 100) {
-      toast.error("Terminal too narrow for Zen mode");
-      return;
-    }
-
-    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
-    const winName = found ? agentWindowName(found.issue.number) : null;
-    const hasAgent = winName ? windowExists(winName) : false;
-
-    let paneId: string | null;
-    if (hasAgent && winName) {
-      paneId = joinAgentPane(winName, 65);
-      setZenIsAgentPane(true);
-    } else {
-      paneId = splitWithInfo({ title: found?.issue.title ?? "", url: found?.issue.url ?? "" }, 65);
-      setZenIsAgentPane(false);
-    }
-
-    if (!paneId) {
-      toast.error("Failed to create tmux pane");
-      return;
-    }
-
-    setZenPaneId(paneId);
-    ui.enterZen();
-  }, [ui, toast, termSize.cols, handleExitZen, repos, nav.selectedId]);
-
-  // Zen mode: cursor-follow — swap pane when selected issue changes
-  const zenPrevSelectedRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (ui.state.mode !== "zen" || !zenPaneId) {
-      zenPrevSelectedRef.current = nav.selectedId;
-      return;
-    }
-    if (nav.selectedId === zenPrevSelectedRef.current) return;
-    zenPrevSelectedRef.current = nav.selectedId;
-
-    const found = findSelectedIssueWithRepo(repos, nav.selectedId);
-    if (!found) return;
-
-    // Clean up current right pane
-    if (zenIsAgentPane) {
-      breakPane(zenPaneId);
-    } else {
-      killPane(zenPaneId);
-    }
-
-    // Create new right pane
-    const winName = agentWindowName(found.issue.number);
-    const hasAgent = windowExists(winName);
-
-    let newPaneId: string | null;
-    if (hasAgent) {
-      newPaneId = joinAgentPane(winName, 65);
-      setZenIsAgentPane(true);
-    } else {
-      newPaneId = splitWithInfo({ title: found.issue.title, url: found.issue.url }, 65);
-      setZenIsAgentPane(false);
-    }
-
-    if (!newPaneId) {
-      // Pane creation failed — exit zen to avoid broken state
-      setZenPaneId(null);
-      setZenIsAgentPane(false);
-      ui.exitZen();
-      toast.error("Zen pane lost — exiting zen mode");
-      return;
-    }
-
-    setZenPaneId(newPaneId);
-  }, [ui.state.mode, zenPaneId, zenIsAgentPane, nav.selectedId, repos]);
-
-  // Zen mode: dead pane detection — auto-exit if tmux pane was killed externally
-  useEffect(() => {
-    if (ui.state.mode !== "zen" || !zenPaneId) return;
-    const interval = setInterval(() => {
-      if (!isPaneAlive(zenPaneId)) {
-        handleExitZen();
-        toast.info("Zen pane closed");
-      }
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [ui.state.mode, zenPaneId, handleExitZen, toast]);
-
   // Multi-select selection type (for bulk action menu)
   const multiSelectType = "github" as const;
 
@@ -1463,7 +1330,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleEnterWorkflow,
       handleEnterTriage,
       handleToggleLeftPanel,
-      handleToggleZen: handleEnterZen,
+      handleToggleZen: zen.handleToggleZen,
     },
     onSearchEscape,
     panelFocus,

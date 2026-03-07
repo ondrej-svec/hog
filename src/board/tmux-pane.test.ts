@@ -13,7 +13,6 @@ vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
 }));
 
-// eslint-disable-next-line @typescript-eslint/consistent-type-imports
 const { execFileSync } = vi.mocked(await import("node:child_process"));
 
 describe("tmux-pane utilities", () => {
