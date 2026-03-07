@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.0](https://github.com/ondrej-svec/hog/compare/hog-v1.21.1...hog-v1.22.0) (2026-03-07)
+
+
+### Features
+
+* **board:** Zen Mode & Collapsible Left Panel ([#55](https://github.com/ondrej-svec/hog/issues/55)) ([a43e5af](https://github.com/ondrej-svec/hog/commit/a43e5afa96677963051f7ef99ff9f2a985b580c4))
+
 ## [1.21.1](https://github.com/ondrej-svec/hog/compare/hog-v1.21.0...hog-v1.21.1) (2026-03-03)
 
 
