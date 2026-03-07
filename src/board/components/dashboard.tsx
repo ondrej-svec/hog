@@ -23,6 +23,7 @@ import { useNudges } from "../hooks/use-nudges.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
+import { useZenMode } from "../hooks/use-zen-mode.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
@@ -423,6 +424,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     setMineOnly((prev) => !prev);
   }, []);
 
+  // Left panel visibility
+  const [leftPanelHidden, setLeftPanelHidden] = useState(false);
+  const handleToggleLeftPanel = useCallback(() => {
+    setLeftPanelHidden((v) => !v);
+    // Auto-switch to issues panel if currently focused on a hidden panel
+    setActivePanelId((id) => (id === 1 || id === 2 ? 3 : id));
+  }, []);
+
   // Action log
   const [logVisible, setLogVisible] = useState(false);
   const { entries: logEntries, pushEntry, undoLast, hasUndoable } = useActionLog(toast, refresh);
@@ -732,6 +741,15 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     };
   }, [stdout]);
 
+  // Zen mode (tmux pane orchestration)
+  const zen = useZenMode({
+    ui,
+    toast,
+    termCols: termSize.cols,
+    repos,
+    selectedId: nav.selectedId,
+  });
+
   const layoutMode = getLayoutMode(termSize.cols);
   const detailPanelWidth =
     layoutMode === "wide" ? getDetailWidth(termSize.cols) : Math.floor(termSize.cols * 0.35);
@@ -739,12 +757,13 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Explicit widths for title-in-border rendering (usableWidth = cols - 2 for paddingX={1})
   const usableWidth = termSize.cols - 2;
+  const effectiveLeftWidth = leftPanelHidden ? 0 : LEFT_COL_WIDTH;
   const issuesPanelWidth = Math.max(
     20,
     layoutMode === "wide"
-      ? usableWidth - LEFT_COL_WIDTH - getDetailWidth(termSize.cols)
+      ? usableWidth - effectiveLeftWidth - getDetailWidth(termSize.cols)
       : layoutMode === "medium"
-        ? usableWidth - LEFT_COL_WIDTH
+        ? usableWidth - effectiveLeftWidth
         : usableWidth,
   );
   const activityPanelWidth = usableWidth;
@@ -850,7 +869,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
   // Memoize workflow lookup for the selected issue to avoid repeated linear scans
   const selectedIssueWorkflow = useMemo(() => {
-    if (!selectedItem.issue || !selectedItem.repoName) return null;
+    if (!(selectedItem.issue && selectedItem.repoName)) return null;
     return workflowState.getIssueWorkflow(
       selectedItem.repoName,
       selectedItem.issue.number,
@@ -934,7 +953,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     }
 
     toast.info(`Claude Code session opened in ${rc.shortName ?? found.repoName}`);
-  }, [repos, nav.selectedId, config.repos, config.board, toast]);
+
+    // In zen mode: swap right pane to show the newly launched agent
+    zen.swapToAgent(found.issue.number);
+  }, [repos, nav.selectedId, config.repos, config.board, toast, zen]);
 
   // Workflow overlay handlers
   const handleEnterWorkflow = useCallback(() => {
@@ -1307,6 +1329,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       handleLaunchClaude,
       handleEnterWorkflow,
       handleEnterTriage,
+      handleToggleLeftPanel,
+      handleToggleZen: zen.handleToggleZen,
     },
     onSearchEscape,
     panelFocus,
@@ -1317,6 +1341,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     onStatusEnter,
     onActivityEnter,
     showDetailPanel,
+    leftPanelHidden,
   });
 
   // Loading state
@@ -1533,6 +1558,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         />
       ) : null}
 
+      {/* Zen mode: compact issue list only (right pane is a tmux split) */}
+      {ui.state.mode === "zen" ? (
+        <Box flexDirection="column" height={issuesPanelHeight + ACTIVITY_HEIGHT}>
+          <Panel title="Issues (Zen)" isActive width={usableWidth}>
+            {visibleRows.map((row) => (
+              <RowRenderer
+                key={row.key}
+                row={row}
+                selectedId={nav.selectedId}
+                selfLogin={config.board.assignee}
+                panelWidth={usableWidth}
+                stalenessConfig={config.board.workflow?.staleness}
+              />
+            ))}
+          </Panel>
+        </Box>
+      ) : null}
+
       {/* Main content: 5-panel layout (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
@@ -1543,7 +1586,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:detail" &&
       ui.state.mode !== "overlay:nudge" &&
       ui.state.mode !== "overlay:triage" &&
-      ui.state.mode !== "focus" ? (
+      ui.state.mode !== "focus" &&
+      ui.state.mode !== "zen" ? (
         <PanelLayout
           cols={termSize.cols}
           issuesPanelHeight={issuesPanelHeight}
@@ -1552,6 +1596,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
           issuesPanel={issuesPanel}
           detailPanel={detailPanel}
           activityPanel={activityPanel}
+          hideLeftPanel={leftPanelHidden}
         />
       ) : null}
 

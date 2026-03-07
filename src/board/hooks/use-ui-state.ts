@@ -20,7 +20,8 @@ export type UIMode =
   | "overlay:nudge"
   | "overlay:triage"
   | "multiSelect"
-  | "focus";
+  | "focus"
+  | "zen";
 
 export interface UIState {
   mode: UIMode;
@@ -49,6 +50,8 @@ export type UIAction =
   | { type: "ENTER_WORKFLOW" }
   | { type: "ENTER_NUDGE" }
   | { type: "ENTER_TRIAGE" }
+  | { type: "ENTER_ZEN" }
+  | { type: "EXIT_ZEN" }
   | { type: "TOGGLE_HELP" }
   | { type: "EXIT_OVERLAY" }
   | { type: "EXIT_TO_NORMAL" }
@@ -134,6 +137,14 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       if (state.mode !== "normal") return state;
       return { ...state, mode: "overlay:triage", previousMode: "normal" };
 
+    case "ENTER_ZEN":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "zen", previousMode: "normal" };
+
+    case "EXIT_ZEN":
+      if (state.mode !== "zen") return state;
+      return { ...state, mode: "normal", previousMode: "normal" };
+
     case "TOGGLE_HELP":
       // Help stacks on any mode
       return { ...state, helpVisible: !state.helpVisible };
@@ -164,7 +175,7 @@ function uiReducer(state: UIState, action: UIAction): UIState {
 /** Whether navigation shortcuts (j/k/tab) should work */
 export function canNavigate(state: UIState): boolean {
   const { mode } = state;
-  return mode === "normal" || mode === "multiSelect" || mode === "focus";
+  return mode === "normal" || mode === "multiSelect" || mode === "focus" || mode === "zen";
 }
 
 /** Whether action shortcuts (p/a/u/c/m/s/n) should work */
@@ -197,6 +208,8 @@ export interface UseUIStateResult {
   enterWorkflow: () => void;
   enterNudge: () => void;
   enterTriage: () => void;
+  enterZen: () => void;
+  exitZen: () => void;
   toggleHelp: () => void;
   exitOverlay: () => void;
   exitToNormal: () => void;
@@ -227,6 +240,8 @@ export function useUIState(): UseUIStateResult {
     enterWorkflow: useCallback(() => dispatch({ type: "ENTER_WORKFLOW" }), []),
     enterNudge: useCallback(() => dispatch({ type: "ENTER_NUDGE" }), []),
     enterTriage: useCallback(() => dispatch({ type: "ENTER_TRIAGE" }), []),
+    enterZen: useCallback(() => dispatch({ type: "ENTER_ZEN" }), []),
+    exitZen: useCallback(() => dispatch({ type: "EXIT_ZEN" }), []),
     toggleHelp: useCallback(() => dispatch({ type: "TOGGLE_HELP" }), []),
     exitOverlay: useCallback(() => dispatch({ type: "EXIT_OVERLAY" }), []),
     exitToNormal: useCallback(() => dispatch({ type: "EXIT_TO_NORMAL" }), []),

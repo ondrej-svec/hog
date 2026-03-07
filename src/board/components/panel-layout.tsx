@@ -30,6 +30,7 @@ interface PanelLayoutProps {
   readonly issuesPanel: ReactNode;
   readonly detailPanel: ReactNode;
   readonly activityPanel: ReactNode;
+  readonly hideLeftPanel?: boolean;
 }
 
 export function PanelLayout({
@@ -40,6 +41,7 @@ export function PanelLayout({
   issuesPanel,
   detailPanel,
   activityPanel,
+  hideLeftPanel,
 }: PanelLayoutProps) {
   const mode = getLayoutMode(cols);
 
@@ -50,10 +52,12 @@ export function PanelLayout({
         {/* Main row: left col + issues + detail */}
         <Box height={issuesPanelHeight}>
           {/* Left column: repos + statuses stacked */}
-          <Box flexDirection="column" width={LEFT_COL_WIDTH}>
-            {reposPanel}
-            {statusesPanel}
-          </Box>
+          {!hideLeftPanel ? (
+            <Box flexDirection="column" width={LEFT_COL_WIDTH}>
+              {reposPanel}
+              {statusesPanel}
+            </Box>
+          ) : null}
           {/* Issues panel fills remaining space */}
           <Box flexGrow={1} flexDirection="column">
             {issuesPanel}
@@ -74,10 +78,12 @@ export function PanelLayout({
       <Box flexDirection="column">
         {/* Main row: left col + issues (no detail) */}
         <Box height={issuesPanelHeight}>
-          <Box flexDirection="column" width={LEFT_COL_WIDTH}>
-            {reposPanel}
-            {statusesPanel}
-          </Box>
+          {!hideLeftPanel ? (
+            <Box flexDirection="column" width={LEFT_COL_WIDTH}>
+              {reposPanel}
+              {statusesPanel}
+            </Box>
+          ) : null}
           <Box flexGrow={1} flexDirection="column">
             {issuesPanel}
           </Box>
@@ -91,8 +97,12 @@ export function PanelLayout({
   // Stacked (<100 cols): all panels full width, fixed heights
   return (
     <Box flexDirection="column">
-      {reposPanel}
-      {statusesPanel}
+      {!hideLeftPanel ? (
+        <>
+          {reposPanel}
+          {statusesPanel}
+        </>
+      ) : null}
       <Box flexGrow={1} flexDirection="column">
         {issuesPanel}
       </Box>

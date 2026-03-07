@@ -29,6 +29,8 @@ interface KeyboardActions {
   handleLaunchClaude: () => void;
   handleEnterWorkflow: () => void;
   handleEnterTriage: () => void;
+  handleToggleLeftPanel: () => void;
+  handleToggleZen: () => void;
 }
 
 interface PanelNav {
@@ -54,6 +56,8 @@ interface UseKeyboardOptions {
   onActivityEnter: () => void;
   /** Whether the detail panel is visible as a side-by-side column (wide layout). */
   showDetailPanel: boolean;
+  /** Whether the left panel (repos/statuses) is hidden. */
+  leftPanelHidden: boolean;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -73,6 +77,7 @@ export function useKeyboard({
   onStatusEnter,
   onActivityEnter,
   showDetailPanel,
+  leftPanelHidden,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -95,6 +100,8 @@ export function useKeyboard({
     handleLaunchClaude,
     handleEnterWorkflow,
     handleEnterTriage,
+    handleToggleLeftPanel,
+    handleToggleZen,
   } = actions;
 
   const handleInput = useCallback(
@@ -114,6 +121,31 @@ export function useKeyboard({
       if (input === "?") {
         ui.toggleHelp();
         return;
+      }
+
+      // Zen mode: Z or Esc exits, j/k navigates, C launches Claude — all else blocked
+      if (ui.state.mode === "zen") {
+        if (input === "Z" || key.escape) {
+          handleToggleZen();
+          return;
+        }
+        if (input === "j" || key.downArrow) {
+          nav.moveDown();
+          return;
+        }
+        if (input === "k" || key.upArrow) {
+          nav.moveUp();
+          return;
+        }
+        if (input === "C") {
+          handleLaunchClaude();
+          return;
+        }
+        if (input === "q") {
+          exit();
+          return;
+        }
+        return; // All other keys are no-ops in zen mode
       }
 
       // Escape: in multiSelect, clear selection and return to normal
@@ -244,8 +276,12 @@ export function useKeyboard({
       if (ui.canAct) {
         // Digit 0-4: focus panel by number.
         // On narrow layouts digit 0 opens the detail overlay (panel is not visible).
+        // When left panel is hidden, digits 1 and 2 are no-ops.
         const digit = parseInt(input, 10);
         if (!Number.isNaN(digit) && digit >= 0 && digit <= 4) {
+          if (leftPanelHidden && (digit === 1 || digit === 2)) {
+            return; // No-op: left panel is hidden
+          }
           if (digit === 0 && !showDetailPanel) {
             ui.enterDetail();
           } else {
@@ -321,6 +357,14 @@ export function useKeyboard({
           handleEnterFuzzyPicker();
           return;
         }
+        if (input === "H") {
+          handleToggleLeftPanel();
+          return;
+        }
+        if (input === "Z") {
+          handleToggleZen();
+          return;
+        }
 
         // Space on an item: toggle selection + enter multiSelect mode
         if (input === " ") {
@@ -391,7 +435,10 @@ export function useKeyboard({
       handleLaunchClaude,
       handleEnterWorkflow,
       handleEnterTriage,
+      handleToggleLeftPanel,
+      handleToggleZen,
       showDetailPanel,
+      leftPanelHidden,
     ],
   );
 
@@ -401,7 +448,8 @@ export function useKeyboard({
     ui.state.mode === "normal" ||
     ui.state.mode === "multiSelect" ||
     ui.state.mode === "focus" ||
-    ui.state.mode === "overlay:detail";
+    ui.state.mode === "overlay:detail" ||
+    ui.state.mode === "zen";
   useInput(handleInput, { isActive: inputActive });
 
   // Search mode input handler

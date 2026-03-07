@@ -54,7 +54,7 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
   const mode = modeOverride;
   return {
     state: { mode, helpVisible: false, previousMode: "normal" },
-    canNavigate: mode === "normal" || mode === "multiSelect" || mode === "focus",
+    canNavigate: mode === "normal" || mode === "multiSelect" || mode === "focus" || mode === "zen",
     canAct: mode === "normal",
     isOverlay: mode.startsWith("overlay:") || mode === "search",
     enterSearch: vi.fn(),
@@ -73,6 +73,8 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
     enterWorkflow: vi.fn(),
     enterNudge: vi.fn(),
     enterTriage: vi.fn(),
+    enterZen: vi.fn(),
+    exitZen: vi.fn(),
     toggleHelp: vi.fn(),
     exitOverlay: vi.fn(),
     exitToNormal: vi.fn(),
@@ -134,6 +136,8 @@ function makeActions() {
     handleLaunchClaude: vi.fn(),
     handleEnterWorkflow: vi.fn(),
     handleEnterTriage: vi.fn(),
+    handleToggleLeftPanel: vi.fn(),
+    handleToggleZen: vi.fn(),
   };
 }
 
@@ -158,6 +162,7 @@ interface HarnessOptions {
   multiSelectCount?: number;
   activePanelId?: PanelId;
   showDetailPanel?: boolean;
+  leftPanelHidden?: boolean;
 }
 
 interface Harness {
@@ -188,6 +193,7 @@ function setup(opts: HarnessOptions = {}): Harness {
     multiSelectCount = 0,
     activePanelId = 3,
     showDetailPanel = true,
+    leftPanelHidden = false,
   } = opts;
 
   // Clear captured handlers before each render
@@ -224,6 +230,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       onStatusEnter,
       onActivityEnter,
       showDetailPanel,
+      leftPanelHidden,
     });
     // useInput is mocked — no real Ink output required
     return null;
@@ -866,6 +873,111 @@ describe("useKeyboard", () => {
     it("search handler is NOT active in normal mode", () => {
       setup({ mode: "normal" });
       expect(registeredHandlers[1]?.options.isActive).toBe(false);
+    });
+
+    it("main handler is active in zen mode", () => {
+      setup({ mode: "zen" });
+      expect(registeredHandlers[0]?.options.isActive).toBe(true);
+    });
+  });
+
+  // ── Zen mode keys ──
+
+  describe("zen mode", () => {
+    it("Z exits zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("Z");
+      expect(actions.handleToggleZen).toHaveBeenCalledOnce();
+    });
+
+    it("Esc exits zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("", { escape: true });
+      expect(actions.handleToggleZen).toHaveBeenCalledOnce();
+    });
+
+    it("j navigates down in zen mode", () => {
+      const { nav, fire } = setup({ mode: "zen" });
+      fire("j");
+      expect(nav.moveDown).toHaveBeenCalledOnce();
+    });
+
+    it("k navigates up in zen mode", () => {
+      const { nav, fire } = setup({ mode: "zen" });
+      fire("k");
+      expect(nav.moveUp).toHaveBeenCalledOnce();
+    });
+
+    it("C launches Claude Code in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("C");
+      expect(actions.handleLaunchClaude).toHaveBeenCalledOnce();
+    });
+
+    it("q exits in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("q");
+      expect(actions.exit).toHaveBeenCalledOnce();
+    });
+
+    it("other keys are no-ops in zen mode", () => {
+      const { actions, ui, fire } = setup({ mode: "zen" });
+      fire("m");
+      fire("n");
+      fire("p");
+      fire("/");
+      expect(ui.enterSearch).not.toHaveBeenCalled();
+      expect(ui.enterStatus).not.toHaveBeenCalled();
+      expect(ui.enterCreate).not.toHaveBeenCalled();
+      expect(actions.handlePick).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── H key (toggle left panel) ──
+
+  describe("H key — toggle left panel", () => {
+    it("calls handleToggleLeftPanel in normal mode", () => {
+      const { actions, fire } = setup({ mode: "normal" });
+      fire("H");
+      expect(actions.handleToggleLeftPanel).toHaveBeenCalledOnce();
+    });
+
+    it("is a no-op in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("H");
+      expect(actions.handleToggleLeftPanel).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Left panel hidden — digit guards ──
+
+  describe("digit keys when left panel is hidden", () => {
+    it("1 is a no-op when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("1");
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
+    });
+
+    it("2 is a no-op when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("2");
+      expect(panelFocus.focusPanel).not.toHaveBeenCalled();
+    });
+
+    it("3 still works when left panel is hidden", () => {
+      const { panelFocus, fire } = setup({ mode: "normal", leftPanelHidden: true });
+      fire("3");
+      expect(panelFocus.focusPanel).toHaveBeenCalledWith(3);
+    });
+  });
+
+  // ── Z key (enter zen from normal) ──
+
+  describe("Z key — enter zen mode", () => {
+    it("calls handleToggleZen in normal mode", () => {
+      const { actions, fire } = setup({ mode: "normal" });
+      fire("Z");
+      expect(actions.handleToggleZen).toHaveBeenCalledOnce();
     });
   });
 });
