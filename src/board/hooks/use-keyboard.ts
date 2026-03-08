@@ -123,7 +123,7 @@ export function useKeyboard({
         return;
       }
 
-      // Zen mode: Z or Esc exits, j/k navigates, C launches Claude — all else blocked
+      // Zen mode: restricted key set — navigation, search/filter, issue actions, exit
       if (ui.state.mode === "zen") {
         if (input === "Z" || key.escape) {
           handleToggleZen();
@@ -137,12 +137,43 @@ export function useKeyboard({
           nav.moveUp();
           return;
         }
+        if (input === "q") {
+          exit();
+          return;
+        }
+        // Search & filter
+        if (input === "/") {
+          multiSelect.clear();
+          ui.enterSearch();
+          return;
+        }
+        if (input === "t") {
+          handleToggleMine();
+          return;
+        }
+        if (input === "F") {
+          handleEnterFuzzyPicker();
+          return;
+        }
+        // Issue actions
         if (input === "C") {
           handleLaunchClaude();
           return;
         }
-        if (input === "q") {
-          exit();
+        if (input === "y") {
+          handleCopyLink();
+          return;
+        }
+        if (input === "o") {
+          handleSlack();
+          return;
+        }
+        if (input === "g") {
+          handleOpen();
+          return;
+        }
+        if (input === "r" || input === "R") {
+          refresh();
           return;
         }
         return; // All other keys are no-ops in zen mode

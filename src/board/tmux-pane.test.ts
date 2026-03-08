@@ -5,7 +5,6 @@ import {
   isPaneAlive,
   joinAgentPane,
   killPane,
-  splitWithInfo,
   windowExists,
 } from "./tmux-pane.js";
 
@@ -102,46 +101,6 @@ describe("tmux-pane utilities", () => {
         throw new Error("tmux error");
       });
       expect(isPaneAlive("%5")).toBe(false);
-    });
-  });
-
-  describe("splitWithInfo", () => {
-    it("returns pane ID on success", () => {
-      execFileSync.mockReturnValue("%8\n");
-      const result = splitWithInfo({ title: "Fix bug", url: "https://github.com/issue/1" }, 65);
-      expect(result).toBe("%8");
-      expect(execFileSync).toHaveBeenCalledWith(
-        "tmux",
-        expect.arrayContaining(["split-window", "-h"]),
-        expect.any(Object),
-      );
-    });
-
-    it("passes title and url as separate positional args to prevent shell injection", () => {
-      execFileSync.mockClear();
-      execFileSync.mockReturnValue("%8\n");
-      const maliciousTitle = "$(rm -rf /)";
-      splitWithInfo({ title: maliciousTitle, url: "https://example.com" }, 65);
-      const args = execFileSync.mock.calls[0]?.[1] as string[];
-      // Title and URL must be separate argv elements after "--"
-      const dashIdx = args.indexOf("--");
-      expect(dashIdx).toBeGreaterThan(-1);
-      expect(args[dashIdx + 1]).toBe(maliciousTitle);
-      expect(args[dashIdx + 2]).toBe("https://example.com");
-      // The shell script must use $1/$2 placeholders, not interpolated values
-      const shIdx = args.indexOf("sh");
-      expect(shIdx).toBeGreaterThan(-1);
-      const script = args[shIdx + 2];
-      expect(script).toContain("$1");
-      expect(script).toContain("$2");
-      expect(script).not.toContain(maliciousTitle);
-    });
-
-    it("returns null on failure", () => {
-      execFileSync.mockImplementation(() => {
-        throw new Error("split failed");
-      });
-      expect(splitWithInfo({ title: "Fix bug", url: "https://github.com/issue/1" }, 65)).toBeNull();
     });
   });
 

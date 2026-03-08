@@ -1558,22 +1558,51 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         />
       ) : null}
 
-      {/* Zen mode: compact issue list only (right pane is a tmux split) */}
+      {/* Zen mode layout */}
       {ui.state.mode === "zen" ? (
-        <Box flexDirection="column" height={issuesPanelHeight + ACTIVITY_HEIGHT}>
-          <Panel title="Issues (Zen)" isActive width={usableWidth}>
-            {visibleRows.map((row) => (
-              <RowRenderer
-                key={row.key}
-                row={row}
-                selectedId={nav.selectedId}
-                selfLogin={config.board.assignee}
-                panelWidth={usableWidth}
-                stalenessConfig={config.board.workflow?.staleness}
-              />
-            ))}
-          </Panel>
-        </Box>
+        zen.zenPaneId ? (
+          // Agent pane is joined — show narrow issue list (agent fills the rest via tmux)
+          <Box flexDirection="column" height={issuesPanelHeight + ACTIVITY_HEIGHT}>
+            <Panel title="Issues (Zen)" isActive width={usableWidth}>
+              {visibleRows.map((row) => (
+                <RowRenderer
+                  key={row.key}
+                  row={row}
+                  selectedId={nav.selectedId}
+                  selfLogin={config.board.assignee}
+                  panelWidth={usableWidth}
+                  stalenessConfig={config.board.workflow?.staleness}
+                />
+              ))}
+            </Panel>
+          </Box>
+        ) : (
+          // No agent — show issue list + detail panel side by side
+          <Box flexDirection="row" height={issuesPanelHeight + ACTIVITY_HEIGHT}>
+            <Box flexDirection="column" width={issuesPanelWidth}>
+              <Panel title="Issues (Zen)" isActive width={issuesPanelWidth}>
+                {visibleRows.map((row) => (
+                  <RowRenderer
+                    key={row.key}
+                    row={row}
+                    selectedId={nav.selectedId}
+                    selfLogin={config.board.assignee}
+                    panelWidth={issuesPanelWidth}
+                    stalenessConfig={config.board.workflow?.staleness}
+                  />
+                ))}
+              </Panel>
+            </Box>
+            <DetailPanel
+              issue={selectedItem.issue}
+              width={detailPanelWidth}
+              isActive={false}
+              issueRepo={selectedItem.repoName}
+              fetchComments={handleFetchComments}
+              commentsState={currentCommentsState}
+            />
+          </Box>
+        )
       ) : null}
 
       {/* Main content: 5-panel layout (hidden during full-screen overlays) */}

@@ -920,13 +920,47 @@ describe("useKeyboard", () => {
       expect(actions.exit).toHaveBeenCalledOnce();
     });
 
+    it("/ enters search in zen mode", () => {
+      const { ui, fire } = setup({ mode: "zen" });
+      fire("/");
+      expect(ui.enterSearch).toHaveBeenCalledOnce();
+    });
+
+    it("t toggles mine filter in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("t");
+      expect(actions.handleToggleMine).toHaveBeenCalledOnce();
+    });
+
+    it("F enters fuzzy picker in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("F");
+      expect(actions.handleEnterFuzzyPicker).toHaveBeenCalledOnce();
+    });
+
+    it("y copies link in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("y");
+      expect(actions.handleCopyLink).toHaveBeenCalledOnce();
+    });
+
+    it("g opens in browser in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("g");
+      expect(actions.handleOpen).toHaveBeenCalledOnce();
+    });
+
+    it("r refreshes in zen mode", () => {
+      const { actions, fire } = setup({ mode: "zen" });
+      fire("r");
+      expect(actions.refresh).toHaveBeenCalledOnce();
+    });
+
     it("other keys are no-ops in zen mode", () => {
       const { actions, ui, fire } = setup({ mode: "zen" });
       fire("m");
       fire("n");
       fire("p");
-      fire("/");
-      expect(ui.enterSearch).not.toHaveBeenCalled();
       expect(ui.enterStatus).not.toHaveBeenCalled();
       expect(ui.enterCreate).not.toHaveBeenCalled();
       expect(actions.handlePick).not.toHaveBeenCalled();

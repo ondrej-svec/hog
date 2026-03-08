@@ -74,48 +74,6 @@ export function isPaneAlive(paneId: string): boolean {
   }
 }
 
-/**
- * Show issue info in a new right split pane (for issues without an agent).
- * Returns the pane ID or null on failure.
- */
-export function splitWithInfo(
-  info: { title: string; url: string },
-  widthPercent: number,
-): string | null {
-  try {
-    // Use sh -c with positional parameters ($1, $2) to safely inject
-    // user-controlled text without shell interpretation. The title and url
-    // are passed as argv elements after "--", never parsed by the shell.
-    // `read _` keeps the pane alive until the user presses Enter or the pane is killed.
-    const paneId = execFileSync(
-      "tmux",
-      [
-        "split-window",
-        "-h",
-        "-l",
-        `${widthPercent}%`,
-        "-d",
-        "-P",
-        "-F",
-        "#{pane_id}",
-        "sh",
-        "-c",
-        'printf "Issue: %s\\n\\nURL: %s\\n\\nNo Claude Code session active.\\nPress C to launch one.\\n" "$1" "$2"; read _',
-        "--",
-        info.title,
-        info.url,
-      ],
-      {
-        encoding: "utf-8",
-        stdio: ["ignore", "pipe", "ignore"],
-      },
-    );
-    return paneId.trim() || null;
-  } catch {
-    return null;
-  }
-}
-
 /** Kill a tmux pane by ID. No-op if pane is already closed. */
 export function killPane(paneId: string): void {
   try {

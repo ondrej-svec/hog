@@ -36,7 +36,10 @@ function HintBar({
         <Text color="green" bold>
           [ZEN]
         </Text>
-        <Text color="gray"> j/k:nav C:claude Z/Esc:exit q:quit</Text>
+        <Text color="gray">
+          {" "}
+          j/k:nav /:search t:mine F:find C:claude y:copy g:open r:refresh Z/Esc:exit q:quit
+        </Text>
       </Box>
     );
   }

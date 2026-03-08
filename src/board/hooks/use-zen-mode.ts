@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GitHubIssue } from "../../github.js";
 import type { RepoData } from "../fetch.js";
 import {
   agentWindowName,
   breakPane,
   isPaneAlive,
   joinAgentPane,
-  killPane,
-  splitWithInfo,
   windowExists,
 } from "../tmux-pane.js";
 import type { UseUIStateResult } from "./use-ui-state.js";
@@ -21,7 +18,7 @@ const ZEN_PANE_WIDTH_PERCENT = 65;
 const ZEN_MIN_COLS = 100;
 
 /** Debounce delay (ms) for cursor-follow pane swap. */
-const CURSOR_FOLLOW_DEBOUNCE_MS = 150;
+const CURSOR_FOLLOW_DEBOUNCE_MS = 200;
 
 /** Interval (ms) for dead-pane detection. */
 const DEAD_PANE_CHECK_MS = 2000;
@@ -37,8 +34,8 @@ interface UseZenModeOptions {
 }
 
 interface UseZenModeResult {
+  /** Non-null when a tmux agent pane is joined into the current window. */
   zenPaneId: string | null;
-  zenIsAgentPane: boolean;
   /** Toggle zen mode on/off (Z key). */
   handleToggleZen: () => void;
   /** After launching Claude in zen mode, swap the right pane to the new agent window. */
@@ -47,38 +44,18 @@ interface UseZenModeResult {
 
 // ── Helpers ──
 
-function findIssue(
-  repos: RepoData[],
-  selectedId: string | null,
-): { issue: GitHubIssue; repoName: string } | null {
+function issueNumberFromId(selectedId: string | null): number | null {
   if (!selectedId?.startsWith("gh:")) return null;
-  for (const rd of repos) {
-    for (const issue of rd.issues) {
-      if (`gh:${rd.repo.name}:${issue.number}` === selectedId)
-        return { issue, repoName: rd.repo.name };
-    }
-  }
-  return null;
+  const parts = selectedId.split(":");
+  const num = Number(parts[2]);
+  return Number.isNaN(num) ? null : num;
 }
 
-function cleanupPane(paneId: string, isAgent: boolean): void {
-  if (isAgent) {
-    breakPane(paneId);
-  } else {
-    killPane(paneId);
-  }
-}
-
-function openOrSplitPane(issue: GitHubIssue): { paneId: string; isAgent: boolean } | null {
-  const winName = agentWindowName(issue.number);
-  const hasAgent = windowExists(winName);
-
-  if (hasAgent) {
-    const paneId = joinAgentPane(winName, ZEN_PANE_WIDTH_PERCENT);
-    return paneId ? { paneId, isAgent: true } : null;
-  }
-  const paneId = splitWithInfo({ title: issue.title, url: issue.url }, ZEN_PANE_WIDTH_PERCENT);
-  return paneId ? { paneId, isAgent: false } : null;
+/** Try to join an agent's tmux pane. Returns pane ID or null if no agent exists. */
+function tryJoinAgent(issueNumber: number): string | null {
+  const winName = agentWindowName(issueNumber);
+  if (!windowExists(winName)) return null;
+  return joinAgentPane(winName, ZEN_PANE_WIDTH_PERCENT);
 }
 
 // ── Hook ──
@@ -91,24 +68,23 @@ export function useZenMode({
   selectedId,
 }: UseZenModeOptions): UseZenModeResult {
   const [zenPaneId, setZenPaneId] = useState<string | null>(null);
-  const [zenIsAgentPane, setZenIsAgentPane] = useState(false);
 
-  // Refs to avoid stale closures in callbacks/effects
-  const paneRef = useRef<{ id: string | null; isAgent: boolean }>({
-    id: null,
-    isAgent: false,
-  });
-  paneRef.current = { id: zenPaneId, isAgent: zenIsAgentPane };
+  // Ref to avoid stale closures in callbacks/effects
+  const paneRef = useRef<string | null>(null);
+  paneRef.current = zenPaneId;
+
+  const cleanupCurrentPane = useCallback(() => {
+    const id = paneRef.current;
+    if (id) {
+      breakPane(id);
+      setZenPaneId(null);
+    }
+  }, []);
 
   const exitZen = useCallback(() => {
-    const { id, isAgent } = paneRef.current;
-    if (id) {
-      cleanupPane(id, isAgent);
-      setZenPaneId(null);
-      setZenIsAgentPane(false);
-    }
+    cleanupCurrentPane();
     ui.exitZen();
-  }, [ui]);
+  }, [ui, cleanupCurrentPane]);
 
   const handleToggleZen = useCallback(() => {
     if (ui.state.mode === "zen") {
@@ -124,44 +100,37 @@ export function useZenMode({
       return;
     }
 
-    const found = findIssue(repos, selectedId);
-    const result = found ? openOrSplitPane(found.issue) : null;
-
-    if (!result) {
-      toast.error("Failed to create tmux pane");
-      return;
+    // Try to join an existing agent pane for the selected issue
+    const issueNum = issueNumberFromId(selectedId);
+    if (issueNum) {
+      const paneId = tryJoinAgent(issueNum);
+      if (paneId) setZenPaneId(paneId);
+      // If no agent, zenPaneId stays null — detail panel shown in TUI
     }
 
-    setZenPaneId(result.paneId);
-    setZenIsAgentPane(result.isAgent);
     ui.enterZen();
-  }, [ui, toast, termCols, exitZen, repos, selectedId]);
+  }, [ui, toast, termCols, exitZen, selectedId]);
 
   // Swap right pane to a newly launched agent window (called from handleLaunchClaude)
   const swapToAgent = useCallback(
     (issueNumber: number) => {
-      const { id, isAgent } = paneRef.current;
-      if (ui.state.mode !== "zen" || !id) return;
+      if (ui.state.mode !== "zen") return;
 
-      cleanupPane(id, isAgent);
+      cleanupCurrentPane();
 
       // Small delay for tmux window to be created
       setTimeout(() => {
-        const winName = agentWindowName(issueNumber);
-        if (windowExists(winName)) {
-          const newPaneId = joinAgentPane(winName, ZEN_PANE_WIDTH_PERCENT);
-          setZenPaneId(newPaneId);
-          setZenIsAgentPane(true);
-        }
+        const paneId = tryJoinAgent(issueNumber);
+        if (paneId) setZenPaneId(paneId);
       }, 500);
     },
-    [ui.state.mode],
+    [ui.state.mode, cleanupCurrentPane],
   );
 
   // Cursor-follow: swap right pane when selected issue changes (debounced)
   const prevSelectedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (ui.state.mode !== "zen" || !zenPaneId) {
+    if (ui.state.mode !== "zen") {
       prevSelectedRef.current = selectedId;
       return;
     }
@@ -169,42 +138,32 @@ export function useZenMode({
     prevSelectedRef.current = selectedId;
 
     const timer = setTimeout(() => {
-      const { id, isAgent } = paneRef.current;
-      if (!id) return;
-
-      const found = findIssue(repos, selectedId);
-      if (!found) return;
-
-      cleanupPane(id, isAgent);
-
-      const result = openOrSplitPane(found.issue);
-      if (!result) {
-        // Pane creation failed — exit zen
-        setZenPaneId(null);
-        setZenIsAgentPane(false);
-        ui.exitZen();
-        toast.error("Zen pane lost — exiting zen mode");
-        return;
+      // Clean up current agent pane (if any)
+      const currentId = paneRef.current;
+      if (currentId) {
+        breakPane(currentId);
       }
 
-      setZenPaneId(result.paneId);
-      setZenIsAgentPane(result.isAgent);
+      // Try to join the new issue's agent pane
+      const issueNum = issueNumberFromId(selectedId);
+      const newPaneId = issueNum ? tryJoinAgent(issueNum) : null;
+      setZenPaneId(newPaneId);
     }, CURSOR_FOLLOW_DEBOUNCE_MS);
 
     return () => clearTimeout(timer);
-  }, [ui.state.mode, zenPaneId, selectedId, repos, ui, toast]);
+  }, [ui.state.mode, selectedId, repos]);
 
-  // Dead pane detection: auto-exit if tmux pane was killed externally
+  // Dead pane detection: auto-cleanup if tmux pane was killed externally
   useEffect(() => {
     if (ui.state.mode !== "zen" || !zenPaneId) return;
     const interval = setInterval(() => {
       if (!isPaneAlive(zenPaneId)) {
-        exitZen();
-        toast.info("Zen pane closed");
+        setZenPaneId(null);
+        toast.info("Agent pane closed");
       }
     }, DEAD_PANE_CHECK_MS);
     return () => clearInterval(interval);
-  }, [ui.state.mode, zenPaneId, exitZen, toast]);
+  }, [ui.state.mode, zenPaneId, toast]);
 
-  return { zenPaneId, zenIsAgentPane, handleToggleZen, swapToAgent };
+  return { zenPaneId, handleToggleZen, swapToAgent };
 }
