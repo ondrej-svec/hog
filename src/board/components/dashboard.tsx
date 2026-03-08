@@ -1180,7 +1180,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   );
 
   return (
-    <Box flexDirection="column" paddingX={1}>
+    <Box flexDirection="column" paddingX={1} height={termSize.rows} overflow="hidden">
       {/* Header */}
       <Box>
         <Text color="cyan" bold>
@@ -1338,6 +1338,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         <PanelLayout
           cols={termSize.cols}
           issuesPanelHeight={issuesPanelHeight}
+          totalHeight={totalPanelHeight}
           reposPanel={reposPanel}
           statusesPanel={statusesPanel}
           issuesPanel={issuesPanel}
