@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.1](https://github.com/ondrej-svec/hog/compare/hog-v1.23.0...hog-v1.23.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* **board:** allow search and fuzzy picker from zen mode ([aa3061a](https://github.com/ondrej-svec/hog/commit/aa3061aac935d6559a35aec60b1bef12bc70fc48))
+
 ## [1.23.0](https://github.com/ondrej-svec/hog/compare/hog-v1.22.1...hog-v1.23.0) (2026-03-08)
 
 
