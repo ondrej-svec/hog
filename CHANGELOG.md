@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.1](https://github.com/ondrej-svec/hog/compare/hog-v1.24.0...hog-v1.24.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* **board:** constrain root viewport to terminal height ([0dd7131](https://github.com/ondrej-svec/hog/commit/0dd7131a1e02b175b20dd159b14d9390a30f8fa2))
+* **board:** constrain root viewport to terminal height ([a79798a](https://github.com/ondrej-svec/hog/commit/a79798a47e6de1cf4a8639b16f819c40d2cd6d0d))
+
 ## [1.24.0](https://github.com/ondrej-svec/hog/compare/hog-v1.23.1...hog-v1.24.0) (2026-03-08)
 
 
