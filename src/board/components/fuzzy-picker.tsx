@@ -1,7 +1,7 @@
 import { TextInput } from "@inkjs/ui";
 import { Fzf } from "fzf";
-import { Box, Text, useInput } from "ink";
-import { useMemo, useState } from "react";
+import { Box, Text, useInput, useStdout } from "ink";
+import { useEffect, useMemo, useState } from "react";
 import { makeIssueNavId } from "../board-utils.js";
 import type { RepoData } from "../fetch.js";
 
@@ -97,7 +97,18 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
     return [...scoreMap.values()].sort((a, b) => b.score - a.score).map((e) => e.item);
   }, [query, fuzzyIndex, allIssues]);
 
-  const VISIBLE = Math.min((process.stdout.rows ?? 24) - 4, 15);
+  // Use reactive terminal height instead of process.stdout.rows
+  const { stdout } = useStdout();
+  const [termRows, setTermRows] = useState(stdout?.rows ?? 24);
+  useEffect(() => {
+    if (!stdout) return;
+    const onResize = () => setTermRows(stdout.rows);
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+    };
+  }, [stdout]);
+  const VISIBLE = Math.min(termRows - 4, 15);
 
   // Internal keyboard navigation (Arrow keys, Ctrl-J/K, Enter, Escape)
   useInput((input, key) => {

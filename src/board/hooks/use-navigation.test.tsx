@@ -954,4 +954,100 @@ describe("orphan key pruning", () => {
 
     instance.unmount();
   });
+
+  it("moveDownBy jumps multiple items at once", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Start at first item (header:repo, index 0)
+    expect(getNav().selectedIndex).toBe(0);
+
+    // Jump down by 3
+    getNav().moveDownBy(3);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(3);
+    expect(getNav().selectedId).toBe("header:ticktick");
+
+    instance.unmount();
+  });
+
+  it("moveUpBy jumps multiple items upward", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Move to last item first
+    getNav().goToBottom();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(4);
+
+    // Jump up by 2
+    getNav().moveUpBy(2);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(2);
+
+    instance.unmount();
+  });
+
+  it("goToTop jumps to the first item", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Move to last item first
+    getNav().goToBottom();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(4);
+
+    // Jump to top
+    getNav().goToTop();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(0);
+
+    instance.unmount();
+  });
+
+  it("goToBottom jumps to the last item", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    getNav().goToBottom();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(4);
+    expect(getNav().selectedId).toBe("tt:task-1");
+
+    instance.unmount();
+  });
+
+  it("moveDownBy clamps to the last item", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Jump by more than total items
+    getNav().moveDownBy(100);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(4);
+
+    instance.unmount();
+  });
+
+  it("moveUpBy clamps to the first item", async () => {
+    const items = makeNavItems();
+    const instance = render(React.createElement(NavActionTester, { initialItems: items }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    getNav().moveDown();
+    getNav().moveDown();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Jump up by more than current position
+    getNav().moveUpBy(100);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getNav().selectedIndex).toBe(0);
+
+    instance.unmount();
+  });
 });

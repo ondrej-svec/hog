@@ -41,7 +41,10 @@ interface PanelNav {
 interface UseKeyboardOptions {
   ui: UseUIStateResult;
   /** Issues panel (3) navigation */
-  nav: Pick<UseNavigationResult, "moveUp" | "moveDown" | "selectedId">;
+  nav: Pick<
+    UseNavigationResult,
+    "moveUp" | "moveDown" | "moveUpBy" | "moveDownBy" | "goToTop" | "goToBottom" | "selectedId"
+  >;
   multiSelect: Pick<UseMultiSelectResult, "count" | "toggle" | "clear">;
   selectedIssue: GitHubIssue | null;
   selectedRepoStatusOptionsLength: number;
@@ -58,6 +61,8 @@ interface UseKeyboardOptions {
   showDetailPanel: boolean;
   /** Whether the left panel (repos/statuses) is hidden. */
   leftPanelHidden: boolean;
+  /** Number of visible content rows in the issues panel (for page navigation). */
+  issuesPageSize: number;
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -78,6 +83,7 @@ export function useKeyboard({
   onActivityEnter,
   showDetailPanel,
   leftPanelHidden,
+  issuesPageSize,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -114,6 +120,9 @@ export function useKeyboard({
         shift: boolean;
         return: boolean;
         escape: boolean;
+        ctrl: boolean;
+        pageDown: boolean;
+        pageUp: boolean;
       },
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: keyboard handler with many shortcuts
     ) => {
@@ -135,6 +144,27 @@ export function useKeyboard({
         }
         if (input === "k" || key.upArrow) {
           nav.moveUp();
+          return;
+        }
+        // Page navigation in zen mode
+        if ((key.ctrl && input === "d") || key.pageDown) {
+          nav.moveDownBy(Math.max(1, Math.floor(issuesPageSize / 2)));
+          return;
+        }
+        if ((key.ctrl && input === "u") || key.pageUp) {
+          nav.moveUpBy(Math.max(1, Math.floor(issuesPageSize / 2)));
+          return;
+        }
+        if (input === "G") {
+          nav.goToBottom();
+          return;
+        }
+        if (key.ctrl && input === "f") {
+          nav.moveDownBy(issuesPageSize);
+          return;
+        }
+        if (key.ctrl && input === "b") {
+          nav.moveUpBy(issuesPageSize);
           return;
         }
         if (input === "q") {
@@ -226,6 +256,39 @@ export function useKeyboard({
               break;
             default:
               break; // panel 0 (detail): no-op
+          }
+          return;
+        }
+        // Half-page scroll (Ctrl+d / Ctrl+u) — issues panel only
+        if ((key.ctrl && input === "d") || key.pageDown) {
+          if (panelFocus.activePanelId === 3) {
+            nav.moveDownBy(Math.max(1, Math.floor(issuesPageSize / 2)));
+          }
+          return;
+        }
+        if ((key.ctrl && input === "u") || key.pageUp) {
+          if (panelFocus.activePanelId === 3) {
+            nav.moveUpBy(Math.max(1, Math.floor(issuesPageSize / 2)));
+          }
+          return;
+        }
+        // Full-page scroll (Ctrl+f / Ctrl+b) — issues panel only
+        if (key.ctrl && input === "f") {
+          if (panelFocus.activePanelId === 3) {
+            nav.moveDownBy(issuesPageSize);
+          }
+          return;
+        }
+        if (key.ctrl && input === "b") {
+          if (panelFocus.activePanelId === 3) {
+            nav.moveUpBy(issuesPageSize);
+          }
+          return;
+        }
+        // Go to top/bottom (G / gg pattern — we use G for bottom)
+        if (input === "G") {
+          if (panelFocus.activePanelId === 3) {
+            nav.goToBottom();
           }
           return;
         }
@@ -470,6 +533,7 @@ export function useKeyboard({
       handleToggleZen,
       showDetailPanel,
       leftPanelHidden,
+      issuesPageSize,
     ],
   );
 

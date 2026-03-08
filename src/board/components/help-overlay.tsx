@@ -12,6 +12,11 @@ const SHORTCUTS = [
     items: [
       { key: "j / Down", desc: "Move down" },
       { key: "k / Up", desc: "Move up" },
+      { key: "Ctrl+d / PgDn", desc: "Half-page down" },
+      { key: "Ctrl+u / PgUp", desc: "Half-page up" },
+      { key: "Ctrl+f", desc: "Full page down" },
+      { key: "Ctrl+b", desc: "Full page up" },
+      { key: "G", desc: "Jump to bottom" },
       { key: "Tab", desc: "Next repo tab" },
       { key: "Shift+Tab", desc: "Previous repo tab" },
       { key: "1-9", desc: "Jump to repo tab by number" },

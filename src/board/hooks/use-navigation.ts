@@ -176,6 +176,14 @@ export interface UseNavigationResult {
   collapsedSections: Set<SectionId>;
   moveUp: () => void;
   moveDown: () => void;
+  /** Move cursor up by `count` items. */
+  moveUpBy: (count: number) => void;
+  /** Move cursor down by `count` items. */
+  moveDownBy: (count: number) => void;
+  /** Jump to the first navigable item. */
+  goToTop: () => void;
+  /** Jump to the last navigable item. */
+  goToBottom: () => void;
   nextSection: () => void;
   prevSection: () => void;
   toggleSection: () => void;
@@ -220,6 +228,34 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     const item = visibleItems[newIdx];
     if (item) dispatch({ type: "SELECT", id: item.id, section: item.section });
   }, [selectedIndex, visibleItems]);
+
+  const moveUpBy = useCallback(
+    (count: number) => {
+      const newIdx = Math.max(0, selectedIndex - count);
+      const item = visibleItems[newIdx];
+      if (item) dispatch({ type: "SELECT", id: item.id, section: item.section });
+    },
+    [selectedIndex, visibleItems],
+  );
+
+  const moveDownBy = useCallback(
+    (count: number) => {
+      const newIdx = Math.min(visibleItems.length - 1, selectedIndex + count);
+      const item = visibleItems[newIdx];
+      if (item) dispatch({ type: "SELECT", id: item.id, section: item.section });
+    },
+    [selectedIndex, visibleItems],
+  );
+
+  const goToTop = useCallback(() => {
+    const item = visibleItems[0];
+    if (item) dispatch({ type: "SELECT", id: item.id, section: item.section });
+  }, [visibleItems]);
+
+  const goToBottom = useCallback(() => {
+    const item = visibleItems[visibleItems.length - 1];
+    if (item) dispatch({ type: "SELECT", id: item.id, section: item.section });
+  }, [visibleItems]);
 
   const nextSection = useCallback(() => {
     const currentItem = visibleItems[selectedIndex];
@@ -274,6 +310,10 @@ export function useNavigation(allItems: NavItem[]): UseNavigationResult {
     collapsedSections: state.collapsedSections,
     moveUp,
     moveDown,
+    moveUpBy,
+    moveDownBy,
+    goToTop,
+    goToBottom,
     nextSection,
     prevSection,
     toggleSection,
