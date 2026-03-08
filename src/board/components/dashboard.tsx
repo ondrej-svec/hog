@@ -48,6 +48,7 @@ import {
   getLayoutMode,
   LEFT_COL_WIDTH,
   PanelLayout,
+  STACKED_TOP_HEIGHT,
 } from "./panel-layout.js";
 import { ReposPanel } from "./repos-panel.js";
 import { RowRenderer } from "./row-renderer.js";
@@ -1092,13 +1093,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     count: issues.length,
   }));
 
-  // Panels
+  // Panels — in stacked mode, repos/statuses sit side-by-side sharing the full width
+  const leftPanelWidth = layoutMode === "stacked" ? Math.floor(usableWidth / 2) : LEFT_COL_WIDTH;
+  // In stacked mode, pass explicit height so panels can scroll internally
+  const leftPanelHeight = layoutMode === "stacked" ? STACKED_TOP_HEIGHT : undefined;
+
   const reposPanel = (
     <ReposPanel
       repos={reposData}
       selectedIdx={clampedRepoIdx}
       isActive={panelFocus.activePanelId === 1}
-      width={LEFT_COL_WIDTH}
+      width={leftPanelWidth}
+      height={leftPanelHeight}
     />
   );
 
@@ -1107,8 +1113,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       groups={statusesData}
       selectedIdx={clampedStatusIdx}
       isActive={panelFocus.activePanelId === 2}
-      width={LEFT_COL_WIDTH}
-      flexGrow={1}
+      width={leftPanelWidth}
+      {...(layoutMode !== "stacked" ? { flexGrow: 1 } : {})}
+      height={leftPanelHeight}
     />
   );
 
