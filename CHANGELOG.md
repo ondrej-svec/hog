@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.24.3](https://github.com/ondrej-svec/hog/compare/hog-v1.24.2...hog-v1.24.3) (2026-03-08)
+
+
+### Bug Fixes
+
+* **board:** tighten stacked layout — smaller top row, exact widths ([2a9cf79](https://github.com/ondrej-svec/hog/commit/2a9cf7958daf37cdaa7868b9862509444f1efc76))
+
 ## [1.24.2](https://github.com/ondrej-svec/hog/compare/hog-v1.24.1...hog-v1.24.2) (2026-03-08)
 
 
