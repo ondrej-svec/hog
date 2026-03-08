@@ -75,8 +75,8 @@ function enterStatusMode(state: UIState): UIState {
 function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "ENTER_SEARCH":
-      if (state.mode !== "normal") return state;
-      return { ...state, mode: "search", previousMode: "normal" };
+      if (state.mode !== "normal" && state.mode !== "zen") return state;
+      return { ...state, mode: "search", previousMode: state.mode };
 
     case "ENTER_COMMENT":
       if (state.mode !== "normal" && state.mode !== "overlay:detail") return state;
@@ -114,8 +114,8 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, mode: "focus", previousMode: "normal" };
 
     case "ENTER_FUZZY_PICKER":
-      if (state.mode !== "normal") return state;
-      return { ...state, mode: "overlay:fuzzyPicker", previousMode: "normal" };
+      if (state.mode !== "normal" && state.mode !== "zen") return state;
+      return { ...state, mode: "overlay:fuzzyPicker", previousMode: state.mode };
 
     case "ENTER_EDIT_ISSUE":
       if (state.mode !== "normal" && state.mode !== "overlay:detail") return state;

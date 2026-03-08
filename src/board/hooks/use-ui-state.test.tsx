@@ -888,4 +888,48 @@ describe("useUIState hook", () => {
 
     instance.unmount();
   });
+
+  it("should allow search from zen and return to zen on exit", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:zen");
+
+    ui.enterSearch();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:zen");
+
+    instance.unmount();
+  });
+
+  it("should allow fuzzy picker from zen and return to zen on exit", async () => {
+    const instance = render(React.createElement(UIStateTester));
+    await delay(50);
+
+    const ui = (globalThis as Record<string, unknown>)["__uiState"] as ReturnType<
+      typeof useUIState
+    >;
+    ui.enterZen();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:zen");
+
+    ui.enterFuzzyPicker();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:fuzzyPicker");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:zen");
+
+    instance.unmount();
+  });
 });
