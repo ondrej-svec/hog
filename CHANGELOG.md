@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.2](https://github.com/ondrej-svec/hog/compare/hog-v1.24.1...hog-v1.24.2) (2026-03-08)
+
+
+### Bug Fixes
+
+* **board:** repos and statuses side-by-side in stacked layout ([3f2719b](https://github.com/ondrej-svec/hog/commit/3f2719bba58735819ffbc0ae3cf273f9b4b4ffdf))
+* **board:** repos and statuses side-by-side in stacked layout ([ac78e71](https://github.com/ondrej-svec/hog/commit/ac78e71b8c58a91c2f9ac7c1288b5130daca112b))
+
 ## [1.24.1](https://github.com/ondrej-svec/hog/compare/hog-v1.24.0...hog-v1.24.1) (2026-03-08)
 
 
