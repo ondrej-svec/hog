@@ -7,6 +7,8 @@ export const WIDE_THRESHOLD = 160; // full 5-panel layout
 export const MEDIUM_THRESHOLD = 100; // 2-column (left + issues), no detail
 export const LEFT_COL_WIDTH = 24;
 export const ACTIVITY_HEIGHT = 5;
+/** Height of the repos+statuses row in stacked layout */
+export const STACKED_TOP_HEIGHT = 7;
 
 export type LayoutMode = "wide" | "medium" | "stacked";
 
@@ -97,20 +99,18 @@ export function PanelLayout({
     );
   }
 
-  // Stacked (<100 cols): all panels full width, capped heights
-  // Give repos and statuses a fixed budget, issues fills the rest
-  const STACKED_LEFT_HEIGHT = 6; // enough for a few repos/statuses each
+  // Stacked (<100 cols): repos + statuses side-by-side at top, issues below
   return (
     <Box flexDirection="column" height={totalHeight} overflow="hidden">
       {!hideLeftPanel ? (
-        <>
-          <Box height={STACKED_LEFT_HEIGHT} overflow="hidden">
+        <Box height={STACKED_TOP_HEIGHT} flexShrink={0}>
+          <Box width={Math.floor(cols / 2)} overflow="hidden">
             {reposPanel}
           </Box>
-          <Box height={STACKED_LEFT_HEIGHT} overflow="hidden">
+          <Box flexGrow={1} overflow="hidden">
             {statusesPanel}
           </Box>
-        </>
+        </Box>
       ) : null}
       <Box flexGrow={1} flexDirection="column">
         {issuesPanel}
