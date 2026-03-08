@@ -25,6 +25,8 @@ export function getDetailWidth(cols: number): number {
 interface PanelLayoutProps {
   readonly cols: number;
   readonly issuesPanelHeight: number;
+  /** Total height available for the entire panel layout (panels + activity). */
+  readonly totalHeight: number;
   readonly reposPanel: ReactNode;
   readonly statusesPanel: ReactNode;
   readonly issuesPanel: ReactNode;
@@ -36,6 +38,7 @@ interface PanelLayoutProps {
 export function PanelLayout({
   cols,
   issuesPanelHeight,
+  totalHeight,
   reposPanel,
   statusesPanel,
   issuesPanel,
@@ -48,7 +51,7 @@ export function PanelLayout({
   if (mode === "wide") {
     const detailWidth = getDetailWidth(cols);
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={totalHeight} overflow="hidden">
         {/* Main row: left col + issues + detail */}
         <Box height={issuesPanelHeight}>
           {/* Left column: repos + statuses stacked */}
@@ -75,7 +78,7 @@ export function PanelLayout({
 
   if (mode === "medium") {
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={totalHeight} overflow="hidden">
         {/* Main row: left col + issues (no detail) */}
         <Box height={issuesPanelHeight}>
           {!hideLeftPanel ? (
@@ -94,13 +97,19 @@ export function PanelLayout({
     );
   }
 
-  // Stacked (<100 cols): all panels full width, fixed heights
+  // Stacked (<100 cols): all panels full width, capped heights
+  // Give repos and statuses a fixed budget, issues fills the rest
+  const STACKED_LEFT_HEIGHT = 6; // enough for a few repos/statuses each
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={totalHeight} overflow="hidden">
       {!hideLeftPanel ? (
         <>
-          {reposPanel}
-          {statusesPanel}
+          <Box height={STACKED_LEFT_HEIGHT} overflow="hidden">
+            {reposPanel}
+          </Box>
+          <Box height={STACKED_LEFT_HEIGHT} overflow="hidden">
+            {statusesPanel}
+          </Box>
         </>
       ) : null}
       <Box flexGrow={1} flexDirection="column">
