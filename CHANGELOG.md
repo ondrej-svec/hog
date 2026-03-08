@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/ondrej-svec/hog/compare/hog-v1.22.1...hog-v1.23.0) (2026-03-08)
+
+
+### Features
+
+* **board:** redesign zen mode — show DetailPanel when no agent, allow search/filter ([cd05dc4](https://github.com/ondrej-svec/hog/commit/cd05dc4c3c2d84e8ddb61d5a10443b341269b9fb))
+
 ## [1.22.1](https://github.com/ondrej-svec/hog/compare/hog-v1.22.0...hog-v1.22.1) (2026-03-07)
 
 
