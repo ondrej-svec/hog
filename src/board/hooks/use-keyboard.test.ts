@@ -84,10 +84,17 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
 
 function makeNav(
   selectedId: string | null = "gh:owner/repo:1",
-): Pick<UseNavigationResult, "moveUp" | "moveDown" | "selectedId"> {
+): Pick<
+  UseNavigationResult,
+  "moveUp" | "moveDown" | "moveUpBy" | "moveDownBy" | "goToTop" | "goToBottom" | "selectedId"
+> {
   return {
     moveUp: vi.fn(),
     moveDown: vi.fn(),
+    moveUpBy: vi.fn(),
+    moveDownBy: vi.fn(),
+    goToTop: vi.fn(),
+    goToBottom: vi.fn(),
     selectedId,
   };
 }
@@ -231,6 +238,7 @@ function setup(opts: HarnessOptions = {}): Harness {
       onActivityEnter,
       showDetailPanel,
       leftPanelHidden,
+      issuesPageSize: 20,
     });
     // useInput is mocked — no real Ink output required
     return null;

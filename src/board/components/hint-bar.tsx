@@ -98,7 +98,7 @@ function HintBar({
     0: "j/k:scroll  Esc:close  ? help",
     1: "j/k:move  Enter:filter  0-4:panel  ? help",
     2: "j/k:move  Enter:filter  Esc:clear  0-4:panel  ? help",
-    3: `j/k:move  Enter:detail  g:open  p:pick  m:status  c:comment  C:claude  /:search  n:new  H:hide-panel  Z:zen  0-4:panel${hasUndoable ? "  u:undo" : ""}  ? help  q:quit`,
+    3: `j/k:move  ^d/^u:page  G:bottom  Enter:detail  g:open  p:pick  m:status  c:comment  C:claude  /:search  n:new  H:hide-panel  Z:zen  0-4:panel${hasUndoable ? "  u:undo" : ""}  ? help  q:quit`,
     4: "j/k:scroll  Enter:jump  r:refresh  0-4:panel  ? help",
   };
 

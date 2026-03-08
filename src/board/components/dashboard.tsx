@@ -28,6 +28,7 @@ import { useNavigation } from "../hooks/use-navigation.js";
 import { useNudges } from "../hooks/use-nudges.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
+import { useViewportScroll } from "../hooks/use-viewport-scroll.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
 import { useZenMode } from "../hooks/use-zen-mode.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
@@ -542,38 +543,24 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     });
   }, [boardTree.sections, selectedRepoName, selectedStatusGroupId, workflowState, config.repos]);
 
-  // Scroll offset - tracks viewport position
-  const scrollRef = useRef(0);
-  // Reset scroll to top when switching repos or status groups
-  const prevRepoRef = useRef<string | null>(null);
-  const prevStatusRef = useRef<string | null>(null);
-  if (selectedRepoName !== prevRepoRef.current || selectedStatusGroupId !== prevStatusRef.current) {
-    prevRepoRef.current = selectedRepoName;
-    prevStatusRef.current = selectedStatusGroupId;
-    scrollRef.current = 0;
-  }
-
   const selectedRowIdx = useMemo(
     () => flatRows.findIndex((r) => r.navId === nav.selectedId),
     [flatRows, nav.selectedId],
   );
 
-  // Adjust scroll to keep selected item visible
-  if (selectedRowIdx >= 0) {
-    if (selectedRowIdx < scrollRef.current) {
-      scrollRef.current = selectedRowIdx;
-    } else if (selectedRowIdx >= scrollRef.current + contentRowCount) {
-      scrollRef.current = selectedRowIdx - contentRowCount + 1;
-    }
-  }
-  const maxOffset = Math.max(0, flatRows.length - contentRowCount);
-  scrollRef.current = Math.max(0, Math.min(scrollRef.current, maxOffset));
-
-  const visibleRows = flatRows.slice(scrollRef.current, scrollRef.current + contentRowCount);
-  const hasMoreAbove = scrollRef.current > 0;
-  const hasMoreBelow = scrollRef.current + contentRowCount < flatRows.length;
-  const aboveCount = scrollRef.current;
-  const belowCount = flatRows.length - scrollRef.current - contentRowCount;
+  // Viewport-aware scrolling with scroll margin and indicator row accounting
+  const scrollResetKey = `${selectedRepoName ?? ""}:${selectedStatusGroupId ?? ""}`;
+  const viewport = useViewportScroll(
+    flatRows.length,
+    contentRowCount,
+    selectedRowIdx,
+    scrollResetKey,
+  );
+  const { hasMoreAbove, hasMoreBelow, aboveCount, belowCount } = viewport;
+  const visibleRows = flatRows.slice(
+    viewport.scrollOffset,
+    viewport.scrollOffset + viewport.visibleCount,
+  );
 
   // Find selected item for detail panel and overlays
   const selectedItem = useMemo((): {
@@ -1073,6 +1060,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     onActivityEnter,
     showDetailPanel,
     leftPanelHidden,
+    issuesPageSize: viewport.visibleCount,
   });
 
   // Loading state
