@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.24.0](https://github.com/ondrej-svec/hog/compare/hog-v1.23.1...hog-v1.24.0) (2026-03-08)
+
+
+### Features
+
+* **board:** responsive viewport scrolling with page navigation ([cd5cd2d](https://github.com/ondrej-svec/hog/commit/cd5cd2d4145f30e6fb0f053b36e29b5472e6f822))
+* **board:** responsive viewport scrolling with page navigation ([1703b14](https://github.com/ondrej-svec/hog/commit/1703b14ed66a58d1597542efe0ec768105ec6ce8))
+
 ## [1.23.1](https://github.com/ondrej-svec/hog/compare/hog-v1.23.0...hog-v1.23.1) (2026-03-08)
 
 
