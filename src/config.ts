@@ -206,11 +206,27 @@ export function saveFullConfig(config: HogConfig): void {
   writeFileSync(CONFIG_FILE, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
 }
 
+/**
+ * Validate an unknown object against the HogConfig schema.
+ * Returns `{ success: true, data }` or `{ success: false, error }`.
+ */
+export function validateConfigSchema(
+  raw: unknown,
+): { success: true; data: HogConfig } | { success: false; error: string } {
+  const result = HOG_CONFIG_SCHEMA.safeParse(raw);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  const messages = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`);
+  return { success: false, error: messages.join("\n") };
+}
+
 function loadRawConfig(): Record<string, unknown> {
   if (!existsSync(CONFIG_FILE)) return {};
   try {
     return JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as Record<string, unknown>;
   } catch {
+    // Corrupt or unreadable config — treat as empty so defaults apply
     return {};
   }
 }
@@ -265,6 +281,7 @@ function loadAuth(): AuthData {
     const result = AUTH_SCHEMA.safeParse(raw);
     return result.success ? result.data : {};
   } catch {
+    // Corrupt or unreadable auth file — treat as empty
     return {};
   }
 }

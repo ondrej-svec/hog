@@ -19,6 +19,7 @@ import {
   resolveProfile,
   saveFullConfig,
   saveLlmAuth,
+  validateConfigSchema,
   validateRepoName,
 } from "./config.js";
 import { runInit, runReposAdd } from "./init.js";
@@ -257,6 +258,55 @@ config
         console.log(`  ${repo.shortName} → ${repo.name} (project #${repo.projectNumber})`);
         console.log(`    completion: ${repo.completionAction.type}`);
       }
+    }
+  });
+
+config
+  .command("set <path> <value>")
+  .description("Set a configuration value (dot-notation path, e.g. board.assignee)")
+  .action((path: string, rawValue: string) => {
+    const cfg = loadFullConfig();
+
+    // Parse the value: try boolean, then number, then keep as string
+    let value: unknown = rawValue;
+    if (rawValue === "true") value = true;
+    else if (rawValue === "false") value = false;
+    else if (rawValue !== "" && !Number.isNaN(Number(rawValue))) value = Number(rawValue);
+
+    // Walk the dot-notation path and set the value
+    const keys = path.split(".");
+    if (keys.length === 0) {
+      errorOut("Invalid path: empty path");
+    }
+
+    // Deep-clone config to avoid mutation before validation
+    const updated = JSON.parse(JSON.stringify(cfg)) as Record<string, unknown>;
+    let target: Record<string, unknown> = updated;
+
+    for (let i = 0; i < keys.length - 1; i++) {
+      const key = keys[i] as string;
+      const next = target[key];
+      if (next === undefined || next === null || typeof next !== "object" || Array.isArray(next)) {
+        errorOut(`Invalid path: "${keys.slice(0, i + 1).join(".")}" is not a nested object`);
+      }
+      target = next as Record<string, unknown>;
+    }
+
+    const lastKey = keys[keys.length - 1] as string;
+    target[lastKey] = value;
+
+    // Validate the updated config against the Zod schema
+    const result = validateConfigSchema(updated);
+    if (!result.success) {
+      errorOut(`Validation failed:\n${result.error}`);
+    }
+
+    saveFullConfig(result.data);
+
+    if (useJson()) {
+      jsonOut({ ok: true, path, value });
+    } else {
+      printSuccess(`Set ${path} = ${JSON.stringify(value)}`);
     }
   });
 

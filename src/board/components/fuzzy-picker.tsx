@@ -2,6 +2,7 @@ import { TextInput } from "@inkjs/ui";
 import { Fzf } from "fzf";
 import { Box, Text, useInput } from "ink";
 import { useMemo, useState } from "react";
+import { makeIssueNavId } from "../board-utils.js";
 import type { RepoData } from "../fetch.js";
 
 interface FuzzyPickerIssue {
@@ -37,7 +38,7 @@ function FuzzyPicker({ repos, onSelect, onClose }: FuzzyPickerProps) {
     for (const rd of repos) {
       for (const issue of rd.issues) {
         items.push({
-          navId: `gh:${rd.repo.name}:${issue.number}`,
+          navId: makeIssueNavId(rd.repo.name, issue.number),
           repoShortName: rd.repo.shortName,
           number: issue.number,
           title: issue.title,

@@ -4,19 +4,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // calls execFileSync directly (not through github.ts).
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
+  execFile: vi.fn(),
 }));
 
-const mockFetchRepoIssues = vi.fn();
-const mockFetchProjectEnrichment = vi.fn();
-const mockFetchProjectStatusOptions = vi.fn();
+const mockFetchRepoIssuesAsync = vi.fn();
+const mockFetchProjectEnrichmentAsync = vi.fn();
+const mockFetchProjectStatusOptionsAsync = vi.fn();
 
 vi.mock("../github.js", () => ({
-  fetchRepoIssues: (...args: unknown[]) => mockFetchRepoIssues(...args),
-  fetchProjectEnrichment: (...args: unknown[]) => mockFetchProjectEnrichment(...args),
-  fetchProjectStatusOptions: (...args: unknown[]) => mockFetchProjectStatusOptions(...args),
+  fetchRepoIssuesAsync: (...args: unknown[]) => mockFetchRepoIssuesAsync(...args),
+  fetchProjectEnrichmentAsync: (...args: unknown[]) => mockFetchProjectEnrichmentAsync(...args),
+  fetchProjectStatusOptionsAsync: (...args: unknown[]) =>
+    mockFetchProjectStatusOptionsAsync(...args),
 }));
 
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import type { HogConfig, RepoConfig } from "../config.js";
 import {
   extractIssueNumbersFromBranch,
@@ -26,6 +28,7 @@ import {
 } from "./fetch.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
+const mockExecFile = vi.mocked(execFile);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -69,17 +72,23 @@ function makeGitHubIssue(overrides: Record<string, unknown> = {}) {
 describe("fetchDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockFetchRepoIssues.mockReturnValue([]);
-    mockFetchProjectEnrichment.mockReturnValue(new Map());
-    mockFetchProjectStatusOptions.mockReturnValue([]);
-    // By default, silence the fetchRecentActivity execFileSync call
+    mockFetchRepoIssuesAsync.mockResolvedValue([]);
+    mockFetchProjectEnrichmentAsync.mockResolvedValue(new Map());
+    mockFetchProjectStatusOptionsAsync.mockResolvedValue([]);
+    // By default, silence the fetchRecentActivity calls (sync and async)
     mockExecFileSync.mockReturnValue("");
+    // Mock execFile (callback-style, used by promisify for async activity fetch)
+    // biome-ignore lint/suspicious/noExplicitAny: test mock needs to match callback signature
+    (mockExecFile as any).mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb(null, { stdout: "", stderr: "" });
+    });
   });
 
   it("returns repos, activity, and fetchedAt on happy path", async () => {
     const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockFetchProjectStatusOptions.mockReturnValue([{ id: "opt-1", name: "In Progress" }]);
+    mockFetchRepoIssuesAsync.mockResolvedValue([issue]);
+    mockFetchProjectStatusOptionsAsync.mockResolvedValue([{ id: "opt-1", name: "In Progress" }]);
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -93,9 +102,7 @@ describe("fetchDashboard", () => {
   });
 
   it("returns empty issues for a repo that errors, with error message", async () => {
-    mockFetchRepoIssues.mockImplementation(() => {
-      throw new Error("gh: authentication failed");
-    });
+    mockFetchRepoIssuesAsync.mockRejectedValue(new Error("gh: authentication failed"));
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -106,9 +113,7 @@ describe("fetchDashboard", () => {
   });
 
   it("handles non-Error repo failures by stringifying them", async () => {
-    mockFetchRepoIssues.mockImplementation(() => {
-      throw "string error";
-    });
+    mockFetchRepoIssuesAsync.mockRejectedValue("string error");
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -162,7 +167,7 @@ describe("fetchDashboard", () => {
     const config = makeConfig();
     await fetchDashboard(config, { mineOnly: true });
 
-    expect(mockFetchRepoIssues).toHaveBeenCalledWith(
+    expect(mockFetchRepoIssuesAsync).toHaveBeenCalledWith(
       "test-org/backend",
       expect.objectContaining({ assignee: "test-user" }),
     );
@@ -172,13 +177,13 @@ describe("fetchDashboard", () => {
     const config = makeConfig();
     await fetchDashboard(config, { mineOnly: false });
 
-    expect(mockFetchRepoIssues).toHaveBeenCalledWith("test-org/backend", {});
+    expect(mockFetchRepoIssuesAsync).toHaveBeenCalledWith("test-org/backend", {});
   });
 
   it("enriches issues with targetDate and projectStatus from project enrichment", async () => {
     const issue = makeGitHubIssue({ number: 42 });
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockFetchProjectEnrichment.mockReturnValue(
+    mockFetchRepoIssuesAsync.mockResolvedValue([issue]);
+    mockFetchProjectEnrichmentAsync.mockResolvedValue(
       new Map([[42, { targetDate: "2026-03-01", projectStatus: "In Review" }]]),
     );
 
@@ -191,10 +196,8 @@ describe("fetchDashboard", () => {
 
   it("silently ignores project enrichment failures (non-critical)", async () => {
     const issue = makeGitHubIssue();
-    mockFetchRepoIssues.mockReturnValue([issue]);
-    mockFetchProjectEnrichment.mockImplementation(() => {
-      throw new Error("GraphQL rate limited");
-    });
+    mockFetchRepoIssuesAsync.mockResolvedValue([issue]);
+    mockFetchProjectEnrichmentAsync.mockRejectedValue(new Error("GraphQL rate limited"));
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -209,7 +212,7 @@ describe("fetchDashboard", () => {
     const issue = makeGitHubIssue({
       body: "See thread: https://myteam.slack.com/archives/C012345678/p1234567890123456",
     });
-    mockFetchRepoIssues.mockReturnValue([issue]);
+    mockFetchRepoIssuesAsync.mockResolvedValue([issue]);
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -221,7 +224,7 @@ describe("fetchDashboard", () => {
 
   it("does not set slackThreadUrl when issue body has no Slack URL", async () => {
     const issue = makeGitHubIssue({ body: "Just a plain description" });
-    mockFetchRepoIssues.mockReturnValue([issue]);
+    mockFetchRepoIssuesAsync.mockResolvedValue([issue]);
 
     const config = makeConfig();
     const result = await fetchDashboard(config);
@@ -260,8 +263,14 @@ describe("fetchDashboard", () => {
       created_at: new Date(nowMs - 1_800_000).toISOString(),
     });
 
-    // First call (backend): returns the older event; second call (frontend): returns the newer
-    mockExecFileSync.mockReturnValueOnce(olderLine).mockReturnValueOnce(newerLine);
+    // fetchDashboard uses async activity fetch (execFile callback-style)
+    let callCount = 0;
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    (mockExecFile as any).mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1];
+      const stdout = callCount++ === 0 ? olderLine : newerLine;
+      if (typeof cb === "function") cb(null, { stdout, stderr: "" });
+    });
 
     const result = await fetchDashboard(config);
 
@@ -285,7 +294,11 @@ describe("fetchDashboard", () => {
         created_at: new Date(nowMs - i * 60_000).toISOString(),
       });
     });
-    mockExecFileSync.mockReturnValue(events.join("\n"));
+    // biome-ignore lint/suspicious/noExplicitAny: test mock
+    (mockExecFile as any).mockImplementation((...args: any[]) => {
+      const cb = args[args.length - 1];
+      if (typeof cb === "function") cb(null, { stdout: events.join("\n"), stderr: "" });
+    });
 
     const config = makeConfig();
     const result = await fetchDashboard(config);

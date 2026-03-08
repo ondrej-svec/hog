@@ -378,16 +378,15 @@ describe("launchClaude — terminal fallback", () => {
   it("launches via terminal when launchMode is terminal", () => {
     const result = launchClaude(makeOpts({ launchMode: "terminal" }));
     expect(result.ok).toBe(true);
-    expect(mockSpawnFn).toHaveBeenCalled();
+    // Terminal.app uses osascript via spawnSync
+    expect(mockSpawnSync).toHaveBeenCalledWith("osascript", expect.anything(), expect.anything());
   });
 
   it("auto mode without TMUX falls back to terminal", () => {
     const result = launchClaude(makeOpts({ launchMode: "auto" }));
     expect(result.ok).toBe(true);
-    expect(mockSpawnFn).toHaveBeenCalled();
-    // Should NOT call tmux
-    const [cmd] = (mockSpawnFn.mock.calls[0] as [string]) ?? [""];
-    expect(cmd).not.toBe("tmux");
+    // Terminal.app uses osascript via spawnSync (not tmux)
+    expect(mockSpawnSync).toHaveBeenCalledWith("osascript", expect.anything(), expect.anything());
   });
 
   it("WezTerm: uses wezterm start --cwd", () => {

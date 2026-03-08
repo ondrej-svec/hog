@@ -19,6 +19,7 @@ import {
 } from "../../github.js";
 import { pickIssue } from "../../pick.js";
 import { formatError } from "../../utils.js";
+import { findIssueByNavId } from "../board-utils.js";
 import { TERMINAL_STATUS_RE } from "../constants.js";
 import type { DashboardData, RepoData } from "../fetch.js";
 import type { ActionLogEntry } from "./use-action-log.js";
@@ -81,19 +82,19 @@ function findIssueContext(
   selectedId: string | null,
   config: HogConfig,
 ): ActionContext {
-  if (!selectedId?.startsWith("gh:")) {
+  const found = findIssueByNavId(repos, selectedId);
+  if (!found) {
     return { issue: null, repoName: null, repoConfig: null, statusOptions: [] };
   }
 
-  for (const rd of repos) {
-    for (const issue of rd.issues) {
-      if (`gh:${rd.repo.name}:${issue.number}` === selectedId) {
-        const repoConfig = config.repos.find((r) => r.name === rd.repo.name) ?? null;
-        return { issue, repoName: rd.repo.name, repoConfig, statusOptions: rd.statusOptions };
-      }
-    }
-  }
-  return { issue: null, repoName: null, repoConfig: null, statusOptions: [] };
+  const rd = repos.find((r) => r.repo.name === found.repoName);
+  const repoConfig = config.repos.find((r) => r.name === found.repoName) ?? null;
+  return {
+    issue: found.issue,
+    repoName: found.repoName,
+    repoConfig,
+    statusOptions: rd?.statusOptions ?? [],
+  };
 }
 
 /** Returns true if the issue is already assigned and a toast was shown. */

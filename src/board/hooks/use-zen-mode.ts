@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseIssueNavId } from "../board-utils.js";
 import type { RepoData } from "../fetch.js";
 import {
   agentWindowName,
@@ -45,10 +46,7 @@ interface UseZenModeResult {
 // ── Helpers ──
 
 function issueNumberFromId(selectedId: string | null): number | null {
-  if (!selectedId?.startsWith("gh:")) return null;
-  const parts = selectedId.split(":");
-  const num = Number(parts[2]);
-  return Number.isNaN(num) ? null : num;
+  return parseIssueNavId(selectedId)?.issueNumber ?? null;
 }
 
 /** Try to join an agent's tmux pane. Returns pane ID or null if no agent exists. */

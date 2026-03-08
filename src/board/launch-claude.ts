@@ -207,18 +207,40 @@ end tell`;
     }
 
     case "Terminal": {
-      const child = spawn("open", ["-a", "Terminal", localPath], {
-        stdio: "ignore",
-        detached: true,
-      });
-      child.unref();
+      // Terminal.app: use AppleScript to open a new window and send the command
+      const quotedArgs = [command, ...extraArgs, "--", prompt].map(shellQuote).join(" ");
+      const script = `tell application "Terminal"
+  activate
+  do script "cd " & ${JSON.stringify(shellQuote(localPath))} & " && " & ${JSON.stringify(quotedArgs)}
+end tell`;
+      const result = spawnSync("osascript", ["-e", script], { stdio: "ignore" });
+      if (result.status !== 0) {
+        return {
+          ok: false,
+          error: {
+            kind: "terminal-failed",
+            message: "Terminal.app launch failed.",
+          },
+        };
+      }
       return { ok: true, value: undefined };
     }
 
     case "Ghostty": {
+      // Ghostty: use -e flag to execute command instead of default shell
       const child = spawn(
         "open",
-        ["-na", "Ghostty", "--args", `--working-directory=${localPath}`],
+        [
+          "-na",
+          "Ghostty",
+          "--args",
+          `--working-directory=${localPath}`,
+          "-e",
+          command,
+          ...extraArgs,
+          "--",
+          prompt,
+        ],
         { stdio: "ignore", detached: true },
       );
       child.unref();

@@ -8,29 +8,23 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // ── Pure function tests ──
 
 describe("getMenuItems", () => {
-  it("should return GitHub actions for github selection", () => {
-    const items = getMenuItems("github");
+  it("should return assign, unassign, and statusChange actions", () => {
+    const items = getMenuItems();
     expect(items).toHaveLength(3);
     expect(items.map((i) => i.action.type)).toEqual(["assign", "unassign", "statusChange"]);
-  });
-
-  it("should return empty array for mixed selection", () => {
-    const items = getMenuItems("mixed");
-    expect(items).toHaveLength(0);
   });
 });
 
 // ── Component tests ──
 
 describe("BulkActionMenu", () => {
-  it("should render count and menu items for GitHub selection", async () => {
+  it("should render count and menu items", async () => {
     const onSelect = vi.fn();
     const onCancel = vi.fn();
 
     const instance = render(
       React.createElement(BulkActionMenu, {
         count: 3,
-        selectionType: "github",
         onSelect,
         onCancel,
       }),
@@ -46,26 +40,6 @@ describe("BulkActionMenu", () => {
     instance.unmount();
   });
 
-  it("should render message for mixed selection", async () => {
-    const onSelect = vi.fn();
-    const onCancel = vi.fn();
-
-    const instance = render(
-      React.createElement(BulkActionMenu, {
-        count: 2,
-        selectionType: "mixed",
-        onSelect,
-        onCancel,
-      }),
-    );
-    await delay(50);
-
-    const frame = instance.lastFrame()!;
-    expect(frame).toContain("No bulk actions for mixed selection types");
-
-    instance.unmount();
-  });
-
   it("should call onSelect when Enter is pressed", async () => {
     const onSelect = vi.fn();
     const onCancel = vi.fn();
@@ -73,7 +47,6 @@ describe("BulkActionMenu", () => {
     const instance = render(
       React.createElement(BulkActionMenu, {
         count: 2,
-        selectionType: "github",
         onSelect,
         onCancel,
       }),
@@ -96,7 +69,6 @@ describe("BulkActionMenu", () => {
     const instance = render(
       React.createElement(BulkActionMenu, {
         count: 2,
-        selectionType: "github",
         onSelect,
         onCancel,
       }),
@@ -121,7 +93,6 @@ describe("BulkActionMenu", () => {
     const instance = render(
       React.createElement(BulkActionMenu, {
         count: 1,
-        selectionType: "github",
         onSelect,
         onCancel,
       }),

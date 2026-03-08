@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GitHubIssue } from "../../github.js";
-import { matchesSearch } from "./dashboard.js";
+import { matchesSearch } from "../board-tree.js";
 
 function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
   return {

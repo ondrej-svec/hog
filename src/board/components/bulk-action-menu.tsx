@@ -1,17 +1,10 @@
 import { Box, Text, useInput } from "ink";
 import { useState } from "react";
 
-export type BulkAction =
-  | { type: "assign" }
-  | { type: "statusChange" }
-  | { type: "unassign" }
-  | { type: "complete" }
-  | { type: "delete" };
+export type BulkAction = { type: "assign" } | { type: "statusChange" } | { type: "unassign" };
 
 interface BulkActionMenuProps {
   readonly count: number;
-  /** What kinds of items are selected */
-  readonly selectionType: "github" | "mixed";
   readonly onSelect: (action: BulkAction) => void;
   readonly onCancel: () => void;
 }
@@ -21,20 +14,16 @@ interface MenuItem {
   action: BulkAction;
 }
 
-function getMenuItems(selectionType: "github" | "mixed"): MenuItem[] {
-  if (selectionType === "github") {
-    return [
-      { label: "Assign all to me", action: { type: "assign" } },
-      { label: "Unassign all from me", action: { type: "unassign" } },
-      { label: "Move status (all)", action: { type: "statusChange" } },
-    ];
-  }
-  // Mixed: only show actions valid for all types — none in our case
-  return [];
+function getMenuItems(): MenuItem[] {
+  return [
+    { label: "Assign all to me", action: { type: "assign" } },
+    { label: "Unassign all from me", action: { type: "unassign" } },
+    { label: "Move status (all)", action: { type: "statusChange" } },
+  ];
 }
 
-function BulkActionMenu({ count, selectionType, onSelect, onCancel }: BulkActionMenuProps) {
-  const items = getMenuItems(selectionType);
+function BulkActionMenu({ count, onSelect, onCancel }: BulkActionMenuProps) {
+  const items = getMenuItems();
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   useInput((input, key) => {
@@ -51,15 +40,6 @@ function BulkActionMenu({ count, selectionType, onSelect, onCancel }: BulkAction
       setSelectedIdx((i) => Math.max(i - 1, 0));
     }
   });
-
-  if (items.length === 0) {
-    return (
-      <Box flexDirection="column">
-        <Text color="yellow">No bulk actions for mixed selection types.</Text>
-        <Text dimColor>Esc to cancel</Text>
-      </Box>
-    );
-  }
 
   return (
     <Box flexDirection="column">

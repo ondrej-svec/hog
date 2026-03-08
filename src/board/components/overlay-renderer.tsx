@@ -52,7 +52,6 @@ export interface OverlayRendererProps {
   readonly onCancelPick: () => void;
   // Bulk action
   readonly multiSelectCount: number;
-  readonly multiSelectType: "github" | "mixed";
   readonly onBulkAction: (action: BulkAction) => void;
   // Focus mode
   readonly focusLabel: string | null;
@@ -109,7 +108,6 @@ function OverlayRenderer({
   onConfirmPick,
   onCancelPick,
   multiSelectCount,
-  multiSelectType,
   onBulkAction,
   focusLabel,
   focusKey,
@@ -179,12 +177,7 @@ function OverlayRenderer({
 
       {/* Bulk action menu overlay */}
       {mode === "overlay:bulkAction" ? (
-        <BulkActionMenu
-          count={multiSelectCount}
-          selectionType={multiSelectType}
-          onSelect={onBulkAction}
-          onCancel={onExitOverlay}
-        />
+        <BulkActionMenu count={multiSelectCount} onSelect={onBulkAction} onCancel={onExitOverlay} />
       ) : null}
 
       {/* Focus mode overlay */}

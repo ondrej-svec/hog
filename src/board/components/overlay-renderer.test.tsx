@@ -63,7 +63,6 @@ function makeBaseProps(overrides: Partial<OverlayRendererProps> = {}): OverlayRe
     onConfirmPick: vi.fn(),
     onCancelPick: vi.fn(),
     multiSelectCount: 0,
-    multiSelectType: "github",
     onBulkAction: vi.fn(),
     focusLabel: null,
     focusKey: 0,
@@ -172,7 +171,6 @@ describe("OverlayRenderer", () => {
     const props = makeBaseProps({
       uiState: makeUiState({ mode: "overlay:bulkAction" }),
       multiSelectCount: 2,
-      multiSelectType: "github",
     });
     const { lastFrame } = renderOverlay(props);
     const frame = lastFrame() ?? "";

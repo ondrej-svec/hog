@@ -102,6 +102,270 @@ async function runGhGraphQLAsync<T>(args: string[]): Promise<T> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Internal GraphQL response types (hoisted for use by shared helpers)
+// ---------------------------------------------------------------------------
+
+interface FieldValue {
+  field?: { name?: string };
+  date?: string;
+  name?: string;
+  text?: string;
+  number?: number;
+  title?: string; // iteration field title
+}
+
+interface ProjectItem {
+  id?: string;
+  project?: { number?: number };
+  fieldValues?: { nodes?: (FieldValue | null)[] };
+}
+
+interface GraphQLResult {
+  data?: {
+    repository?: {
+      issue?: {
+        projectItems?: {
+          nodes?: (ProjectItem | null)[];
+        };
+      };
+    };
+  };
+}
+
+interface ProjectV2IdNode {
+  projectV2?: {
+    id?: string;
+  };
+}
+
+interface GraphQLProjectResult {
+  data?: {
+    organization?: ProjectV2IdNode;
+    user?: ProjectV2IdNode;
+  };
+}
+
+interface ProjectItemNode {
+  content?: { number?: number };
+  fieldValues?: { nodes?: (FieldValue | null)[] };
+}
+
+interface ProjectV2ItemsNode {
+  projectV2?: {
+    items?: {
+      pageInfo?: { hasNextPage: boolean; endCursor?: string };
+      nodes?: (ProjectItemNode | null)[];
+    };
+  };
+}
+
+interface ProjectItemsResult {
+  data?: {
+    organization?: ProjectV2ItemsNode;
+    user?: ProjectV2ItemsNode;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared GraphQL queries & helpers
+// ---------------------------------------------------------------------------
+
+/** GraphQL query to find a project item by issue number. */
+const FIND_PROJECT_ITEM_QUERY = `
+  query($owner: String!, $repo: String!, $issueNumber: Int!) {
+    repository(owner: $owner, name: $repo) {
+      issue(number: $issueNumber) {
+        projectItems(first: 10) {
+          nodes {
+            id
+            project { number }
+            fieldValues(first: 20) {
+              nodes {
+                ... on ProjectV2ItemFieldDateValue {
+                  field { ... on ProjectV2Field { name } }
+                  date
+                }
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  field { ... on ProjectV2SingleSelectField { name } }
+                  name
+                }
+                ... on ProjectV2ItemFieldTextValue {
+                  field { ... on ProjectV2Field { name } }
+                  text
+                }
+                ... on ProjectV2ItemFieldNumberValue {
+                  field { ... on ProjectV2Field { name } }
+                  number
+                }
+                ... on ProjectV2ItemFieldIterationValue {
+                  field { ... on ProjectV2IterationField { name } }
+                  title
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/** Build the `gh api graphql` args for {@link FIND_PROJECT_ITEM_QUERY}. */
+function findProjectItemArgs(owner: string, repoName: string, issueNumber: number): string[] {
+  return [
+    "api",
+    "graphql",
+    "-f",
+    `query=${FIND_PROJECT_ITEM_QUERY}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `repo=${repoName}`,
+    "-F",
+    `issueNumber=${String(issueNumber)}`,
+  ];
+}
+
+/** Find a project item synchronously. Returns the matching node or `null`. */
+function findProjectItemSync(
+  owner: string,
+  repoName: string,
+  issueNumber: number,
+  projectNumber: number,
+): ProjectItem | null {
+  const result = runGhJson<GraphQLResult>(findProjectItemArgs(owner, repoName, issueNumber));
+  const items = result?.data?.repository?.issue?.projectItems?.nodes ?? [];
+  return items.find((item) => item?.project?.number === projectNumber) ?? null;
+}
+
+/** Find a project item asynchronously. Returns the matching node or `null`. */
+async function findProjectItemAsync(
+  owner: string,
+  repoName: string,
+  issueNumber: number,
+  projectNumber: number,
+): Promise<ProjectItem | null> {
+  const result = await runGhJsonAsync<GraphQLResult>(
+    findProjectItemArgs(owner, repoName, issueNumber),
+  );
+  const items = result?.data?.repository?.issue?.projectItems?.nodes ?? [];
+  return items.find((item) => item?.project?.number === projectNumber) ?? null;
+}
+
+/**
+ * Parse field value nodes from a GitHub Projects v2 item into structured data.
+ *
+ * The `statusKey` parameter controls which key receives the Status value
+ * (`"status"` for {@link ProjectFieldValues}, `"projectStatus"` for
+ * {@link ProjectEnrichment}).
+ */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub Project field types
+function parseFieldValues(
+  fieldValues: (FieldValue | null)[],
+  statusKey: "status" | "projectStatus",
+): ProjectFieldValues & ProjectEnrichment {
+  const result: ProjectFieldValues & ProjectEnrichment = {};
+  for (const fv of fieldValues) {
+    if (!fv) continue;
+    const fieldName = fv.field?.name ?? "";
+    if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fieldName)) {
+      result.targetDate = fv.date;
+    } else if ("name" in fv && fieldName === "Status" && fv.name) {
+      (result as Record<string, unknown>)[statusKey] = fv.name;
+    } else if (fieldName) {
+      const value =
+        "text" in fv && fv.text != null
+          ? fv.text
+          : "number" in fv && fv.number != null
+            ? String(fv.number)
+            : "name" in fv && fv.name != null
+              ? fv.name
+              : "title" in fv && fv.title != null
+                ? fv.title
+                : null;
+      if (value != null) {
+        if (!result.customFields) result.customFields = {};
+        result.customFields[fieldName] = value;
+      }
+    }
+  }
+  return result;
+}
+
+/** Cache for GitHub Projects node IDs — these are immutable per project number. */
+const projectNodeIdCache = new Map<string, string>();
+
+/** Resolve a GitHub Projects v2 node ID synchronously (with caching). */
+function getProjectNodeIdSync(owner: string, projectNumber: number): string | null {
+  const key = `${owner}/${String(projectNumber)}`;
+  const cached = projectNodeIdCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const idFragment = `projectV2(number: $projectNumber) { id }`;
+
+  const projectQuery = `
+    query($owner: String!, $projectNumber: Int!) {
+      organization(login: $owner) { ${idFragment} }
+      user(login: $owner) { ${idFragment} }
+    }
+  `;
+
+  const projectResult = runGhGraphQL<GraphQLProjectResult>([
+    "api",
+    "graphql",
+    "-f",
+    `query=${projectQuery}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `projectNumber=${String(projectNumber)}`,
+  ]);
+
+  const ownerNode = projectResult?.data?.organization ?? projectResult?.data?.user;
+  const projectId = ownerNode?.projectV2?.id;
+  if (!projectId) return null;
+  projectNodeIdCache.set(key, projectId);
+  return projectId;
+}
+
+/** Resolve a GitHub Projects v2 node ID asynchronously (with caching). */
+async function getProjectNodeId(owner: string, projectNumber: number): Promise<string | null> {
+  const key = `${owner}/${String(projectNumber)}`;
+  const cached = projectNodeIdCache.get(key);
+  if (cached !== undefined) return cached;
+
+  const idFragment = `projectV2(number: $projectNumber) { id }`;
+
+  const projectQuery = `
+    query($owner: String!, $projectNumber: Int!) {
+      organization(login: $owner) { ${idFragment} }
+      user(login: $owner) { ${idFragment} }
+    }
+  `;
+
+  const projectResult = await runGhGraphQLAsync<GraphQLProjectResult>([
+    "api",
+    "graphql",
+    "-f",
+    `query=${projectQuery}`,
+    "-F",
+    `owner=${owner}`,
+    "-F",
+    `projectNumber=${String(projectNumber)}`,
+  ]);
+
+  const ownerNode = projectResult?.data?.organization ?? projectResult?.data?.user;
+  const projectId = ownerNode?.projectV2?.id;
+  if (!projectId) return null;
+  projectNodeIdCache.set(key, projectId);
+  return projectId;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 export function fetchAssignedIssues(repo: string, assignee: string): GitHubIssue[] {
   return runGhJson<GitHubIssue[]>([
     "issue",
@@ -143,6 +407,29 @@ export function fetchRepoIssues(repo: string, options: FetchIssuesOptions = {}):
     args.push("--assignee", options.assignee);
   }
   return runGhJson<GitHubIssue[]>(args);
+}
+
+export async function fetchRepoIssuesAsync(
+  repo: string,
+  options: FetchIssuesOptions = {},
+): Promise<GitHubIssue[]> {
+  const { state = "open", limit = 100 } = options;
+  const args = [
+    "issue",
+    "list",
+    "--repo",
+    repo,
+    "--state",
+    state,
+    "--json",
+    "number,title,url,state,updatedAt,labels,assignees,body",
+    "--limit",
+    String(limit),
+  ];
+  if (options.assignee) {
+    args.push("--assignee", options.assignee);
+  }
+  return runGhJsonAsync<GitHubIssue[]>(args);
 }
 
 export function assignIssue(repo: string, issueNumber: number): void {
@@ -286,102 +573,19 @@ export async function fetchIssueCommentsAsync(
   return result.comments ?? [];
 }
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub Project field types
 export function fetchProjectFields(
   repo: string,
   issueNumber: number,
   projectNumber: number,
 ): ProjectFieldValues {
-  // GraphQL query to get project item fields for this issue
-  const query = `
-    query($owner: String!, $repo: String!, $issueNumber: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $issueNumber) {
-          projectItems(first: 10) {
-            nodes {
-              project { number }
-              fieldValues(first: 20) {
-                nodes {
-                  ... on ProjectV2ItemFieldDateValue {
-                    field { ... on ProjectV2Field { name } }
-                    date
-                  }
-                  ... on ProjectV2ItemFieldSingleSelectValue {
-                    field { ... on ProjectV2SingleSelectField { name } }
-                    name
-                  }
-                  ... on ProjectV2ItemFieldTextValue {
-                    field { ... on ProjectV2Field { name } }
-                    text
-                  }
-                  ... on ProjectV2ItemFieldNumberValue {
-                    field { ... on ProjectV2Field { name } }
-                    number
-                  }
-                  ... on ProjectV2ItemFieldIterationValue {
-                    field { ... on ProjectV2IterationField { name } }
-                    title
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
   const [owner, repoName] = repo.split("/");
   if (!(owner && repoName)) return {};
 
   try {
-    const result = runGhJson<GraphQLResult>([
-      "api",
-      "graphql",
-      "-f",
-      `query=${query}`,
-      "-F",
-      `owner=${owner}`,
-      "-F",
-      `repo=${repoName}`,
-      "-F",
-      `issueNumber=${String(issueNumber)}`,
-    ]);
-
-    const items = result?.data?.repository?.issue?.projectItems?.nodes ?? [];
-    const projectItem = items.find((item) => item?.project?.number === projectNumber);
-
+    const projectItem = findProjectItemSync(owner, repoName, issueNumber, projectNumber);
     if (!projectItem) return {};
 
-    const fields: ProjectFieldValues = {};
-    const fieldValues = projectItem.fieldValues?.nodes ?? [];
-
-    for (const fv of fieldValues) {
-      if (!fv) continue;
-      const fieldName = fv.field?.name ?? "";
-      if ("date" in fv && DATE_FIELD_NAME_RE.test(fieldName)) {
-        fields.targetDate = fv.date;
-      } else if ("name" in fv && fieldName === "Status") {
-        fields.status = fv.name;
-      } else if (fieldName) {
-        const value =
-          "text" in fv && fv.text != null
-            ? fv.text
-            : "number" in fv && fv.number != null
-              ? String(fv.number)
-              : "name" in fv && fv.name != null
-                ? fv.name
-                : "title" in fv && fv.title != null
-                  ? fv.title
-                  : null;
-        if (value != null) {
-          if (!fields.customFields) fields.customFields = {};
-          fields.customFields[fieldName] = value;
-        }
-      }
-    }
-
-    return fields;
+    return parseFieldValues(projectItem.fieldValues?.nodes ?? [], "status");
   } catch {
     return {};
   }
@@ -397,7 +601,6 @@ export interface ProjectEnrichment {
  * Fetch target dates and project statuses for all issues in a project in one GraphQL call.
  * Returns a Map from issue number to enrichment data.
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: parses multiple GitHub Project field types across all items
 export function fetchProjectEnrichment(
   repo: string,
   projectNumber: number,
@@ -474,32 +677,7 @@ export function fetchProjectEnrichment(
 
       for (const item of nodes) {
         if (!item?.content?.number) continue;
-        const enrichment: ProjectEnrichment = {};
-        const fieldValues = item.fieldValues?.nodes ?? [];
-        for (const fv of fieldValues) {
-          if (!fv) continue;
-          const fieldName = fv.field?.name ?? "";
-          if ("date" in fv && fv.date && DATE_FIELD_NAME_RE.test(fieldName)) {
-            enrichment.targetDate = fv.date;
-          } else if ("name" in fv && fieldName === "Status" && fv.name) {
-            enrichment.projectStatus = fv.name;
-          } else if (fieldName) {
-            const value =
-              "text" in fv && fv.text != null
-                ? fv.text
-                : "number" in fv && fv.number != null
-                  ? String(fv.number)
-                  : "name" in fv && fv.name != null
-                    ? fv.name
-                    : "title" in fv && fv.title != null
-                      ? fv.title
-                      : null;
-            if (value != null) {
-              if (!enrichment.customFields) enrichment.customFields = {};
-              enrichment.customFields[fieldName] = value;
-            }
-          }
-        }
+        const enrichment = parseFieldValues(item.fieldValues?.nodes ?? [], "projectStatus");
         enrichMap.set(item.content.number, enrichment);
       }
 
@@ -509,6 +687,98 @@ export function fetchProjectEnrichment(
 
     return enrichMap;
   } catch {
+    return new Map();
+  }
+}
+
+/** Async version of fetchProjectEnrichment for parallel fetching. */
+export async function fetchProjectEnrichmentAsync(
+  repo: string,
+  projectNumber: number,
+): Promise<Map<number, ProjectEnrichment>> {
+  const [owner] = repo.split("/");
+  if (!owner) return new Map();
+
+  const projectItemsFragment = `
+    projectV2(number: $projectNumber) {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          content {
+            ... on Issue {
+              number
+            }
+          }
+          fieldValues(first: 20) {
+            nodes {
+              ... on ProjectV2ItemFieldDateValue {
+                field { ... on ProjectV2Field { name } }
+                date
+              }
+              ... on ProjectV2ItemFieldSingleSelectValue {
+                field { ... on ProjectV2SingleSelectField { name } }
+                name
+              }
+              ... on ProjectV2ItemFieldTextValue {
+                field { ... on ProjectV2Field { name } }
+                text
+              }
+              ... on ProjectV2ItemFieldNumberValue {
+                field { ... on ProjectV2Field { name } }
+                number
+              }
+              ... on ProjectV2ItemFieldIterationValue {
+                field { ... on ProjectV2IterationField { name } }
+                title
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const query = `
+    query($owner: String!, $projectNumber: Int!, $cursor: String) {
+      organization(login: $owner) { ${projectItemsFragment} }
+      user(login: $owner) { ${projectItemsFragment} }
+    }
+  `;
+
+  try {
+    const enrichMap = new Map<number, ProjectEnrichment>();
+    let cursor: string | null = null;
+
+    do {
+      const args = [
+        "api",
+        "graphql",
+        "-f",
+        `query=${query}`,
+        "-F",
+        `owner=${owner}`,
+        "-F",
+        `projectNumber=${String(projectNumber)}`,
+      ];
+      if (cursor) args.push("-f", `cursor=${cursor}`);
+      const result = await runGhGraphQLAsync<ProjectItemsResult>(args);
+      const ownerNode = result?.data?.organization ?? result?.data?.user;
+      const page = ownerNode?.projectV2?.items;
+      const nodes = page?.nodes ?? [];
+
+      for (const item of nodes) {
+        if (!item?.content?.number) continue;
+        const enrichment = parseFieldValues(item.fieldValues?.nodes ?? [], "projectStatus");
+        enrichMap.set(item.content.number, enrichment);
+      }
+
+      if (!page?.pageInfo?.hasNextPage) break;
+      cursor = page.pageInfo.endCursor ?? null;
+    } while (cursor);
+
+    return enrichMap;
+  } catch {
+    // Non-critical: return empty map if project fields fail
     return new Map();
   }
 }
@@ -579,6 +849,55 @@ export function fetchProjectStatusOptions(
   }
 }
 
+/** Async version of fetchProjectStatusOptions for parallel fetching. */
+export async function fetchProjectStatusOptionsAsync(
+  repo: string,
+  projectNumber: number,
+  _statusFieldId: string,
+): Promise<StatusOption[]> {
+  const [owner] = repo.split("/");
+  if (!owner) return [];
+
+  const statusFragment = `
+    projectV2(number: $projectNumber) {
+      field(name: "Status") {
+        ... on ProjectV2SingleSelectField {
+          options {
+            id
+            name
+          }
+        }
+      }
+    }
+  `;
+
+  const query = `
+    query($owner: String!, $projectNumber: Int!) {
+      organization(login: $owner) { ${statusFragment} }
+      user(login: $owner) { ${statusFragment} }
+    }
+  `;
+
+  try {
+    const result = await runGhGraphQLAsync<ProjectStatusResult>([
+      "api",
+      "graphql",
+      "-f",
+      `query=${query}`,
+      "-F",
+      `owner=${owner}`,
+      "-F",
+      `projectNumber=${String(projectNumber)}`,
+    ]);
+
+    const ownerNode = result?.data?.organization ?? result?.data?.user;
+    return ownerNode?.projectV2?.field?.options ?? [];
+  } catch {
+    // Non-critical: return empty options if project fields fail
+    return [];
+  }
+}
+
 export function addLabel(repo: string, issueNumber: number, label: string): void {
   runGh(["issue", "edit", String(issueNumber), "--repo", repo, "--add-label", label]);
 }
@@ -608,44 +927,9 @@ export async function fetchRepoLabelsAsync(repo: string): Promise<LabelOption[]>
   }
 }
 
-/** Cache for GitHub Projects node IDs — these are immutable per project number. */
-const projectNodeIdCache = new Map<string, string>();
-
 /** Clears the project node ID cache. Intended for use in tests only. */
 export function clearProjectNodeIdCache(): void {
   projectNodeIdCache.clear();
-}
-
-async function getProjectNodeId(owner: string, projectNumber: number): Promise<string | null> {
-  const key = `${owner}/${String(projectNumber)}`;
-  const cached = projectNodeIdCache.get(key);
-  if (cached !== undefined) return cached;
-
-  const idFragment = `projectV2(number: $projectNumber) { id }`;
-
-  const projectQuery = `
-    query($owner: String!, $projectNumber: Int!) {
-      organization(login: $owner) { ${idFragment} }
-      user(login: $owner) { ${idFragment} }
-    }
-  `;
-
-  const projectResult = await runGhGraphQLAsync<GraphQLProjectResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${projectQuery}`,
-    "-F",
-    `owner=${owner}`,
-    "-F",
-    `projectNumber=${String(projectNumber)}`,
-  ]);
-
-  const ownerNode = projectResult?.data?.organization ?? projectResult?.data?.user;
-  const projectId = ownerNode?.projectV2?.id;
-  if (!projectId) return null;
-  projectNodeIdCache.set(key, projectId);
-  return projectId;
 }
 
 export function updateProjectItemStatus(
@@ -656,70 +940,17 @@ export function updateProjectItemStatus(
   const [owner, repoName] = repo.split("/");
   if (!(owner && repoName)) return;
 
-  // First get the project item ID
-  const findItemQuery = `
-    query($owner: String!, $repo: String!, $issueNumber: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $issueNumber) {
-          projectItems(first: 10) {
-            nodes {
-              id
-              project { number }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  const findResult = runGhJson<GraphQLResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${findItemQuery}`,
-    "-F",
-    `owner=${owner}`,
-    "-F",
-    `repo=${repoName}`,
-    "-F",
-    `issueNumber=${String(issueNumber)}`,
-  ]);
-
-  const items = findResult?.data?.repository?.issue?.projectItems?.nodes ?? [];
-  const projectNumber = projectConfig.projectNumber;
-  const projectItem = items.find((item) => item?.project?.number === projectNumber);
-
+  const projectItem = findProjectItemSync(
+    owner,
+    repoName,
+    issueNumber,
+    projectConfig.projectNumber,
+  );
   if (!projectItem?.id) return;
 
-  // Get the project ID
-  const idFragment = `projectV2(number: $projectNumber) { id }`;
-
-  const projectQuery = `
-    query($owner: String!, $projectNumber: Int!) {
-      organization(login: $owner) { ${idFragment} }
-      user(login: $owner) { ${idFragment} }
-    }
-  `;
-
-  const projectResult = runGhGraphQL<GraphQLProjectResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${projectQuery}`,
-    "-F",
-    `owner=${owner}`,
-    "-F",
-    `projectNumber=${String(projectNumber)}`,
-  ]);
-
-  const projectOwner = projectResult?.data?.organization ?? projectResult?.data?.user;
-  const projectId = projectOwner?.projectV2?.id;
+  const projectId = getProjectNodeIdSync(owner, projectConfig.projectNumber);
   if (!projectId) return;
 
-  const statusFieldId = projectConfig.statusFieldId;
-  const optionId = projectConfig.optionId;
-
-  // Mutation to update the status
   const mutation = `
     mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
       updateProjectV2ItemFieldValue(
@@ -745,9 +976,9 @@ export function updateProjectItemStatus(
     "-F",
     `itemId=${projectItem.id}`,
     "-F",
-    `fieldId=${statusFieldId}`,
+    `fieldId=${projectConfig.statusFieldId}`,
     "-F",
-    `optionId=${optionId}`,
+    `optionId=${projectConfig.optionId}`,
   ]);
 }
 
@@ -759,45 +990,16 @@ export async function updateProjectItemStatusAsync(
   const [owner, repoName] = repo.split("/");
   if (!(owner && repoName)) return;
 
-  const findItemQuery = `
-    query($owner: String!, $repo: String!, $issueNumber: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $issueNumber) {
-          projectItems(first: 10) {
-            nodes {
-              id
-              project { number }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  const findResult = await runGhJsonAsync<GraphQLResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${findItemQuery}`,
-    "-F",
-    `owner=${owner}`,
-    "-F",
-    `repo=${repoName}`,
-    "-F",
-    `issueNumber=${String(issueNumber)}`,
-  ]);
-
-  const items = findResult?.data?.repository?.issue?.projectItems?.nodes ?? [];
-  const projectNumber = projectConfig.projectNumber;
-  const projectItem = items.find((item) => item?.project?.number === projectNumber);
-
+  const projectItem = await findProjectItemAsync(
+    owner,
+    repoName,
+    issueNumber,
+    projectConfig.projectNumber,
+  );
   if (!projectItem?.id) return;
 
-  const projectId = await getProjectNodeId(owner, projectNumber);
+  const projectId = await getProjectNodeId(owner, projectConfig.projectNumber);
   if (!projectId) return;
-
-  const statusFieldId = projectConfig.statusFieldId;
-  const optionId = projectConfig.optionId;
 
   const mutation = `
     mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
@@ -824,9 +1026,9 @@ export async function updateProjectItemStatusAsync(
     "-F",
     `itemId=${projectItem.id}`,
     "-F",
-    `fieldId=${statusFieldId}`,
+    `fieldId=${projectConfig.statusFieldId}`,
     "-F",
-    `optionId=${optionId}`,
+    `optionId=${projectConfig.optionId}`,
   ]);
 }
 
@@ -848,37 +1050,12 @@ export async function updateProjectItemDateAsync(
   const [owner, repoName] = repo.split("/");
   if (!(owner && repoName)) return;
 
-  const findItemQuery = `
-    query($owner: String!, $repo: String!, $issueNumber: Int!) {
-      repository(owner: $owner, name: $repo) {
-        issue(number: $issueNumber) {
-          projectItems(first: 10) {
-            nodes {
-              id
-              project { number }
-            }
-          }
-        }
-      }
-    }
-  `;
-
-  const findResult = await runGhJsonAsync<GraphQLResult>([
-    "api",
-    "graphql",
-    "-f",
-    `query=${findItemQuery}`,
-    "-F",
-    `owner=${owner}`,
-    "-F",
-    `repo=${repoName}`,
-    "-F",
-    `issueNumber=${String(issueNumber)}`,
-  ]);
-
-  const items = findResult?.data?.repository?.issue?.projectItems?.nodes ?? [];
-  const projectItem = items.find((item) => item?.project?.number === projectConfig.projectNumber);
-
+  const projectItem = await findProjectItemAsync(
+    owner,
+    repoName,
+    issueNumber,
+    projectConfig.projectNumber,
+  );
   if (!projectItem?.id) return;
 
   const projectId = await getProjectNodeId(owner, projectConfig.projectNumber);
@@ -913,69 +1090,6 @@ export async function updateProjectItemDateAsync(
     "-F",
     `date=${dueDate}`,
   ]);
-}
-
-// Internal GraphQL response types
-
-interface FieldValue {
-  field?: { name?: string };
-  date?: string;
-  name?: string;
-  text?: string;
-  number?: number;
-  title?: string; // iteration field title
-}
-
-interface ProjectItem {
-  id?: string;
-  project?: { number?: number };
-  fieldValues?: { nodes?: (FieldValue | null)[] };
-}
-
-interface GraphQLResult {
-  data?: {
-    repository?: {
-      issue?: {
-        projectItems?: {
-          nodes?: (ProjectItem | null)[];
-        };
-      };
-    };
-  };
-}
-
-interface ProjectV2IdNode {
-  projectV2?: {
-    id?: string;
-  };
-}
-
-interface GraphQLProjectResult {
-  data?: {
-    organization?: ProjectV2IdNode;
-    user?: ProjectV2IdNode;
-  };
-}
-
-interface ProjectItemNode {
-  content?: { number?: number };
-  fieldValues?: { nodes?: (FieldValue | null)[] };
-}
-
-interface ProjectV2ItemsNode {
-  projectV2?: {
-    items?: {
-      pageInfo?: { hasNextPage: boolean; endCursor?: string };
-      nodes?: (ProjectItemNode | null)[];
-    };
-  };
-}
-
-interface ProjectItemsResult {
-  data?: {
-    organization?: ProjectV2ItemsNode;
-    user?: ProjectV2ItemsNode;
-  };
 }
 
 interface ProjectV2StatusNode {
