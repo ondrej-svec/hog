@@ -205,52 +205,128 @@ export function buildFlatRowsForRepo(
   }));
 }
 
-/** Search filter: tokens are AND-ed, supports #123, @alice, unassigned/assigned, substring matching. */
+type SearchToken =
+  | { type: "plain"; value: string }
+  | { type: "field"; field: string; value: string };
+
+/**
+ * Tokenize a search query, supporting:
+ * - Plain tokens: `bug`, `login`
+ * - Special prefixes: `#123`, `@alice`
+ * - Field filters: `workstream:Aimee`, `status:"In Progress"`, `label:"size:M"`
+ *
+ * Quoted values allow multi-word matching: `workstream:"Product Design"`.
+ * Unquoted field values run until the next whitespace.
+ */
+export function tokenizeQuery(query: string): SearchToken[] {
+  const tokens: SearchToken[] = [];
+  const raw = query.trim();
+  if (!raw) return tokens;
+
+  // Regex: field:"quoted value" | field:unquoted | plain-token
+  // Field names are single words (no spaces); multi-word field names match via substring.
+  const re = /(\w+):"([^"]*)"?|(\w+):(\S+)|(\S+)/gi;
+  for (const m of raw.matchAll(re)) {
+    if (m[1] != null && m[2] != null) {
+      // field:"quoted value"
+      tokens.push({ type: "field", field: m[1].toLowerCase(), value: m[2].toLowerCase() });
+    } else if (m[3] != null && m[4] != null) {
+      // field:value (no quotes)
+      tokens.push({ type: "field", field: m[3].toLowerCase(), value: m[4].toLowerCase() });
+    } else if (m[5] != null) {
+      tokens.push({ type: "plain", value: m[5].toLowerCase() });
+    }
+  }
+  return tokens;
+}
+
+/** Search filter: tokens are AND-ed, supports #123, @alice, unassigned/assigned, field:value, substring matching. */
 export function matchesSearch(issue: GitHubIssue, query: string): boolean {
-  if (!query.trim()) return true;
-  const tokens = query.toLowerCase().trim().split(/\s+/);
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) return true;
   const labels = issue.labels ?? [];
   const assignees = issue.assignees ?? [];
 
   return tokens.every((token) => {
+    // Field-specific filter: workstream:Aimee, status:"In Progress", label:bug
+    if (token.type === "field") {
+      return matchesFieldToken(issue, token.field, token.value, labels, assignees);
+    }
+
+    const t = token.value;
+
     // Issue number: #123
-    if (token.startsWith("#")) {
-      const num = parseInt(token.slice(1), 10);
+    if (t.startsWith("#")) {
+      const num = parseInt(t.slice(1), 10);
       return !Number.isNaN(num) && issue.number === num;
     }
 
     // Explicit assignee: @alice
-    if (token.startsWith("@")) {
-      const login = token.slice(1);
+    if (t.startsWith("@")) {
+      const login = t.slice(1);
       return assignees.some((a) => a.login.toLowerCase().includes(login));
     }
 
     // Special keywords
-    if (token === "unassigned") return assignees.length === 0;
-    if (token === "assigned") return assignees.length > 0;
+    if (t === "unassigned") return assignees.length === 0;
+    if (t === "assigned") return assignees.length > 0;
 
     // Title
-    if (issue.title.toLowerCase().includes(token)) return true;
+    if (issue.title.toLowerCase().includes(t)) return true;
 
     // Labels — full name (e.g. "bug", "priority:high", "size:m")
     // Substring match means "high" finds "priority:high", "m" finds "size:m", etc.
-    if (labels.some((l) => l.name.toLowerCase().includes(token))) return true;
+    if (labels.some((l) => l.name.toLowerCase().includes(t))) return true;
 
     // Project status (e.g. "in progress", "backlog")
-    if (issue.projectStatus?.toLowerCase().includes(token)) return true;
+    if (issue.projectStatus?.toLowerCase().includes(t)) return true;
 
     // Custom project fields (Workstream, Size, Priority, Iteration, etc.)
     if (
       issue.customFields &&
-      Object.values(issue.customFields).some((v) => v.toLowerCase().includes(token))
+      Object.values(issue.customFields).some((v) => v.toLowerCase().includes(t))
     )
       return true;
 
     // Assignee login without @ prefix
-    if (assignees.some((a) => a.login.toLowerCase().includes(token))) return true;
+    if (assignees.some((a) => a.login.toLowerCase().includes(t))) return true;
 
     return false;
   });
+}
+
+function matchesFieldToken(
+  issue: GitHubIssue,
+  field: string,
+  value: string,
+  labels: ReadonlyArray<{ readonly name: string }>,
+  assignees: ReadonlyArray<{ readonly login: string }>,
+): boolean {
+  // Built-in field aliases
+  if (field === "status") {
+    return issue.projectStatus?.toLowerCase().includes(value) ?? false;
+  }
+  if (field === "label") {
+    return labels.some((l) => l.name.toLowerCase().includes(value));
+  }
+  if (field === "assignee") {
+    return assignees.some((a) => a.login.toLowerCase().includes(value));
+  }
+
+  // Match against custom project fields by key (case-insensitive)
+  if (issue.customFields) {
+    for (const [k, v] of Object.entries(issue.customFields)) {
+      if (k.toLowerCase().includes(field) && v.toLowerCase().includes(value)) {
+        return true;
+      }
+    }
+  }
+
+  // Fallback: treat "field:value" as plain text to match labels like "size:M", "priority:high"
+  const combined = `${field}:${value}`;
+  if (labels.some((l) => l.name.toLowerCase().includes(combined))) return true;
+
+  return false;
 }
 
 export function findSelectedIssueWithRepo(
