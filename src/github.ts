@@ -147,7 +147,7 @@ interface GraphQLProjectResult {
 }
 
 interface ProjectItemNode {
-  content?: { number?: number };
+  content?: { number?: number; repository?: { nameWithOwner?: string } };
   fieldValues?: { nodes?: (FieldValue | null)[] };
 }
 
@@ -597,9 +597,69 @@ export interface ProjectEnrichment {
   customFields?: Record<string, string>;
 }
 
+/** Shared GraphQL fragment for fetching project items with repo info. */
+const PROJECT_ITEMS_FRAGMENT = `
+  projectV2(number: $projectNumber) {
+    items(first: 100, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        content {
+          ... on Issue {
+            number
+            repository { nameWithOwner }
+          }
+        }
+        fieldValues(first: 20) {
+          nodes {
+            ... on ProjectV2ItemFieldDateValue {
+              field { ... on ProjectV2Field { name } }
+              date
+            }
+            ... on ProjectV2ItemFieldSingleSelectValue {
+              field { ... on ProjectV2SingleSelectField { name } }
+              name
+            }
+            ... on ProjectV2ItemFieldTextValue {
+              field { ... on ProjectV2Field { name } }
+              text
+            }
+            ... on ProjectV2ItemFieldNumberValue {
+              field { ... on ProjectV2Field { name } }
+              number
+            }
+            ... on ProjectV2ItemFieldIterationValue {
+              field { ... on ProjectV2IterationField { name } }
+              title
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+/** Accumulate enrichment data from a page of project items, filtering by target repo. */
+function accumulateEnrichment(
+  nodes: (ProjectItemNode | null)[],
+  targetRepo: string,
+  enrichMap: Map<number, ProjectEnrichment>,
+): void {
+  for (const item of nodes) {
+    if (!item?.content?.number) continue;
+    // Skip items from other repos to avoid issue number collisions
+    const itemRepo = item.content.repository?.nameWithOwner;
+    if (itemRepo && itemRepo !== targetRepo) continue;
+    const enrichment = parseFieldValues(item.fieldValues?.nodes ?? [], "projectStatus");
+    enrichMap.set(item.content.number, enrichment);
+  }
+}
+
 /**
  * Fetch target dates and project statuses for all issues in a project in one GraphQL call.
  * Returns a Map from issue number to enrichment data.
+ *
+ * Projects can contain items from multiple repos, so we filter by the target repo
+ * to avoid cross-repo issue number collisions overwriting statuses.
  */
 export function fetchProjectEnrichment(
   repo: string,
@@ -608,49 +668,10 @@ export function fetchProjectEnrichment(
   const [owner] = repo.split("/");
   if (!owner) return new Map();
 
-  const projectItemsFragment = `
-    projectV2(number: $projectNumber) {
-      items(first: 100, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          content {
-            ... on Issue {
-              number
-            }
-          }
-          fieldValues(first: 20) {
-            nodes {
-              ... on ProjectV2ItemFieldDateValue {
-                field { ... on ProjectV2Field { name } }
-                date
-              }
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                field { ... on ProjectV2SingleSelectField { name } }
-                name
-              }
-              ... on ProjectV2ItemFieldTextValue {
-                field { ... on ProjectV2Field { name } }
-                text
-              }
-              ... on ProjectV2ItemFieldNumberValue {
-                field { ... on ProjectV2Field { name } }
-                number
-              }
-              ... on ProjectV2ItemFieldIterationValue {
-                field { ... on ProjectV2IterationField { name } }
-                title
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
   const query = `
     query($owner: String!, $projectNumber: Int!, $cursor: String) {
-      organization(login: $owner) { ${projectItemsFragment} }
-      user(login: $owner) { ${projectItemsFragment} }
+      organization(login: $owner) { ${PROJECT_ITEMS_FRAGMENT} }
+      user(login: $owner) { ${PROJECT_ITEMS_FRAGMENT} }
     }
   `;
 
@@ -673,13 +694,7 @@ export function fetchProjectEnrichment(
       const result = runGhGraphQL<ProjectItemsResult>(args);
       const ownerNode = result?.data?.organization ?? result?.data?.user;
       const page = ownerNode?.projectV2?.items;
-      const nodes = page?.nodes ?? [];
-
-      for (const item of nodes) {
-        if (!item?.content?.number) continue;
-        const enrichment = parseFieldValues(item.fieldValues?.nodes ?? [], "projectStatus");
-        enrichMap.set(item.content.number, enrichment);
-      }
+      accumulateEnrichment(page?.nodes ?? [], repo, enrichMap);
 
       if (!page?.pageInfo?.hasNextPage) break;
       cursor = page.pageInfo.endCursor ?? null;
@@ -699,49 +714,10 @@ export async function fetchProjectEnrichmentAsync(
   const [owner] = repo.split("/");
   if (!owner) return new Map();
 
-  const projectItemsFragment = `
-    projectV2(number: $projectNumber) {
-      items(first: 100, after: $cursor) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          content {
-            ... on Issue {
-              number
-            }
-          }
-          fieldValues(first: 20) {
-            nodes {
-              ... on ProjectV2ItemFieldDateValue {
-                field { ... on ProjectV2Field { name } }
-                date
-              }
-              ... on ProjectV2ItemFieldSingleSelectValue {
-                field { ... on ProjectV2SingleSelectField { name } }
-                name
-              }
-              ... on ProjectV2ItemFieldTextValue {
-                field { ... on ProjectV2Field { name } }
-                text
-              }
-              ... on ProjectV2ItemFieldNumberValue {
-                field { ... on ProjectV2Field { name } }
-                number
-              }
-              ... on ProjectV2ItemFieldIterationValue {
-                field { ... on ProjectV2IterationField { name } }
-                title
-              }
-            }
-          }
-        }
-      }
-    }
-  `;
-
   const query = `
     query($owner: String!, $projectNumber: Int!, $cursor: String) {
-      organization(login: $owner) { ${projectItemsFragment} }
-      user(login: $owner) { ${projectItemsFragment} }
+      organization(login: $owner) { ${PROJECT_ITEMS_FRAGMENT} }
+      user(login: $owner) { ${PROJECT_ITEMS_FRAGMENT} }
     }
   `;
 
@@ -764,13 +740,7 @@ export async function fetchProjectEnrichmentAsync(
       const result = await runGhGraphQLAsync<ProjectItemsResult>(args);
       const ownerNode = result?.data?.organization ?? result?.data?.user;
       const page = ownerNode?.projectV2?.items;
-      const nodes = page?.nodes ?? [];
-
-      for (const item of nodes) {
-        if (!item?.content?.number) continue;
-        const enrichment = parseFieldValues(item.fieldValues?.nodes ?? [], "projectStatus");
-        enrichMap.set(item.content.number, enrichment);
-      }
+      accumulateEnrichment(page?.nodes ?? [], repo, enrichMap);
 
       if (!page?.pageInfo?.hasNextPage) break;
       cursor = page.pageInfo.endCursor ?? null;
