@@ -385,6 +385,7 @@ describe("fetchProjectEnrichment", () => {
       issueNumber?: number;
       targetDate?: string;
       status?: string;
+      repo?: string;
     }>,
     pageInfo: { hasNextPage: boolean; endCursor?: string } = { hasNextPage: false },
   ) {
@@ -394,7 +395,7 @@ describe("fetchProjectEnrichment", () => {
           projectV2: {
             items: {
               pageInfo,
-              nodes: items.map(({ issueNumber, targetDate, status }) => {
+              nodes: items.map(({ issueNumber, targetDate, status, repo }) => {
                 const fieldValues: unknown[] = [];
                 if (targetDate) {
                   fieldValues.push({ field: { name: "Target Date" }, date: targetDate });
@@ -402,8 +403,11 @@ describe("fetchProjectEnrichment", () => {
                 if (status) {
                   fieldValues.push({ field: { name: "Status" }, name: status });
                 }
+                const content: { number?: number; repository?: { nameWithOwner: string } } = {};
+                if (issueNumber !== undefined) content.number = issueNumber;
+                if (repo) content.repository = { nameWithOwner: repo };
                 return {
-                  content: issueNumber !== undefined ? { number: issueNumber } : {},
+                  content,
                   fieldValues: { nodes: fieldValues },
                 };
               }),
@@ -486,6 +490,41 @@ describe("fetchProjectEnrichment", () => {
     expect(result.get(1)).toEqual({ projectStatus: "In Progress" });
     expect(result.get(2)).toEqual({ projectStatus: "Review" });
     expect(mockExecFileSync).toHaveBeenCalledTimes(2);
+  });
+
+  it("filters out items from other repos in multi-repo projects", () => {
+    mockExecFileSync.mockReturnValue(
+      JSON.stringify(
+        makeEnrichmentResponse([
+          { issueNumber: 1, status: "In Review", repo: "org/repo" },
+          { issueNumber: 2, status: "Done", repo: "org/other-repo" },
+          { issueNumber: 3, status: "Backlog", repo: "org/repo" },
+        ]),
+      ),
+    );
+
+    const result = fetchProjectEnrichment("org/repo", 5);
+
+    expect(result.size).toBe(2);
+    expect(result.get(1)).toEqual({ projectStatus: "In Review" });
+    expect(result.get(3)).toEqual({ projectStatus: "Backlog" });
+    expect(result.has(2)).toBe(false); // from other repo
+  });
+
+  it("does not overwrite status with cross-repo issue number collision", () => {
+    mockExecFileSync.mockReturnValue(
+      JSON.stringify(
+        makeEnrichmentResponse([
+          { issueNumber: 5, status: "In Review", repo: "org/repo" },
+          { issueNumber: 5, status: "Done", repo: "org/other-repo" },
+        ]),
+      ),
+    );
+
+    const result = fetchProjectEnrichment("org/repo", 5);
+
+    expect(result.size).toBe(1);
+    expect(result.get(5)).toEqual({ projectStatus: "In Review" }); // not overwritten by other repo
   });
 });
 
