@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.0](https://github.com/ondrej-svec/hog/compare/hog-v1.24.3...hog-v1.25.0) (2026-03-15)
+
+
+### Features
+
+* **board:** add field:value search syntax for project fields ([#69](https://github.com/ondrej-svec/hog/issues/69)) ([e88a0ed](https://github.com/ondrej-svec/hog/commit/e88a0ed8cb439a310367ed50a0980ee3e4bed247))
+
 ## [1.24.3](https://github.com/ondrej-svec/hog/compare/hog-v1.24.2...hog-v1.24.3) (2026-03-08)
 
 
