@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.25.1](https://github.com/ondrej-svec/hog/compare/hog-v1.25.0...hog-v1.25.1) (2026-03-15)
+
+
+### Bug Fixes
+
+* **board:** filter project enrichment by repo to prevent cross-repo status collisions ([#71](https://github.com/ondrej-svec/hog/issues/71)) ([c31b1e0](https://github.com/ondrej-svec/hog/commit/c31b1e0f7e4edb0712e1f700c27bcc0251753412))
+
 ## [1.25.0](https://github.com/ondrej-svec/hog/compare/hog-v1.24.3...hog-v1.25.0) (2026-03-15)
 
 
