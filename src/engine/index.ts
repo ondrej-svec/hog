@@ -33,5 +33,28 @@ export { EventBus } from "./event-bus.js";
 export { FetchLoop } from "./fetch-loop.js";
 export type { LaunchIssueContext } from "./orchestrator.js";
 export { Orchestrator, resolvePhaseConfig } from "./orchestrator.js";
+export type {
+  GateIssue,
+  GateResult,
+  GateSeverity,
+  QualityGate,
+  QualityReport,
+} from "./quality-gates.js";
+export { ALL_GATES, runQualityGates } from "./quality-gates.js";
+export type { MergeQueueEntry, MergeResult, MergeStatus } from "./refinery.js";
+export { Refinery } from "./refinery.js";
+export type {
+  MutationResult as TddMutationResult,
+  RedVerificationResult,
+  TddConfig,
+  TraceabilityReport,
+} from "./tdd-enforcement.js";
+export {
+  checkTraceability,
+  runMutationTesting,
+  verifyRedState,
+} from "./tdd-enforcement.js";
 export type { IssueWorkflowState, PhaseStatus } from "./workflow.js";
 export { derivePhaseStatus, resolvePhases, WorkflowEngine } from "./workflow.js";
+export type { Worktree } from "./worktree.js";
+export { getBranchHead, hasDiverged, WorktreeManager } from "./worktree.js";

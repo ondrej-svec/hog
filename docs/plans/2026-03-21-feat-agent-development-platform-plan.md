@@ -268,14 +268,14 @@ The TUI evolves into one view of the engine (not the engine itself).
 
 ### Tasks
 
-- [ ] **4.1 Build test-first enforcement in conductor**
+- [x] **4.1 Build test-first enforcement in conductor**
   The conductor's DAG creation already orders test-bead before impl-bead.
   Add verification: before marking test-bead as ready for impl:
   - Run the test suite → tests MUST fail (RED state)
   - If tests pass without implementation → they're trivial/wrong → reject, re-create test bead
   - Record the RED state as a bead comment (audit trail)
 
-- [ ] **4.2 Build spec traceability system**
+- [x] **4.2 Build spec traceability system**
   Each user story gets a unique ID (e.g., `STORY-001`).
   Tests must reference their story ID (via comment, test name, or metadata).
   The conductor checks:
@@ -283,7 +283,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   - Every test traces to a story → no orphan tests
   - Report stored as a bead comment on the merge-bead
 
-- [ ] **4.3 Integrate mutation testing**
+- [x] **4.3 Integrate mutation testing**
   After GREEN state (tests pass with implementation):
   - Run mutation testing framework (language-specific):
     - JS/TS: Stryker
@@ -294,7 +294,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   - If below threshold: create a new test-improvement bead blocking the merge-bead
   - Conductor spawns a test-improvement agent to strengthen weak tests
 
-- [ ] **4.4 Build the implementer's blind spot**
+- [x] **4.4 Build the implementer's blind spot**
   The implementation agent prompt explicitly excludes the original spec:
   ```
   You are implementing code to pass the following tests.
@@ -331,7 +331,7 @@ The TUI evolves into one view of the engine (not the engine itself).
 
 ### Tasks
 
-- [ ] **5.1 Build `src/engine/quality-gates.ts` — continuous analysis framework**
+- [x] **5.1 Build `src/engine/quality-gates.ts` — continuous analysis framework**
   A pluggable quality gate system that runs checks on every agent output:
   ```typescript
   interface QualityGate {
@@ -343,7 +343,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   Gates run in parallel after every agent commit/file change.
   Results are attached to the relevant bead as comments.
 
-- [ ] **5.2 Security gate — static analysis**
+- [x] **5.2 Security gate — static analysis**
   Integrate language-appropriate security scanners:
   - JS/TS: `semgrep` rules for injection, XSS, insecure crypto
   - Python: `bandit`
@@ -352,7 +352,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   Security errors block the pipeline (create a fix-bead).
   Security warnings are logged but don't block.
 
-- [ ] **5.3 Linting gate — code style enforcement**
+- [x] **5.3 Linting gate — code style enforcement**
   Use the project's existing linter (detect from config files):
   - `biome.json` → biome
   - `.eslintrc` → eslint
@@ -361,7 +361,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   Run on agent-modified files. Auto-fix where possible.
   Unfixable violations create a fix-bead.
 
-- [ ] **5.4 Abuse/injection gate**
+- [x] **5.4 Abuse/injection gate**
   Specialized checks for agent-common mistakes:
   - SQL injection in dynamic queries
   - Command injection in shell calls
@@ -405,7 +405,7 @@ The TUI evolves into one view of the engine (not the engine itself).
 
 ### Tasks
 
-- [ ] **6.1 Build worktree manager**
+- [x] **6.1 Build worktree manager**
   `src/engine/worktree.ts`:
   - `createWorktree(repo, branchName)` — `git worktree add`
   - `removeWorktree(path)` — `git worktree remove`
@@ -420,7 +420,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   3. Agent commits to a feature branch in the worktree
   4. On completion: agent's branch is submitted to the merge queue
 
-- [ ] **6.3 Build the merge queue**
+- [x] **6.3 Build the merge queue**
   `src/engine/refinery.ts`:
   - A FIFO queue of completed agent branches
   - Processes one merge at a time (serialized)
