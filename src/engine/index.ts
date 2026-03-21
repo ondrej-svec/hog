@@ -1,5 +1,16 @@
 export type { MutationResult, MutationSuccess } from "./actions.js";
 export { ActionExecutor } from "./actions.js";
+export type { BeadsSyncState, SyncEntry } from "./beads-sync.js";
+export {
+  findBeadId,
+  findGitHubIssue,
+  linkIssueToBead,
+  loadBeadsSyncState,
+  saveBeadsSyncState,
+  unlinkIssue,
+} from "./beads-sync.js";
+export type { Bead, BeadDAGNode, BeadDependency, CreateBeadOptions } from "./beads.js";
+export { BeadsClient } from "./beads.js";
 export type { TrackedAgent } from "./agent-manager.js";
 export { AgentManager } from "./agent-manager.js";
 export { Engine } from "./engine.js";

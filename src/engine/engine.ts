@@ -2,6 +2,7 @@ import type { FetchOptions } from "../board/fetch.js";
 import type { HogConfig } from "../config.js";
 import { ActionExecutor } from "./actions.js";
 import { AgentManager } from "./agent-manager.js";
+import { BeadsClient } from "./beads.js";
 import { EventBus } from "./event-bus.js";
 import { FetchLoop } from "./fetch-loop.js";
 import { Orchestrator } from "./orchestrator.js";
@@ -22,6 +23,8 @@ export class Engine {
   readonly actions: ActionExecutor;
   readonly orchestrator: Orchestrator;
   readonly fetchLoop: FetchLoop;
+  readonly beads: BeadsClient;
+  readonly beadsAvailable: boolean;
 
   private started = false;
 
@@ -32,6 +35,8 @@ export class Engine {
     this.actions = new ActionExecutor(config, this.eventBus);
     this.orchestrator = new Orchestrator(config, this.eventBus, this.agents, this.workflow);
     this.fetchLoop = new FetchLoop(config, this.eventBus, fetchOptions);
+    this.beads = new BeadsClient(config.board.assignee);
+    this.beadsAvailable = this.beads.isInstalled();
   }
 
   /** Start all engine subsystems (agent polling, fetch loop). */

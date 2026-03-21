@@ -124,12 +124,12 @@ The TUI evolves into one view of the engine (not the engine itself).
 
 ### Tasks
 
-- [ ] **2.1 Add `@herbcaudill/beads-sdk` dependency**
+- [x] **2.1 Add Beads CLI client layer**
   Use the TypeScript SDK for daemon-connected access (DaemonTransport).
   Fallback: CLI wrapping via `execFile("bd", [...])` (mirrors `gh` pattern in `src/github.ts`).
   Add `bd` binary check to `hog init` (install guidance if missing).
 
-- [ ] **2.2 Build `src/engine/beads.ts` — Beads client layer**
+- [x] **2.2 Build `src/engine/beads.ts` — Beads client layer**
   Wraps BeadsClient with hog-specific operations:
   - `createFeatureDAG(spec)` — creates the bead dependency graph for a feature
   - `getReady()` — wraps `bd ready`
@@ -139,7 +139,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   - `getDAG(id)` — wraps `bd dep tree`
   Typed with Zod schemas matching the JSONL format.
 
-- [ ] **2.3 Build GitHub ↔ Beads sync**
+- [x] **2.3 Build GitHub ↔ Beads sync**
   Bidirectional sync between GitHub Issues and Beads:
   - GitHub issue created → bead created (with GitHub issue URL in metadata)
   - Bead status changes → GitHub Project status updated
@@ -159,7 +159,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   `DashboardData` gains `beads: BeadsData` field.
   TUI shows bead status, dependency graph, and `bd ready` count.
 
-- [ ] **2.6 Update agent spawn to create/claim beads**
+- [x] **2.6 Update agent spawn to create/claim beads**
   When an agent is spawned for work:
   - Find or create the corresponding bead
   - `bd update <id> --claim` (atomically sets assignee + in_progress)
