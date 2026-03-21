@@ -10,6 +10,7 @@ import {
   saveQuestionQueue,
 } from "./question-queue.js";
 import type { Refinery } from "./refinery.js";
+import { writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
 import { beadLabelToRole, PIPELINE_ROLES } from "./roles.js";
 import { verifyRedState } from "./tdd-enforcement.js";
@@ -328,7 +329,13 @@ export class Conductor {
       try {
         worktreePath = await this.worktrees.create(pipeline.localPath, branchName);
         agentCwd = worktreePath;
-        this.log(pipeline.featureId, `worktree:created:${role}`, `Worktree at ${worktreePath}`);
+        // Write role-specific CLAUDE.md to restrict agent behavior
+        writeRoleClaudeMd(worktreePath, role);
+        this.log(
+          pipeline.featureId,
+          `worktree:created:${role}`,
+          `Worktree at ${worktreePath} with ${role} CLAUDE.md`,
+        );
       } catch (err) {
         this.log(
           pipeline.featureId,
