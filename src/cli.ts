@@ -269,6 +269,135 @@ program
     }
   });
 
+// -- Work command (Conductor pipeline) --
+
+program
+  .command("work [specOrRef]")
+  .description("Start an autonomous development pipeline for a feature")
+  .option("--repo <name>", "Target repo (short name or full)")
+  .option("--status", "Show active pipelines")
+  .option("--pause <featureId>", "Pause a running pipeline")
+  .option("--resume <featureId>", "Resume a paused pipeline")
+  .action(
+    async (
+      specOrRef: string | undefined,
+      opts: {
+        repo?: string;
+        status?: true;
+        pause?: string;
+        resume?: string;
+      },
+    ) => {
+      const rawCfg = loadFullConfig();
+      const { resolved: cfg } = resolveProfile(rawCfg);
+      const { Engine } = await import("./engine/engine.js");
+      const { Conductor } = await import("./engine/conductor.js");
+
+      const engine = new Engine(cfg);
+
+      if (!engine.beadsAvailable) {
+        console.error(
+          "Beads (bd) is not installed. Install it first: https://github.com/steveyegge/beads",
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+
+      if (opts.status) {
+        const pipelines = conductor.getPipelines();
+        if (pipelines.length === 0) {
+          console.log("No active pipelines.");
+        } else {
+          for (const p of pipelines) {
+            console.log(`${p.featureId}  ${p.status.padEnd(10)}  ${p.title}`);
+          }
+        }
+        return;
+      }
+
+      if (opts.pause) {
+        const ok = conductor.pausePipeline(opts.pause);
+        console.log(
+          ok ? `Paused: ${opts.pause}` : `Pipeline not found or not running: ${opts.pause}`,
+        );
+        return;
+      }
+
+      if (opts.resume) {
+        const ok = conductor.resumePipeline(opts.resume);
+        console.log(
+          ok ? `Resumed: ${opts.resume}` : `Pipeline not found or not paused: ${opts.resume}`,
+        );
+        return;
+      }
+
+      if (!specOrRef) {
+        console.error("Usage: hog work <description or issueRef>");
+        console.error('  hog work "Add user authentication"');
+        console.error("  hog work myrepo/42");
+        console.error("  hog work --status");
+        process.exitCode = 1;
+        return;
+      }
+
+      // Determine target repo
+      const targetRepo = opts.repo
+        ? cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo)
+        : cfg.repos[0];
+
+      if (!targetRepo) {
+        console.error(`Repo not found: ${opts.repo ?? "(none configured)"}`);
+        process.exitCode = 1;
+        return;
+      }
+
+      // Start the pipeline
+      engine.agents.start();
+      conductor.start();
+
+      console.log(`Starting pipeline: ${specOrRef}`);
+      console.log(`Repo: ${targetRepo.shortName ?? targetRepo.name}`);
+      console.log("");
+
+      const result = await conductor.startPipeline(
+        targetRepo.name,
+        targetRepo,
+        specOrRef,
+        specOrRef,
+      );
+
+      if ("error" in result) {
+        console.error(`Failed: ${result.error}`);
+        conductor.stop();
+        engine.agents.stop();
+        process.exitCode = 1;
+        return;
+      }
+
+      console.log(`Pipeline started: ${result.featureId}`);
+      console.log("Beads created:");
+      console.log(`  Stories:  ${result.beadIds.stories}`);
+      console.log(`  Tests:    ${result.beadIds.tests}`);
+      console.log(`  Impl:     ${result.beadIds.impl}`);
+      console.log(`  Red Team: ${result.beadIds.redteam}`);
+      console.log(`  Merge:    ${result.beadIds.merge}`);
+      console.log("");
+      console.log("Conductor running. Press Ctrl+C to stop (agents continue in background).");
+
+      process.on("SIGINT", () => {
+        conductor.stop();
+        engine.agents.stop();
+        console.log("\nConductor stopped. Active agents continue running.");
+        process.exit(0);
+      });
+
+      // Keep alive
+      await new Promise(() => {});
+    },
+  );
+
 // -- Config commands --
 
 interface ConfigAddRepoOptions {

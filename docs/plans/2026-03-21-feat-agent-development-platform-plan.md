@@ -187,7 +187,7 @@ The TUI evolves into one view of the engine (not the engine itself).
 
 ### Tasks
 
-- [ ] **3.1 Build `src/engine/conductor.ts` — conductor core**
+- [x] **3.1 Build `src/engine/conductor.ts` — conductor core**
   The conductor is a long-running agent that:
   - Analyzes specs for clarity (the Clarity Analyst role)
   - Breaks features into bead DAGs with typed dependencies
@@ -215,7 +215,7 @@ The TUI evolves into one view of the engine (not the engine itself).
   - Metadata: `{ hogRole, hogFeatureId, hogModel }`
   For larger features, the conductor breaks stories into sub-features, each with their own DAG.
 
-- [ ] **3.4 Implement role-separated agent spawning**
+- [x] **3.4 Implement role-separated agent spawning**
   Each bead role maps to a different agent configuration:
   | Role | System prompt | What it sees | Model preference |
   |------|--------------|-------------|-----------------|
@@ -227,14 +227,14 @@ The TUI evolves into one view of the engine (not the engine itself).
 
   The conductor enforces: test agent session ID ≠ impl agent session ID. Different `HOG_ROLE` env var per spawn.
 
-- [ ] **3.5 Build the batched question queue**
+- [x] **3.5 Build the batched question queue**
   Questions from the Clarity Analyst (and later from stuck agents) accumulate in a queue.
   `hog decisions` shows pending questions.
   `hog decisions resolve` opens an interactive session to answer them.
   Alternatively, questions surface in the TUI board as a notification badge.
   Resolved answers unblock the corresponding beads.
 
-- [ ] **3.6 Add `hog work` command**
+- [x] **3.6 Add `hog work` command**
   `hog work "description"` — starts the conductor for a feature.
   `hog work <issueRef>` — starts from an existing GitHub issue.
   `hog work --status` — shows all active conductor pipelines.
