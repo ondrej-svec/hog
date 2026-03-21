@@ -398,6 +398,51 @@ program
     },
   );
 
+// -- Decisions command --
+
+program
+  .command("decisions")
+  .description("Show and resolve pending human decisions from the pipeline")
+  .option("--resolve <id>", "Resolve a specific question by ID")
+  .option("--answer <text>", "Answer text (use with --resolve)")
+  .action(async (opts: { resolve?: string; answer?: string }) => {
+    const { loadQuestionQueue, saveQuestionQueue, getPendingQuestions, resolveQuestion } =
+      await import("./engine/question-queue.js");
+
+    const queue = loadQuestionQueue();
+
+    if (opts.resolve) {
+      if (!opts.answer) {
+        console.error("Provide --answer with --resolve");
+        process.exitCode = 1;
+        return;
+      }
+      const updated = resolveQuestion(queue, opts.resolve, opts.answer);
+      saveQuestionQueue(updated);
+      console.log(`Resolved: ${opts.resolve}`);
+      return;
+    }
+
+    const pending = getPendingQuestions(queue);
+    if (pending.length === 0) {
+      console.log("No pending decisions.");
+      return;
+    }
+
+    console.log(`${pending.length} pending decision(s):\n`);
+    for (const q of pending) {
+      console.log(`  ${q.id}  [${q.source}]`);
+      console.log(`  Feature: ${q.featureId}`);
+      console.log(`  ${q.question}`);
+      if (q.options) {
+        console.log(`  Options: ${q.options.join(" | ")}`);
+      }
+      console.log(`  Since: ${q.createdAt}`);
+      console.log("");
+    }
+    console.log('Resolve with: hog decisions --resolve <id> --answer "your answer"');
+  });
+
 // -- Config commands --
 
 interface ConfigAddRepoOptions {

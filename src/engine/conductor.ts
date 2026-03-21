@@ -9,8 +9,11 @@ import {
   loadQuestionQueue,
   saveQuestionQueue,
 } from "./question-queue.js";
+import type { Refinery } from "./refinery.js";
 import type { PipelineRole } from "./roles.js";
 import { beadLabelToRole, PIPELINE_ROLES } from "./roles.js";
+import { verifyRedState } from "./tdd-enforcement.js";
+import type { WorktreeManager } from "./worktree.js";
 
 // ── Types ──
 
@@ -65,8 +68,15 @@ export class Conductor {
   private readonly eventBus: EventBus;
   private readonly agentManager: AgentManager;
   private readonly beads: BeadsClient;
+  private readonly worktrees: WorktreeManager | undefined;
+  private readonly refinery: Refinery | undefined;
   private readonly pipelines: Map<string, Pipeline> = new Map();
   private readonly decisionLog: DecisionLogEntry[] = [];
+  /** Maps session IDs to worktree paths for cleanup. */
+  private readonly sessionWorktrees: Map<
+    string,
+    { worktreePath: string; branch: string; repoPath: string }
+  > = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly pollIntervalMs: number;
@@ -77,12 +87,17 @@ export class Conductor {
     eventBus: EventBus,
     agentManager: AgentManager,
     beads: BeadsClient,
-    options: ConductorOptions = {},
+    options: ConductorOptions & {
+      worktrees?: WorktreeManager;
+      refinery?: Refinery;
+    } = {},
   ) {
     this.config = config;
     this.eventBus = eventBus;
     this.agentManager = agentManager;
     this.beads = beads;
+    this.worktrees = options.worktrees;
+    this.refinery = options.refinery;
     this.questionQueue = loadQuestionQueue();
     this.pollIntervalMs = options.pollIntervalMs ?? 10_000;
     this.maxConcurrentPipelines = options.maxConcurrentPipelines ?? 3;
@@ -265,6 +280,26 @@ export class Conductor {
   private async spawnForRole(pipeline: Pipeline, bead: Bead, role: PipelineRole): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
+    // RED verification: before spawning impl agent, verify tests fail
+    if (role === "impl") {
+      const redResult = await verifyRedState(pipeline.localPath);
+      if (!redResult.passed) {
+        this.log(
+          pipeline.featureId,
+          "tdd:red-failed",
+          `RED verification failed: ${redResult.detail}`,
+        );
+        // Re-open the test bead so tests get rewritten
+        try {
+          await this.beads.updateStatus(pipeline.localPath, pipeline.beadIds.tests, "open");
+        } catch {
+          // best-effort
+        }
+        return;
+      }
+      this.log(pipeline.featureId, "tdd:red-verified", redResult.detail);
+    }
+
     // Claim the bead (atomically set assignee + in_progress)
     try {
       await this.beads.claim(pipeline.localPath, bead.id);
@@ -283,11 +318,31 @@ export class Conductor {
       .replace(/\{slug\}/g, slug)
       .replace(/\{spec\}/g, bead.description ?? pipeline.title);
 
+    // Create worktree for isolation (if worktree manager available)
+    let agentCwd = pipeline.localPath;
+    let worktreePath: string | undefined;
+    let branchName: string | undefined;
+
+    if (this.worktrees) {
+      branchName = this.worktrees.branchName(pipeline.featureId, role);
+      try {
+        worktreePath = await this.worktrees.create(pipeline.localPath, branchName);
+        agentCwd = worktreePath;
+        this.log(pipeline.featureId, `worktree:created:${role}`, `Worktree at ${worktreePath}`);
+      } catch (err) {
+        this.log(
+          pipeline.featureId,
+          `worktree:failed:${role}`,
+          `Worktree creation failed, using main repo: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     // Spawn the agent
     const result = this.agentManager.launchAgent({
-      localPath: pipeline.localPath,
+      localPath: agentCwd,
       repoFullName: pipeline.repo,
-      issueNumber: 0, // Pipeline beads don't map 1:1 to GitHub issues
+      issueNumber: 0,
       issueTitle: `[${roleConfig.label}] ${pipeline.title}`,
       issueUrl: "",
       phase: role,
@@ -295,6 +350,14 @@ export class Conductor {
     });
 
     if (typeof result === "string") {
+      // Track worktree for this session so we can submit to refinery on completion
+      if (worktreePath && branchName) {
+        this.sessionWorktrees.set(result, {
+          worktreePath,
+          branch: branchName,
+          repoPath: pipeline.localPath,
+        });
+      }
       this.log(
         pipeline.featureId,
         `agent:spawned:${role}`,
@@ -306,6 +369,10 @@ export class Conductor {
         `agent:spawn-failed:${role}`,
         `Failed to spawn ${roleConfig.label}: ${result.error}`,
       );
+      // Clean up worktree on spawn failure
+      if (worktreePath && this.worktrees) {
+        this.worktrees.remove(pipeline.localPath, worktreePath).catch(() => {});
+      }
       // Unblock the bead so it can be retried
       try {
         await this.beads.updateStatus(pipeline.localPath, bead.id, "open");
@@ -345,16 +412,33 @@ export class Conductor {
   // ── Event Handlers ──
 
   private onAgentCompleted(
-    _sessionId: string,
+    sessionId: string,
     _repo: string,
     _issueNumber: number,
     phase: string,
   ): void {
-    // Find the pipeline this agent belongs to and close the corresponding bead
     for (const pipeline of this.pipelines.values()) {
       const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
       if (!beadId) continue;
 
+      // If this agent had a worktree, submit to refinery for merge
+      const worktreeInfo = this.sessionWorktrees.get(sessionId);
+      if (worktreeInfo && this.refinery) {
+        const mergeId = this.refinery.submit(
+          pipeline.featureId,
+          worktreeInfo.branch,
+          worktreeInfo.worktreePath,
+          worktreeInfo.repoPath,
+        );
+        this.log(
+          pipeline.featureId,
+          `refinery:submitted:${phase}`,
+          `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
+        );
+        this.sessionWorktrees.delete(sessionId);
+      }
+
+      // Close the bead
       this.beads
         .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
         .then(() => {
@@ -367,12 +451,19 @@ export class Conductor {
   }
 
   private onAgentFailed(
-    _sessionId: string,
+    sessionId: string,
     _repo: string,
     _issueNumber: number,
     phase: string,
     exitCode: number,
   ): void {
+    // Clean up worktree for failed agent
+    const worktreeInfo = this.sessionWorktrees.get(sessionId);
+    if (worktreeInfo && this.worktrees) {
+      this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
+      this.sessionWorktrees.delete(sessionId);
+    }
+
     for (const pipeline of this.pipelines.values()) {
       const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
       if (!beadId) continue;
