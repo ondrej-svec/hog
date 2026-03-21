@@ -86,6 +86,7 @@ interface BoardOptions {
   mine?: true;
   backlog?: true;
   live?: true;
+  headless?: true;
   profile?: string;
 }
 
@@ -96,6 +97,7 @@ program
   .option("--mine", "Show only my assigned issues and tasks")
   .option("--backlog", "Show only unassigned issues")
   .option("--live", "Persistent TUI with auto-refresh and keyboard navigation")
+  .option("--headless", "Stream engine events as JSON to stdout (no TUI)")
   .option("--profile <name>", "Use a named board profile")
   .action(async (opts: BoardOptions) => {
     const rawCfg = loadFullConfig();
@@ -106,6 +108,44 @@ program
       mineOnly: opts.mine ?? false,
       backlogOnly: opts.backlog ?? false,
     };
+
+    if (opts.headless) {
+      const { Engine } = await import("./engine/engine.js");
+      const engine = new Engine(cfg, fetchOptions);
+
+      // Stream all engine events as NDJSON to stdout
+      const write = (type: string, payload: unknown): void => {
+        process.stdout.write(
+          `${JSON.stringify({ type, ...(payload as Record<string, unknown>) })}\n`,
+        );
+      };
+
+      engine.eventBus.on("data:refreshed", (p) =>
+        write("data:refreshed", { fetchedAt: p.data.fetchedAt, repoCount: p.data.repos.length }),
+      );
+      engine.eventBus.on("agent:spawned", (p) => write("agent:spawned", p));
+      engine.eventBus.on("agent:progress", (p) => write("agent:progress", p));
+      engine.eventBus.on("agent:completed", (p) => write("agent:completed", p));
+      engine.eventBus.on("agent:failed", (p) => write("agent:failed", p));
+      engine.eventBus.on("mutation:started", (p) => write("mutation:started", p));
+      engine.eventBus.on("mutation:completed", (p) => write("mutation:completed", p));
+      engine.eventBus.on("mutation:failed", (p) => write("mutation:failed", p));
+      engine.eventBus.on("workflow:phase-changed", (p) => write("workflow:phase-changed", p));
+
+      process.on("SIGINT", () => {
+        engine.stop();
+        process.exit(0);
+      });
+      process.on("SIGTERM", () => {
+        engine.stop();
+        process.exit(0);
+      });
+
+      await engine.start();
+      // Keep alive — engine runs until signal
+      await new Promise(() => {});
+      return;
+    }
 
     if (opts.live) {
       const { runLiveDashboard } = await import("./board/live.js");

@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import type { IssueWorkflowState } from "../../engine/workflow.js";
+import { derivePhaseStatus, resolvePhases } from "../../engine/workflow.js";
 import type { AgentSession, EnrichmentData } from "../../enrichment.js";
 import {
   findActiveSession,
@@ -9,19 +11,8 @@ import {
   upsertSession,
 } from "../../enrichment.js";
 
-// ── Types ──
-
-export interface PhaseStatus {
-  readonly name: string;
-  readonly state: "pending" | "active" | "completed";
-  readonly session?: AgentSession | undefined;
-}
-
-export interface IssueWorkflowState {
-  readonly phases: PhaseStatus[];
-  readonly activeSession?: AgentSession | undefined;
-  readonly latestSessionId?: string | undefined;
-}
+// Re-export types from engine so existing consumers don't break
+export type { IssueWorkflowState, PhaseStatus } from "../../engine/workflow.js";
 
 export interface UseWorkflowStateResult {
   readonly enrichment: EnrichmentData;
@@ -39,39 +30,6 @@ export interface UseWorkflowStateResult {
   readonly reload: () => void;
   /** Update in-memory enrichment state and persist it to disk. */
   readonly updateEnrichment: (data: EnrichmentData) => void;
-}
-
-// ── Helpers ──
-
-function resolvePhases(config: HogConfig, repoConfig?: RepoConfig): string[] {
-  const repoPhases = repoConfig?.workflow?.phases;
-  if (repoPhases && repoPhases.length > 0) return repoPhases;
-
-  const boardPhases = config.board.workflow?.defaultPhases;
-  if (boardPhases && boardPhases.length > 0) return boardPhases;
-
-  return ["brainstorm", "plan", "implement", "review"];
-}
-
-function derivePhaseStatus(phaseName: string, sessions: AgentSession[]): PhaseStatus {
-  const phaseSessions = sessions.filter((s) => s.phase === phaseName);
-  if (phaseSessions.length === 0) {
-    return { name: phaseName, state: "pending" };
-  }
-
-  const active = phaseSessions.find((s) => !s.exitedAt);
-  if (active) {
-    return { name: phaseName, state: "active", session: active };
-  }
-
-  const completed = phaseSessions.find((s) => s.exitCode === 0);
-  if (completed) {
-    return { name: phaseName, state: "completed", session: completed };
-  }
-
-  // Sessions exist but none succeeded — show most recent
-  const latest = [...phaseSessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-  return { name: phaseName, state: "pending", session: latest };
 }
 
 // ── Hook ──

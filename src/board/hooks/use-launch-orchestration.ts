@@ -1,10 +1,11 @@
 import { useCallback } from "react";
-import type { HogConfig, RepoConfig } from "../../config.js";
+import type { HogConfig } from "../../config.js";
+import { resolvePhaseConfig } from "../../engine/orchestrator.js";
 import { findIssueByNavId } from "../board-utils.js";
 import type { TriageAction } from "../components/triage-overlay.js";
 import type { WorkflowAction } from "../components/workflow-overlay.js";
 import type { RepoData } from "../fetch.js";
-import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
+import { launchClaude } from "../launch-claude.js";
 import type { UseAgentSessionsResult } from "./use-agent-sessions.js";
 import type { UseWorkflowStateResult } from "./use-workflow-state.js";
 
@@ -41,29 +42,6 @@ export interface LaunchOrchestrationResult {
   readonly handleWorkflowAction: (action: WorkflowAction) => void;
   /** Handle a triage overlay action (snooze or batch-launch agents). */
   readonly handleTriageAction: (action: TriageAction) => void;
-}
-
-// ── Helpers ──
-
-/** Resolve launch config for a workflow phase (template + start command + slug). */
-export function resolvePhaseConfig(
-  rc: RepoConfig,
-  config: HogConfig,
-  issueTitle: string,
-  phase: string,
-): {
-  template: string | undefined;
-  startCommand: { command: string; extraArgs: readonly string[] } | undefined;
-  slug: string;
-} {
-  const phasePrompts = rc.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
-  const template = phasePrompts[phase] ?? DEFAULT_PHASE_PROMPTS[phase];
-  const startCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
-  const slug = issueTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return { template, startCommand, slug };
 }
 
 // ── Hook ──
