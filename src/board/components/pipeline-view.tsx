@@ -174,15 +174,78 @@ function DecisionPanel({ question }: { question: Question }) {
 
 // ── All Clear Panel ──
 
-function AllClearPanel() {
+function AllClearPanel({ pipelines }: { pipelines: Pipeline[] }) {
+  const runningCount = pipelines.filter((p) => p.status === "running").length;
+  const completedCount = pipelines.filter((p) => p.status === "completed").length;
+
   return (
     <Box flexDirection="column" justifyContent="center" alignItems="center" paddingY={2}>
       <Text color="green" bold>
-        ✓ All pipelines running. Nothing needs your attention.
+        ✓ Nothing needs your attention.
       </Text>
+      {runningCount > 0 ? (
+        <Box marginTop={1}>
+          <Text dimColor>
+            {runningCount} pipeline{runningCount > 1 ? "s" : ""} running autonomously.
+          </Text>
+        </Box>
+      ) : null}
+      {completedCount > 0 ? (
+        <Box marginTop={1}>
+          <Text color="green">
+            {completedCount} pipeline{completedCount > 1 ? "s" : ""} completed.
+          </Text>
+        </Box>
+      ) : null}
       <Box marginTop={1}>
         <Text dimColor>Go do deep work. Hog will toast when it needs you.</Text>
       </Box>
+    </Box>
+  );
+}
+
+// ── Pipeline Status Bar ──
+
+function PipelineStatusBar({
+  pipelines,
+  agents,
+  pendingDecisions,
+  mergeQueue,
+}: {
+  pipelines: Pipeline[];
+  agents: readonly TrackedAgent[];
+  pendingDecisions: Question[];
+  mergeQueue: readonly MergeQueueEntry[];
+}) {
+  const running = pipelines.filter((p) => p.status === "running").length;
+  const blocked = pipelines.filter((p) => p.status === "blocked").length;
+  const agentCount = agents.filter((a) => a.monitor.isRunning).length;
+  const decisions = pendingDecisions.length;
+  const queueDepth = mergeQueue.filter((e) => e.status === "pending").length;
+
+  return (
+    <Box>
+      <Text dimColor>{running} pipeline{running !== 1 ? "s" : ""}</Text>
+      <Text dimColor> · </Text>
+      <Text dimColor>{agentCount} agent{agentCount !== 1 ? "s" : ""}</Text>
+      {decisions > 0 ? (
+        <>
+          <Text dimColor> · </Text>
+          <Text color="red" bold>⚠ {decisions} decision{decisions !== 1 ? "s" : ""}</Text>
+        </>
+      ) : null}
+      {blocked > 0 ? (
+        <>
+          <Text dimColor> · </Text>
+          <Text color="yellow">{blocked} blocked</Text>
+        </>
+      ) : null}
+      {queueDepth > 0 ? (
+        <>
+          <Text dimColor> · </Text>
+          <Text dimColor>queue: {queueDepth}</Text>
+        </>
+      ) : null}
     </Box>
   );
 }
@@ -210,9 +273,16 @@ function EmptyState() {
 
 // ── Pipeline Detail Panel ──
 
-function PipelineDetailPanel({ pipeline }: { pipeline: Pipeline }) {
+function PipelineDetailPanel({
+  pipeline,
+  agents,
+}: {
+  pipeline: Pipeline;
+  agents: readonly TrackedAgent[];
+}) {
   const phases = ["stories", "tests", "impl", "redteam", "merge"] as const;
-  const beadEntries = Object.entries(pipeline.beadIds);
+  // Filter agents belonging to this pipeline (match by repo)
+  const pipelineAgents = agents.filter((a) => a.repo === pipeline.repo);
 
   return (
     <Box flexDirection="column" paddingX={1}>
@@ -223,7 +293,6 @@ function PipelineDetailPanel({ pipeline }: { pipeline: Pipeline }) {
       {/* DAG visualization with real status */}
       <Box>
         {phases.map((phase, i) => {
-          // Determine phase status from completedBeads count + activePhase
           const phaseOrder = phases.indexOf(phase);
           const completed = pipeline.completedBeads ?? 0;
           let phaseIcon: string;
@@ -255,9 +324,52 @@ function PipelineDetailPanel({ pipeline }: { pipeline: Pipeline }) {
       <Box marginTop={1}>
         <Text dimColor>Status: </Text>
         <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
-        <Text dimColor> · {progressPercent(pipeline)} · </Text>
-        <Text dimColor>{timeAgo(pipeline.startedAt)}</Text>
+        <Text dimColor> · {progressPercent(pipeline)} · started {timeAgo(pipeline.startedAt)}</Text>
       </Box>
+
+      {/* Active agents for this pipeline */}
+      {pipelineAgents.length > 0 ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>── Agents ──</Text>
+          {pipelineAgents.map((agent) => {
+            const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
+            const activity = agent.monitor.lastToolUse
+              ? `using ${agent.monitor.lastToolUse}`
+              : agent.monitor.isRunning
+                ? "working..."
+                : "done";
+            return (
+              <Box key={agent.sessionId}>
+                <Text color={agent.monitor.isRunning ? "yellow" : "green"}>
+                  {agent.monitor.isRunning ? "◐ " : "✓ "}
+                </Text>
+                <Text bold>{agent.phase}</Text>
+                <Text dimColor> {activity} · {elapsed}m</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+
+      {/* Blocked/failed indicator */}
+      {pipeline.status === "blocked" ? (
+        <Box marginTop={1}>
+          <Text color="red" bold>⚠ Blocked — waiting for your decision (see above or press 1-9)</Text>
+        </Box>
+      ) : null}
+      {pipeline.status === "failed" ? (
+        <Box marginTop={1}>
+          <Text color="red" bold>✗ Pipeline failed at {pipeline.activePhase ?? "unknown"} phase</Text>
+        </Box>
+      ) : null}
+      {pipeline.status === "completed" ? (
+        <Box marginTop={1}>
+          <Text color="green" bold>
+            ✓ Complete! {pipeline.completedBeads}/5 phases done.
+            {pipeline.completedAt ? ` Finished ${timeAgo(pipeline.completedAt)}` : ""}
+          </Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
@@ -308,9 +420,9 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
     pendingDecisions.length > 0 ? (
       <DecisionPanel question={pendingDecisions[0]!} />
     ) : selectedPipeline ? (
-      <PipelineDetailPanel pipeline={selectedPipeline} />
+      <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
     ) : (
-      <AllClearPanel />
+      <AllClearPanel pipelines={pipelines} />
     );
 
   // Narrow layout: list only
@@ -338,6 +450,12 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
 
           <MergeQueueSection entries={mergeQueue} />
         </Box>
+        <PipelineStatusBar
+          pipelines={pipelines}
+          agents={agents}
+          pendingDecisions={pendingDecisions}
+          mergeQueue={mergeQueue}
+        />
       </Box>
     );
   }
@@ -374,6 +492,12 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
           {focusContent}
         </Box>
       </Box>
+      <PipelineStatusBar
+        pipelines={pipelines}
+        agents={agents}
+        pendingDecisions={pendingDecisions}
+        mergeQueue={mergeQueue}
+      />
     </Box>
   );
 }
