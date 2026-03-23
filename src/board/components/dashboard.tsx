@@ -1434,6 +1434,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
       ui.state.mode !== "overlay:detail" &&
       ui.state.mode !== "overlay:nudge" &&
       ui.state.mode !== "overlay:triage" &&
+      ui.state.mode !== "overlay:startPipeline" &&
       ui.state.mode !== "focus" &&
       ui.state.mode !== "zen" ? (
         boardView === "pipelines" ? (

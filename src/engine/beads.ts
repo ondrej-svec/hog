@@ -227,33 +227,37 @@ export class BeadsClient {
     featureTitle: string,
     featureDescription: string,
   ): Promise<{ stories: Bead; tests: Bead; impl: Bead; redteam: Bead; merge: Bead }> {
+    // Truncate title for bead names (bd doesn't handle very long titles well)
+    const shortTitle =
+      featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
+
     const stories = await this.create(cwd, {
-      title: `[hog:stories] User stories: ${featureTitle}`,
+      title: `[hog:stories] ${shortTitle}`,
       description: featureDescription,
       type: "task",
       priority: 1,
     });
 
     const tests = await this.create(cwd, {
-      title: `[hog:test] Acceptance tests: ${featureTitle}`,
+      title: `[hog:test] ${shortTitle}`,
       type: "task",
       priority: 1,
     });
 
     const impl = await this.create(cwd, {
-      title: `[hog:impl] Implement: ${featureTitle}`,
+      title: `[hog:impl] ${shortTitle}`,
       type: "task",
       priority: 1,
     });
 
     const redteam = await this.create(cwd, {
-      title: `[hog:redteam] Red team: ${featureTitle}`,
+      title: `[hog:redteam] ${shortTitle}`,
       type: "task",
       priority: 2,
     });
 
     const merge = await this.create(cwd, {
-      title: `[hog:merge] Refinery merge: ${featureTitle}`,
+      title: `[hog:merge] ${shortTitle}`,
       type: "task",
       priority: 1,
     });
