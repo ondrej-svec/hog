@@ -9,6 +9,7 @@ interface HintBarProps {
   readonly searchQuery: string;
   readonly mineOnly: boolean;
   readonly hasUndoable?: boolean;
+  readonly boardView?: "pipelines" | "issues";
 }
 
 function HintBar({
@@ -18,6 +19,7 @@ function HintBar({
   searchQuery,
   mineOnly,
   hasUndoable,
+  boardView,
 }: HintBarProps) {
   if (uiMode === "multiSelect") {
     return (
@@ -93,7 +95,18 @@ function HintBar({
     );
   }
 
-  // Normal mode — context-sensitive hints per active panel
+  // Pipeline View hints
+  if (boardView === "pipelines") {
+    return (
+      <Box>
+        <Text color="gray">
+          j/k:navigate  P:new pipeline  D:decide  Z:zen  Tab:issues  ? help  q:quit
+        </Text>
+      </Box>
+    );
+  }
+
+  // Issues View — normal mode — context-sensitive hints per active panel
   const panelHints: Record<PanelId, string> = {
     0: "j/k:scroll  Esc:close  ? help",
     1: "j/k:move  Enter:filter  0-4:panel  ? help",

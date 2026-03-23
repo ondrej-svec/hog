@@ -1253,7 +1253,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
       {/* Header */}
       <Box>
         <Text color="cyan" bold>
-          HOG BOARD
+          {boardView === "pipelines" ? "HOG COCKPIT" : "HOG BOARD"}
         </Text>
         {activeProfile ? <Text color="yellow"> [{activeProfile}]</Text> : null}
         <Text color="gray">
@@ -1476,6 +1476,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
         searchQuery={searchQuery}
         mineOnly={mineOnly}
         hasUndoable={hasUndoable}
+        boardView={boardView}
       />
     </Box>
   );
