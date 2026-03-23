@@ -1,33 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { PIPELINE_ROLES, beadLabelToRole } from "./roles.js";
+import { PIPELINE_ROLES, beadToRole } from "./roles.js";
 
 describe("roles", () => {
-  it("maps hog:stories label to stories role", () => {
-    expect(beadLabelToRole(["hog:stories"])).toBe("stories");
+  it("maps [hog:stories] title prefix to stories role", () => {
+    expect(beadToRole({ title: "[hog:stories] User stories: Auth" })).toBe("stories");
   });
 
-  it("maps hog:test label to test role", () => {
-    expect(beadLabelToRole(["hog:test"])).toBe("test");
+  it("maps [hog:test] title prefix to test role", () => {
+    expect(beadToRole({ title: "[hog:test] Acceptance tests: Auth" })).toBe("test");
   });
 
-  it("maps hog:impl label to impl role", () => {
-    expect(beadLabelToRole(["hog:impl"])).toBe("impl");
+  it("maps [hog:impl] title prefix to impl role", () => {
+    expect(beadToRole({ title: "[hog:impl] Implement: Auth" })).toBe("impl");
   });
 
-  it("maps hog:redteam label to redteam role", () => {
-    expect(beadLabelToRole(["hog:redteam"])).toBe("redteam");
+  it("maps [hog:redteam] title prefix to redteam role", () => {
+    expect(beadToRole({ title: "[hog:redteam] Red team: Auth" })).toBe("redteam");
   });
 
-  it("maps hog:merge label to merge role", () => {
-    expect(beadLabelToRole(["hog:merge"])).toBe("merge");
+  it("maps [hog:merge] title prefix to merge role", () => {
+    expect(beadToRole({ title: "[hog:merge] Refinery merge: Auth" })).toBe("merge");
   });
 
-  it("returns undefined for unknown labels", () => {
-    expect(beadLabelToRole(["bug", "feature"])).toBeUndefined();
+  it("returns undefined for titles without role prefix", () => {
+    expect(beadToRole({ title: "Fix login bug" })).toBeUndefined();
   });
 
-  it("finds role among mixed labels", () => {
-    expect(beadLabelToRole(["critical", "hog:impl", "auth"])).toBe("impl");
+  it("falls back to labels when title has no prefix", () => {
+    expect(beadToRole({ title: "Some task", labels: ["hog:impl"] })).toBe("impl");
+  });
+
+  it("title prefix takes precedence over labels", () => {
+    expect(beadToRole({ title: "[hog:test] Tests", labels: ["hog:impl"] })).toBe("test");
   });
 
   it("all 5 pipeline roles have prompts", () => {

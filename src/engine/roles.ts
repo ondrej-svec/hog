@@ -149,14 +149,32 @@ export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
   },
 };
 
-/** Map a bead's hog label to its pipeline role. */
-export function beadLabelToRole(labels: string[]): PipelineRole | undefined {
-  for (const label of labels) {
-    if (label === "hog:stories") return "stories";
-    if (label === "hog:test") return "test";
-    if (label === "hog:impl") return "impl";
-    if (label === "hog:redteam") return "redteam";
-    if (label === "hog:merge") return "merge";
+/** Map a bead to its pipeline role via title prefix [hog:role] or labels. */
+export function beadToRole(bead: { title: string; labels?: string[] }): PipelineRole | undefined {
+  // Check title prefix first: [hog:stories], [hog:test], etc.
+  const titleMatch = bead.title.match(/^\[hog:(\w+)\]/);
+  if (titleMatch?.[1]) {
+    const role = titleMatch[1];
+    if (
+      role === "stories" ||
+      role === "test" ||
+      role === "impl" ||
+      role === "redteam" ||
+      role === "merge"
+    ) {
+      return role;
+    }
+  }
+
+  // Fallback: check labels
+  if (bead.labels) {
+    for (const label of bead.labels) {
+      if (label === "hog:stories") return "stories";
+      if (label === "hog:test") return "test";
+      if (label === "hog:impl") return "impl";
+      if (label === "hog:redteam") return "redteam";
+      if (label === "hog:merge") return "merge";
+    }
   }
   return undefined;
 }

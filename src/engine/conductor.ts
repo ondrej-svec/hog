@@ -12,7 +12,7 @@ import {
 import type { Refinery } from "./refinery.js";
 import { writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
-import { beadLabelToRole, PIPELINE_ROLES } from "./roles.js";
+import { beadToRole, PIPELINE_ROLES } from "./roles.js";
 import { verifyRedState } from "./tdd-enforcement.js";
 import type { WorktreeManager } from "./worktree.js";
 
@@ -267,7 +267,7 @@ export class Conductor {
       // Skip beads already being worked on
       if (bead.status === "in_progress") continue;
 
-      const role = beadLabelToRole(bead.labels);
+      const role = beadToRole(bead);
       if (!role) continue;
 
       await this.spawnForRole(pipeline, bead, role);

@@ -1,4 +1,6 @@
 import { execFile, execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 
@@ -12,12 +14,17 @@ const BEAD_SCHEMA = z.object({
   description: z.string().optional(),
   status: z.enum(["open", "in_progress", "blocked", "closed", "deferred", "pinned", "hooked"]),
   priority: z.number().min(0).max(4),
-  type: z.string(),
+  issue_type: z.string(),
+  owner: z.string().optional(),
+  created_by: z.string().optional(),
   assignee: z.string().optional(),
   labels: z.array(z.string()).default([]),
   created_at: z.string(),
   updated_at: z.string(),
   closed_at: z.string().nullable().optional(),
+  dependency_count: z.number().default(0),
+  dependent_count: z.number().default(0),
+  comment_count: z.number().default(0),
 });
 
 export type Bead = z.infer<typeof BEAD_SCHEMA>;
@@ -44,7 +51,6 @@ export interface CreateBeadOptions {
   readonly description?: string;
   readonly type?: string;
   readonly priority?: number;
-  readonly labels?: string[];
 }
 
 export interface BeadDAGNode {
@@ -56,7 +62,7 @@ export interface BeadDAGNode {
 
 // ── CLI Helpers ──
 
-const BD_TIMEOUT = 15_000;
+const BD_TIMEOUT = 30_000;
 
 function runBd(args: string[], cwd: string): string {
   return execFileSync("bd", args, {
@@ -106,20 +112,23 @@ export class BeadsClient {
 
   /** Check if .beads/ is initialized in the given directory. */
   isInitialized(cwd: string): boolean {
-    try {
-      runBd(["stats"], cwd);
-      return true;
-    } catch {
-      return false;
-    }
+    return existsSync(join(cwd, ".beads"));
   }
 
   /** Initialize .beads/ in a directory. */
   async init(cwd: string): Promise<void> {
-    await runBdAsync(["init", "--actor", this.actorName], cwd);
+    try {
+      await runBdAsync(["init"], cwd);
+    } catch {
+      // bd init may exit non-zero due to Dolt server warnings
+      // but still create .beads/ successfully. Check if it worked.
+      if (!this.isInitialized(cwd)) {
+        throw new Error("bd init failed — .beads/ directory was not created");
+      }
+    }
   }
 
-  /** Create a new bead. Returns the created bead. */
+  /** Create a new bead. Returns the created bead (fetched via show after create). */
   async create(cwd: string, opts: CreateBeadOptions): Promise<Bead> {
     const args = ["create", opts.title];
     if (opts.type) {
@@ -131,14 +140,17 @@ export class BeadsClient {
     if (opts.description) {
       args.push("-d", opts.description);
     }
-    if (opts.labels) {
-      for (const label of opts.labels) {
-        args.push("-l", label);
-      }
+
+    // bd create outputs text like "✓ Created issue: <id> — <title>"
+    // We parse the ID from the output, then fetch the full bead via show
+    const output = await runBdAsync(args, cwd);
+    const idMatch = output.match(/Created issue:\s+(\S+)/);
+    if (!idMatch?.[1]) {
+      throw new Error(`Failed to parse bead ID from create output: ${output.slice(0, 200)}`);
     }
 
-    const raw = await runBdJsonAsync<unknown>(args, cwd);
-    return BEAD_SCHEMA.parse(raw);
+    const beadId = idMatch[1];
+    return this.show(cwd, beadId);
   }
 
   /** Get all beads that are ready to work on (unblocked). */
@@ -164,7 +176,9 @@ export class BeadsClient {
   /** Get a single bead by ID. */
   async show(cwd: string, beadId: string): Promise<Bead> {
     const raw = await runBdJsonAsync<unknown>(["show", beadId], cwd);
-    return BEAD_SCHEMA.parse(raw);
+    // bd show returns an array with one element
+    const item = Array.isArray(raw) ? raw[0] : raw;
+    return BEAD_SCHEMA.parse(item);
   }
 
   /** Update a bead's status. */
@@ -214,38 +228,33 @@ export class BeadsClient {
     featureDescription: string,
   ): Promise<{ stories: Bead; tests: Bead; impl: Bead; redteam: Bead; merge: Bead }> {
     const stories = await this.create(cwd, {
-      title: `User stories: ${featureTitle}`,
+      title: `[hog:stories] User stories: ${featureTitle}`,
       description: featureDescription,
       type: "task",
-      labels: ["hog:stories"],
       priority: 1,
     });
 
     const tests = await this.create(cwd, {
-      title: `Acceptance tests: ${featureTitle}`,
+      title: `[hog:test] Acceptance tests: ${featureTitle}`,
       type: "task",
-      labels: ["hog:test"],
       priority: 1,
     });
 
     const impl = await this.create(cwd, {
-      title: `Implement: ${featureTitle}`,
+      title: `[hog:impl] Implement: ${featureTitle}`,
       type: "task",
-      labels: ["hog:impl"],
       priority: 1,
     });
 
     const redteam = await this.create(cwd, {
-      title: `Red team: ${featureTitle}`,
+      title: `[hog:redteam] Red team: ${featureTitle}`,
       type: "task",
-      labels: ["hog:redteam"],
       priority: 2,
     });
 
     const merge = await this.create(cwd, {
-      title: `Refinery merge: ${featureTitle}`,
+      title: `[hog:merge] Refinery merge: ${featureTitle}`,
       type: "task",
-      labels: ["hog:merge"],
       priority: 1,
     });
 
