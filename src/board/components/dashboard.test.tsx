@@ -147,7 +147,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData());
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     // Wait for fetch to resolve and component to settle
@@ -168,7 +168,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockReturnValue(new Promise(() => {}));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(100);
@@ -183,7 +183,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -205,7 +205,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -234,7 +234,7 @@ describe("Dashboard integration", () => {
     );
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -252,7 +252,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockRejectedValue(new Error("API timeout"));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -277,7 +277,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -304,7 +304,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -321,7 +321,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData());
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     // Wait long enough for any potential re-fetch loops to show
@@ -343,7 +343,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ activity }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -360,7 +360,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ activity: [] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -375,7 +375,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData());
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -419,7 +419,7 @@ describe("Dashboard integration", () => {
 
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
 
-    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
+    const instance = render(React.createElement(Dashboard, { config, options: makeOptions(), initialView: "issues" as const }));
 
     await delay(200);
 
@@ -437,7 +437,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -460,7 +460,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -487,7 +487,7 @@ describe("Dashboard integration", () => {
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -525,7 +525,7 @@ describe("Dashboard integration", () => {
       makeDashboardData({ repos: [{ repo, issues, statusOptions, error: null }] }),
     );
 
-    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
+    const instance = render(React.createElement(Dashboard, { config, options: makeOptions(), initialView: "issues" as const }));
 
     await delay(200);
 
@@ -563,7 +563,7 @@ describe("Dashboard integration", () => {
     );
 
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
 
     await delay(200);
@@ -601,7 +601,7 @@ describe("Dashboard integration", () => {
       makeDashboardData({ repos: [{ repo, issues, statusOptions, error: null }] }),
     );
 
-    const instance = render(React.createElement(Dashboard, { config, options: makeOptions() }));
+    const instance = render(React.createElement(Dashboard, { config, options: makeOptions(), initialView: "issues" as const }));
 
     await delay(200);
 
@@ -630,7 +630,7 @@ describe("sticky group header", () => {
       }),
     );
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
     await delay(200);
     // Sticky header shows "In Progress" for the selected issue's group
@@ -646,7 +646,7 @@ describe("sticky group header", () => {
     );
     mockFetchDashboard.mockResolvedValue(makeDashboardData({ repos: [makeRepoData({ issues })] }));
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
     await delay(200);
     // Navigate down 5 positions (deep into the group)
@@ -671,7 +671,7 @@ describe("sticky group header", () => {
       }),
     );
     const instance = render(
-      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions() }),
+      React.createElement(Dashboard, { config: makeConfig(), options: makeOptions(), initialView: "issues" as const }),
     );
     await delay(200);
     // Switch to Activity tab (Tab key)

@@ -67,6 +67,8 @@ interface DashboardProps {
   readonly config: HogConfig;
   readonly options: FetchOptions;
   readonly activeProfile?: string | null;
+  /** Override the initial board view. Default: "pipelines" (cockpit). */
+  readonly initialView?: "pipelines" | "issues";
 }
 
 // ── Helpers ──
@@ -119,7 +121,7 @@ function RefreshAge({ lastRefresh }: { readonly lastRefresh: Date | null }) {
 const CHROME_ROWS = 3; // header (1) + hintbar (1) + paddingX top/bottom (1)
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: main TUI orchestrator
-function Dashboard({ config, options, activeProfile }: DashboardProps) {
+function Dashboard({ config, options, activeProfile, initialView }: DashboardProps) {
   const { exit } = useApp();
   const refreshMs = config.board.refreshInterval * 1000;
   const {
@@ -172,8 +174,8 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, []);
 
   // Board view: pipelines (cockpit) vs issues (classic)
-  // Default to issues — auto-switches to pipelines when conductor has active pipelines
-  const [boardView, setBoardView] = useState<"pipelines" | "issues">("issues");
+  // Pipeline View is home — the cockpit. Tab switches to Issues View.
+  const [boardView, setBoardView] = useState<"pipelines" | "issues">(initialView ?? "pipelines");
   const [pipelineSelectedIndex, setPipelineSelectedIndex] = useState(0);
   const [hasAutoSwitched, setHasAutoSwitched] = useState(false);
 
@@ -1091,11 +1093,14 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       // Only handle in normal mode (not during overlays or search)
       if (ui.state.mode !== "normal") return;
 
-      if (input === "i" && boardView === "pipelines") {
+      // Tab in Pipeline View → switch to Issues View
+      // (In Issues View, Tab does section jumps via useKeyboard — don't intercept)
+      if (key.tab && boardView === "pipelines") {
         setBoardView("issues");
         return;
       }
-      if (input === "p" && boardView === "issues") {
+      // Esc in Issues View → back to Pipeline View
+      if (key.escape && boardView === "issues") {
         setBoardView("pipelines");
         return;
       }
