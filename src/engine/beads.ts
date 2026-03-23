@@ -126,6 +126,20 @@ export class BeadsClient {
         throw new Error("bd init failed — .beads/ directory was not created");
       }
     }
+    // Ensure the Dolt server is running persistently
+    await this.ensureDoltRunning(cwd);
+  }
+
+  /** Ensure the Dolt server is running for the given repo. */
+  async ensureDoltRunning(cwd: string): Promise<void> {
+    try {
+      const status = await runBdAsync(["dolt", "status"], cwd);
+      if (status.includes("not running")) {
+        await runBdAsync(["dolt", "start"], cwd);
+      }
+    } catch {
+      // Best-effort — bd may auto-start Dolt as fallback
+    }
   }
 
   /** Create a new bead. Returns the created bead (fetched via show after create). */

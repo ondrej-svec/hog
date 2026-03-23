@@ -56,6 +56,7 @@ function createMockBeadsClient(): BeadsClient {
     addDependency: vi.fn().mockResolvedValue(undefined),
     getDependencyTree: vi.fn().mockResolvedValue(""),
     compact: vi.fn().mockResolvedValue(undefined),
+    ensureDoltRunning: vi.fn().mockResolvedValue(undefined),
     createFeatureDAG: vi.fn().mockImplementation(async (_cwd: string, title: string) => ({
       stories: makeBead({ id: "bd-stories", title: `[hog:stories] User stories: ${title}` }),
       tests: makeBead({ id: "bd-tests", title: `[hog:test] Acceptance tests: ${title}` }),

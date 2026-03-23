@@ -34,11 +34,10 @@ describe("StartPipelineOverlay", () => {
       expect(frame).toContain("merge");
     });
 
-    it("shows Enter/Esc hints", () => {
+    it("shows text input placeholder", () => {
       const { lastFrame } = renderOverlay();
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Enter");
-      expect(frame).toContain("Esc");
+      expect(frame).toContain("→");
     });
   });
 

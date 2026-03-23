@@ -87,6 +87,15 @@ function HintBar({
     );
   }
 
+  // Start Pipeline overlay has its own hints — don't show generic overlay hints
+  if (uiMode === "overlay:startPipeline") {
+    return (
+      <Box>
+        <Text color="gray">Type a feature description · Enter:start · Esc:cancel</Text>
+      </Box>
+    );
+  }
+
   if (uiMode.startsWith("overlay:")) {
     return (
       <Box>

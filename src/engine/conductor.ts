@@ -187,6 +187,9 @@ export class Conductor {
       };
     }
 
+    // Ensure Dolt server is running before creating beads
+    await this.beads.ensureDoltRunning(repoConfig.localPath);
+
     // Create the feature DAG in Beads
     let dag: Awaited<ReturnType<typeof this.beads.createFeatureDAG>>;
     try {

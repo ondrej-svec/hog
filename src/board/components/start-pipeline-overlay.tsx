@@ -1,6 +1,6 @@
-import { TextInput } from "@inkjs/ui";
+import { Spinner, TextInput } from "@inkjs/ui";
 import { Box, Text } from "ink";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface StartPipelineOverlayProps {
   readonly onSubmit: (description: string) => void;
@@ -14,6 +14,7 @@ export function StartPipelineOverlay({
   beadsAvailable,
 }: StartPipelineOverlayProps) {
   const lastValue = useRef("");
+  const [submitting, setSubmitting] = useState(false);
 
   if (!beadsAvailable) {
     return (
@@ -27,6 +28,16 @@ export function StartPipelineOverlay({
         </Box>
         <Box marginTop={1}>
           <Text dimColor>Press Esc to close</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (submitting) {
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Box>
+          <Spinner label="Creating pipeline — setting up Beads DAG..." />
         </Box>
       </Box>
     );
@@ -50,13 +61,11 @@ export function StartPipelineOverlay({
           }}
           onSubmit={() => {
             if (lastValue.current.trim()) {
+              setSubmitting(true);
               onSubmit(lastValue.current.trim());
             }
           }}
         />
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>Enter to start · Esc to cancel</Text>
       </Box>
     </Box>
   );

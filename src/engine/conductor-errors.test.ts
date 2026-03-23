@@ -60,6 +60,7 @@ function createMockBeads(overrides: Partial<BeadsClient> = {}): BeadsClient {
     addDependency: vi.fn().mockResolvedValue(undefined),
     getDependencyTree: vi.fn().mockResolvedValue(""),
     compact: vi.fn().mockResolvedValue(undefined),
+    ensureDoltRunning: vi.fn().mockResolvedValue(undefined),
     createFeatureDAG: vi.fn().mockResolvedValue({
       stories: makeBead("bd-s", "[hog:stories] Stories"),
       tests: makeBead("bd-t", "[hog:test] Tests"),
