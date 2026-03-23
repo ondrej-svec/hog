@@ -191,4 +191,65 @@ describe("HintBar", () => {
     expect(frame).toContain("j/k:scroll");
     expect(frame).toContain("Enter:jump");
   });
+
+  // STORY-017: As a user in Pipeline View, the hint bar shows
+  // pipeline-specific shortcuts, not issue shortcuts
+  describe("STORY-017: Pipeline View hints", () => {
+    it("shows pipeline-specific hints when boardView is pipelines", () => {
+      const { lastFrame } = renderHintBar({
+        uiMode: "normal",
+        activePanelId: 3,
+        multiSelectCount: 0,
+        searchQuery: "",
+        mineOnly: false,
+        boardView: "pipelines",
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("P:new pipeline");
+      expect(frame).toContain("D:decide");
+      expect(frame).toContain("Tab:issues");
+      expect(frame).toContain("q:quit");
+    });
+
+    it("does NOT show issue shortcuts (pick, status, comment) in Pipeline View", () => {
+      const { lastFrame } = renderHintBar({
+        uiMode: "normal",
+        activePanelId: 3,
+        multiSelectCount: 0,
+        searchQuery: "",
+        mineOnly: false,
+        boardView: "pipelines",
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).not.toContain("p:pick");
+      expect(frame).not.toContain("m:status");
+      expect(frame).not.toContain("c:comment");
+    });
+
+    it("shows issue shortcuts when boardView is issues", () => {
+      const { lastFrame } = renderHintBar({
+        uiMode: "normal",
+        activePanelId: 3,
+        multiSelectCount: 0,
+        searchQuery: "",
+        mineOnly: false,
+        boardView: "issues",
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("p:pick");
+      expect(frame).toContain("m:status");
+    });
+
+    it("shows issue shortcuts when boardView is undefined (backward compat)", () => {
+      const { lastFrame } = renderHintBar({
+        uiMode: "normal",
+        activePanelId: 3,
+        multiSelectCount: 0,
+        searchQuery: "",
+        mineOnly: false,
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("p:pick");
+    });
+  });
 });

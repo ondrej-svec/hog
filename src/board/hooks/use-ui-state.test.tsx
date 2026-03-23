@@ -932,4 +932,54 @@ describe("useUIState hook", () => {
 
     instance.unmount();
   });
+
+  // STORY-020: As a user pressing P, the UI enters the startPipeline overlay
+  // and Esc returns to normal mode
+  it("STORY-020: enterStartPipeline transitions to overlay:startPipeline from normal", async () => {
+    let ui!: ReturnType<typeof useUIState>;
+    function Wrapper() {
+      ui = useUIState();
+      return React.createElement(
+        Box,
+        null,
+        React.createElement(Text, null, `mode:${ui.state.mode}`),
+      );
+    }
+    const instance = render(React.createElement(Wrapper));
+
+    ui.enterStartPipeline();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:overlay:startPipeline");
+
+    ui.exitOverlay();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:normal");
+
+    instance.unmount();
+  });
+
+  it("STORY-020: enterStartPipeline is a no-op from non-normal modes", async () => {
+    let ui!: ReturnType<typeof useUIState>;
+    function Wrapper() {
+      ui = useUIState();
+      return React.createElement(
+        Box,
+        null,
+        React.createElement(Text, null, `mode:${ui.state.mode}`),
+      );
+    }
+    const instance = render(React.createElement(Wrapper));
+
+    // Enter search first
+    ui.enterSearch();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    // Try to enter start pipeline — should be ignored
+    ui.enterStartPipeline();
+    await delay(50);
+    expect(instance.lastFrame()!).toContain("mode:search");
+
+    instance.unmount();
+  });
 });
