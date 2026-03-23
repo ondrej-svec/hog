@@ -1140,6 +1140,32 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           setPipelineSelectedIndex((prev) => Math.max(0, prev - 1));
           return;
         }
+        // x pauses/resumes selected pipeline
+        if (input === "x") {
+          const selected = pipelineData.pipelines[pipelineSelectedIndex];
+          if (selected) {
+            if (selected.status === "running") {
+              pipelineData.pausePipeline(selected.featureId);
+              toast.info(`Paused: ${selected.title}`);
+            } else if (selected.status === "paused") {
+              pipelineData.resumePipeline(selected.featureId);
+              toast.info(`Resumed: ${selected.title}`);
+            }
+          }
+          return;
+        }
+        // Number keys 1-9 answer the first pending decision
+        if (/^[1-9]$/.test(input) && pipelineData.pendingDecisions.length > 0) {
+          const decision = pipelineData.pendingDecisions[0];
+          if (decision?.options) {
+            const idx = parseInt(input, 10) - 1;
+            const answer = decision.options[idx];
+            if (answer) {
+              pipelineData.resolveDecision(decision.id, answer);
+            }
+          }
+          return;
+        }
       }
     },
     { isActive: ui.state.mode === "normal" },

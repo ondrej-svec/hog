@@ -35,6 +35,10 @@ export interface Pipeline {
     merge: string;
   };
   status: PipelineStatus;
+  /** Number of completed (closed) beads out of 5. Updated by conductor tick. */
+  completedBeads: number;
+  /** Currently active phase (if any agent is running). */
+  activePhase?: string | undefined;
   readonly startedAt: string;
   completedAt?: string;
 }
@@ -233,6 +237,7 @@ export class Conductor {
         merge: dag.merge.id,
       },
       status: "running",
+      completedBeads: 0,
       startedAt: new Date().toISOString(),
     };
 
@@ -411,6 +416,7 @@ export class Conductor {
       }
       // Map session to pipeline for correct completion routing
       this.sessionToPipeline.set(result, pipeline.featureId);
+      pipeline.activePhase = role;
       this.log(
         pipeline.featureId,
         `agent:spawned:${role}`,
@@ -501,7 +507,8 @@ export class Conductor {
     this.beads
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
       .then(() => {
-        this.log(pipeline.featureId, `bead:closed:${phase}`, `Bead ${beadId} completed`);
+        pipeline.completedBeads = Math.min(5, pipeline.completedBeads + 1);
+        this.log(pipeline.featureId, `bead:closed:${phase}`, `Bead ${beadId} completed (${pipeline.completedBeads}/5)`);
       })
       .catch(() => {
         // best-effort

@@ -368,6 +368,7 @@ describe("Conductor Pipeline", () => {
           merge: "bd-m",
         },
         status: "running" as const,
+        completedBeads: 0,
         startedAt: new Date().toISOString(),
       };
       (conductor as unknown as { pipelines: Map<string, typeof pipeline> }).pipelines.set(

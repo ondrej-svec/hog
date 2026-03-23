@@ -35,6 +35,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
       merge: "bd-m1",
     },
     status: "running",
+    completedBeads: 0,
     startedAt: new Date().toISOString(),
     ...overrides,
   };

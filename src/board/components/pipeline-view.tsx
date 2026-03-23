@@ -4,6 +4,15 @@ import type { Pipeline, PipelineStatus } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 
+function timeAgo(isoString: string): string {
+  const ms = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ${mins % 60}m ago`;
+}
+
 // ── Types ──
 
 export interface PipelineViewData {
@@ -53,14 +62,15 @@ function statusColor(status: PipelineStatus): string {
 }
 
 function progressBar(pipeline: Pipeline, width: number): string {
-  const beadIds = Object.values(pipeline.beadIds);
-  const total = beadIds.length;
-  // For now, estimate progress from status
-  let completed = 0;
-  if (pipeline.status === "completed") completed = total;
-  else if (pipeline.status === "running") completed = Math.floor(total * 0.4); // placeholder
+  const total = 5;
+  const completed = pipeline.completedBeads ?? 0;
   const filled = Math.round((completed / total) * width);
   return "█".repeat(filled) + "░".repeat(width - filled);
+}
+
+function progressPercent(pipeline: Pipeline): string {
+  const pct = Math.round(((pipeline.completedBeads ?? 0) / 5) * 100);
+  return `${pct}%`;
 }
 
 // ── Pipeline List Item ──
@@ -96,6 +106,10 @@ function PipelineListItem({
       {selected ? <Text bold>{title}</Text> : <Text>{title}</Text>}
       <Text> </Text>
       <Text color="yellow">{bar}</Text>
+      <Text dimColor> {progressPercent(pipeline)}</Text>
+      {pipeline.activePhase ? (
+        <Text dimColor> {pipeline.activePhase}</Text>
+      ) : null}
     </Box>
   );
 }
@@ -206,29 +220,43 @@ function PipelineDetailPanel({ pipeline }: { pipeline: Pipeline }) {
         <Text bold>{pipeline.title}</Text>
       </Box>
 
-      {/* DAG visualization */}
+      {/* DAG visualization with real status */}
       <Box>
         {phases.map((phase, i) => {
-          const beadId = beadEntries.find(([key]) => key === phase)?.[1];
-          const icon = beadId ? "○" : "?";
+          // Determine phase status from completedBeads count + activePhase
+          const phaseOrder = phases.indexOf(phase);
+          const completed = pipeline.completedBeads ?? 0;
+          let phaseIcon: string;
+          let phaseColor: string;
+
+          if (phaseOrder < completed) {
+            phaseIcon = "✓";
+            phaseColor = "green";
+          } else if (phase === pipeline.activePhase) {
+            phaseIcon = "◐";
+            phaseColor = "yellow";
+          } else if (pipeline.status === "failed") {
+            phaseIcon = "✗";
+            phaseColor = "red";
+          } else {
+            phaseIcon = "○";
+            phaseColor = "gray";
+          }
+
           return (
             <Text key={phase}>
-              <Text dimColor>{phase} </Text>
-              <Text color="gray">{icon}</Text>
-              {i < phases.length - 1 ? <Text dimColor> ──→ </Text> : null}
+              <Text color={phaseColor}>{phase} {phaseIcon}</Text>
+              {i < phases.length - 1 ? <Text dimColor> → </Text> : null}
             </Text>
           );
         })}
       </Box>
 
-      <Box marginTop={1} flexDirection="column">
+      <Box marginTop={1}>
         <Text dimColor>Status: </Text>
         <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
-      </Box>
-
-      <Box marginTop={1} flexDirection="column">
-        <Text dimColor>Started: {pipeline.startedAt}</Text>
-        {pipeline.completedAt ? <Text dimColor>Completed: {pipeline.completedAt}</Text> : null}
+        <Text dimColor> · {progressPercent(pipeline)} · </Text>
+        <Text dimColor>{timeAgo(pipeline.startedAt)}</Text>
       </Box>
     </Box>
   );
