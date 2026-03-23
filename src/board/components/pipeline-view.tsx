@@ -86,11 +86,13 @@ function PipelineListItem({
 }) {
   const icon = statusIcon(pipeline.status);
   const color = statusColor(pipeline.status);
-  const barWidth = Math.max(8, Math.min(20, width - 40));
-  const bar = progressBar(pipeline, barWidth);
+  // Allocate: 4 chars icon/selection + title + 1 space + bar(8) + percentage(5) + phase(10)
+  const overhead = 28; // icon(4) + bar(8) + pct(5) + phase(10) + spaces
+  const maxTitle = Math.max(10, width - overhead);
+  const bar = progressBar(pipeline, 8);
   const title =
-    pipeline.title.length > width - 35
-      ? `${pipeline.title.slice(0, width - 38)}...`
+    pipeline.title.length > maxTitle
+      ? `${pipeline.title.slice(0, maxTitle - 3)}...`
       : pipeline.title;
 
   return (
@@ -400,7 +402,7 @@ function MergeQueueSection({ entries }: { entries: readonly MergeQueueEntry[] })
 
 export function PipelineView({ data, cols, rows }: PipelineViewProps) {
   const { pipelines, agents, pendingDecisions, mergeQueue, selectedIndex } = data;
-  const isWide = cols >= 140;
+  const isWide = cols >= 100;
   const listWidth = isWide ? Math.min(40, Math.floor(cols * 0.35)) : cols - 2;
   const detailWidth = isWide ? cols - listWidth - 4 : 0;
 
@@ -425,7 +427,7 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
       <AllClearPanel pipelines={pipelines} />
     );
 
-  // Narrow layout: list only
+  // Narrow layout: list + inline focus content (decisions/detail)
   if (!isWide) {
     return (
       <Box flexDirection="column" height={rows} overflow="hidden">
@@ -439,7 +441,18 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
             />
           ))}
 
-          {agents.length > 0 ? (
+          {/* Decisions shown inline in narrow layout */}
+          {pendingDecisions.length > 0 ? (
+            <Box flexDirection="column" marginTop={1}>
+              <DecisionPanel question={pendingDecisions[0]!} />
+            </Box>
+          ) : selectedPipeline ? (
+            <Box flexDirection="column" marginTop={1}>
+              <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
+            </Box>
+          ) : null}
+
+          {agents.length > 0 && pendingDecisions.length === 0 && !selectedPipeline ? (
             <Box flexDirection="column" marginTop={1}>
               <Text dimColor>── Agents ({agents.length}) ──</Text>
               {agents.slice(0, 5).map((a) => (
