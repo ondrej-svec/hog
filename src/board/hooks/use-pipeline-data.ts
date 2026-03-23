@@ -80,8 +80,9 @@ export function usePipelineData(
 
     setBeadsAvailable(beads.isInstalled());
 
-    // Start agent manager for PID polling
+    // Start agent manager for PID polling + conductor orchestration loop
     agentManager.start();
+    conductor.start();
 
     // Listen for events to show toasts
     eventBus.on("agent:completed", (ev) => {
@@ -160,10 +161,9 @@ export function usePipelineData(
     (questionId: string, answer: string) => {
       const conductor = conductorRef.current;
       if (!conductor) return;
-      const queue = conductor.getQuestionQueue();
-      const updated = resolveQuestion(queue, questionId, answer);
-      saveQuestionQueue(updated);
-      setPendingDecisions(getPendingQuestions(updated));
+      // Use conductor's method to update its in-memory queue AND persist
+      conductor.resolveQuestion(questionId, answer);
+      setPendingDecisions(getPendingQuestions(conductor.getQuestionQueue()));
       toast.info(`Decision resolved: ${answer}`);
     },
     [toast],

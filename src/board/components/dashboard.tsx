@@ -54,8 +54,8 @@ import {
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { ReposPanel } from "./repos-panel.js";
-import { StartPipelineOverlay } from "./start-pipeline-overlay.js";
 import { RowRenderer } from "./row-renderer.js";
+import { StartPipelineOverlay } from "./start-pipeline-overlay.js";
 import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
 import type { TriageAction } from "./triage-overlay.js";
@@ -1091,7 +1091,13 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
   // Board view switching: `i` → issues, `Esc`/`p` in issues → pipelines
   useInput(
     (input, key) => {
-      // Only handle in normal mode (not during overlays or search)
+      // Esc cancels the start pipeline overlay (must be before mode guard)
+      if (key.escape && ui.state.mode === "overlay:startPipeline") {
+        ui.exitOverlay();
+        return;
+      }
+
+      // Only handle remaining keys in normal mode
       if (ui.state.mode !== "normal") return;
 
       // Tab in Pipeline View → switch to Issues View
@@ -1127,9 +1133,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           return;
         }
         if (input === "j" || key.downArrow) {
-          setPipelineSelectedIndex((prev) =>
-            Math.min(prev + 1, pipelineData.pipelines.length - 1),
-          );
+          setPipelineSelectedIndex((prev) => Math.min(prev + 1, pipelineData.pipelines.length - 1));
           return;
         }
         if (input === "k" || key.upArrow) {
@@ -1312,7 +1316,16 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
               return;
             }
             pipelineData
-              .startPipeline(targetRepo.name, targetRepo, description, description)
+              .startPipeline(
+                targetRepo.name,
+                targetRepo,
+                // Title: first sentence or first 60 chars
+                description
+                  .split(/[.!?\n]/)[0]
+                  ?.trim()
+                  .slice(0, 60) ?? description.slice(0, 60),
+                description,
+              )
               .then((result) => {
                 if ("error" in result) {
                   toast.error(`Pipeline failed: ${result.error}`);

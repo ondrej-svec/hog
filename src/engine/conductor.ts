@@ -7,6 +7,7 @@ import {
   enqueueQuestion,
   getPendingForFeature,
   loadQuestionQueue,
+  resolveQuestion as resolveQuestionInQueue,
   saveQuestionQueue,
 } from "./question-queue.js";
 import type { Refinery } from "./refinery.js";
@@ -78,6 +79,8 @@ export class Conductor {
     string,
     { worktreePath: string; branch: string; repoPath: string }
   > = new Map();
+  /** Maps session IDs to pipeline feature IDs for correct completion routing. */
+  private readonly sessionToPipeline: Map<string, string> = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly pollIntervalMs: number;
@@ -148,6 +151,12 @@ export class Conductor {
   /** Get the current question queue. */
   getQuestionQueue(): QuestionQueue {
     return this.questionQueue;
+  }
+
+  /** Resolve a pending question. Updates in-memory queue and persists. */
+  resolveQuestion(questionId: string, answer: string): void {
+    this.questionQueue = resolveQuestionInQueue(this.questionQueue, questionId, answer);
+    saveQuestionQueue(this.questionQueue);
   }
 
   /**
@@ -259,14 +268,25 @@ export class Conductor {
   /** One tick of the conductor — check all running pipelines for ready work. */
   private async tick(): Promise<void> {
     for (const pipeline of this.pipelines.values()) {
-      if (pipeline.status !== "running") continue;
+      // Skip completed/failed pipelines
+      if (pipeline.status === "completed" || pipeline.status === "failed") continue;
+      // Skip paused pipelines
+      if (pipeline.status === "paused") continue;
 
-      // Skip if blocked by unanswered questions
-      if (getPendingForFeature(this.questionQueue, pipeline.featureId).length > 0) {
-        if (pipeline.status === "running") {
-          pipeline.status = "blocked";
-          this.log(pipeline.featureId, "pipeline:blocked", "Waiting for human decisions");
+      // Check if blocked pipeline can be unblocked
+      if (pipeline.status === "blocked") {
+        if (getPendingForFeature(this.questionQueue, pipeline.featureId).length === 0) {
+          pipeline.status = "running";
+          this.log(pipeline.featureId, "pipeline:unblocked", "All questions resolved — resuming");
+        } else {
+          continue;
         }
+      }
+
+      // Block running pipelines that have unanswered questions
+      if (getPendingForFeature(this.questionQueue, pipeline.featureId).length > 0) {
+        pipeline.status = "blocked";
+        this.log(pipeline.featureId, "pipeline:blocked", "Waiting for human decisions");
         continue;
       }
 
@@ -389,6 +409,8 @@ export class Conductor {
           repoPath: pipeline.localPath,
         });
       }
+      // Map session to pipeline for correct completion routing
+      this.sessionToPipeline.set(result, pipeline.featureId);
       this.log(
         pipeline.featureId,
         `agent:spawned:${role}`,
@@ -448,37 +470,42 @@ export class Conductor {
     _issueNumber: number,
     phase: string,
   ): void {
-    for (const pipeline of this.pipelines.values()) {
-      const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
-      if (!beadId) continue;
+    // Find the specific pipeline this session belongs to
+    const featureId = this.sessionToPipeline.get(sessionId);
+    const pipeline = featureId ? this.pipelines.get(featureId) : undefined;
+    if (!pipeline) return;
 
-      // If this agent had a worktree, submit to refinery for merge
-      const worktreeInfo = this.sessionWorktrees.get(sessionId);
-      if (worktreeInfo && this.refinery) {
-        const mergeId = this.refinery.submit(
-          pipeline.featureId,
-          worktreeInfo.branch,
-          worktreeInfo.worktreePath,
-          worktreeInfo.repoPath,
-        );
-        this.log(
-          pipeline.featureId,
-          `refinery:submitted:${phase}`,
-          `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
-        );
-        this.sessionWorktrees.delete(sessionId);
-      }
+    const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
+    if (!beadId) return;
 
-      // Close the bead
-      this.beads
-        .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
-        .then(() => {
-          this.log(pipeline.featureId, `bead:closed:${phase}`, `Bead ${beadId} completed`);
-        })
-        .catch(() => {
-          // best-effort
-        });
+    this.sessionToPipeline.delete(sessionId);
+
+    // If this agent had a worktree, submit to refinery for merge
+    const worktreeInfo = this.sessionWorktrees.get(sessionId);
+    if (worktreeInfo && this.refinery) {
+      const mergeId = this.refinery.submit(
+        pipeline.featureId,
+        worktreeInfo.branch,
+        worktreeInfo.worktreePath,
+        worktreeInfo.repoPath,
+      );
+      this.log(
+        pipeline.featureId,
+        `refinery:submitted:${phase}`,
+        `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
+      );
+      this.sessionWorktrees.delete(sessionId);
     }
+
+    // Close the bead
+    this.beads
+      .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
+      .then(() => {
+        this.log(pipeline.featureId, `bead:closed:${phase}`, `Bead ${beadId} completed`);
+      })
+      .catch(() => {
+        // best-effort
+      });
   }
 
   private onAgentFailed(
@@ -488,77 +515,85 @@ export class Conductor {
     phase: string,
     exitCode: number,
   ): void {
-    // Clean up worktree for failed agent
-    const worktreeInfo = this.sessionWorktrees.get(sessionId);
-    if (worktreeInfo && this.worktrees) {
-      this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
-      this.sessionWorktrees.delete(sessionId);
-    }
+  // Clean up worktree for failed agent
+  const worktreeInfo = this.sessionWorktrees.get(sessionId);
+  if (worktreeInfo && this.worktrees) {
+    this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
+    this.sessionWorktrees.delete(sessionId);
+  }
 
-    for (const pipeline of this.pipelines.values()) {
-      const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
-      if (!beadId) continue;
+  // Find the specific pipeline this session belongs to
+  const featureId = this.sessionToPipeline.get(sessionId);
+  this.sessionToPipeline.delete(sessionId);
 
+  const matchedPipelines = featureId
+    ? ([this.pipelines.get(featureId)].filter(Boolean) as Pipeline[])
+    : [...this.pipelines.values()]; // fallback for sessions without mapping
+
+  for (const pipeline of matchedPipelines) {
+    const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
+    if (!beadId) continue;
+
+    this.log(
+      pipeline.featureId,
+      `agent:failed:${phase}`,
+      `Agent failed with exit code ${exitCode}`,
+    );
+
+    // Mark bead as blocked so it can be retried
+    this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
+      // best-effort
+    });
+
+    // Queue a question for the human if this is a repeated failure
+    const failures = this.decisionLog.filter(
+      (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
+    );
+
+    if (failures.length >= 2) {
+      const result = enqueueQuestion(this.questionQueue, {
+        featureId: pipeline.featureId,
+        question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
+        options: ["Retry", "Skip phase", "Stop pipeline"],
+        source: "conductor",
+      });
+      this.questionQueue = result.queue;
+      saveQuestionQueue(this.questionQueue);
+      pipeline.status = "blocked";
       this.log(
         pipeline.featureId,
-        `agent:failed:${phase}`,
-        `Agent failed with exit code ${exitCode}`,
+        "pipeline:blocked",
+        `Repeated ${phase} failures — queued for human decision`,
       );
-
-      // Mark bead as blocked so it can be retried
-      this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
-        // best-effort
-      });
-
-      // Queue a question for the human if this is a repeated failure
-      const failures = this.decisionLog.filter(
-        (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
-      );
-
-      if (failures.length >= 2) {
-        const result = enqueueQuestion(this.questionQueue, {
-          featureId: pipeline.featureId,
-          question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
-          options: ["Retry", "Skip phase", "Stop pipeline"],
-          source: "conductor",
-        });
-        this.questionQueue = result.queue;
-        saveQuestionQueue(this.questionQueue);
-        pipeline.status = "blocked";
-        this.log(
-          pipeline.featureId,
-          "pipeline:blocked",
-          `Repeated ${phase} failures — queued for human decision`,
-        );
-      }
     }
   }
+}
 
-  // ── Helpers ──
+// ── Helpers ──
 
   private roleToBeadId(pipeline: Pipeline, role: PipelineRole): string | undefined {
-    switch (role) {
-      case "stories":
-        return pipeline.beadIds.stories;
-      case "test":
-        return pipeline.beadIds.tests;
-      case "impl":
-        return pipeline.beadIds.impl;
-      case "redteam":
-        return pipeline.beadIds.redteam;
-      case "merge":
-        return pipeline.beadIds.merge;
-      default:
-        return undefined;
-    }
+  switch (role) {
+    case "stories":
+      return pipeline.beadIds.stories;
+    case "test":
+      return pipeline.beadIds.tests;
+    case "impl":
+      return pipeline.beadIds.impl;
+    case "redteam":
+      return pipeline.beadIds.redteam;
+    case "merge":
+      return pipeline.beadIds.merge;
+    default:
+      return undefined;
   }
+}
 
   private log(featureId: string, action: string, detail: string): void {
-    this.decisionLog.push({
-      timestamp: new Date().toISOString(),
-      featureId,
-      action,
-      detail,
-    });
-  }
+  this.decisionLog.push({
+    timestamp: new Date().toISOString(),
+    featureId,
+    action,
+    detail,
+  });
+}
 }

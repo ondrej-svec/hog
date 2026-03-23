@@ -18,7 +18,7 @@ describe("Cockpit Interaction Stories", () => {
     });
 
     it("Issues keyboard handler is active in issues view", () => {
-      const boardView = "issues" as const;
+      const boardView: string = "issues";
       const isIssuesView = boardView !== "pipelines";
       expect(isIssuesView).toBe(true);
     });
