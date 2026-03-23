@@ -190,14 +190,22 @@ export class Conductor {
     // Ensure Dolt server is running before creating beads
     await this.beads.ensureDoltRunning(repoConfig.localPath);
 
-    // Create the feature DAG in Beads
+    // Create the feature DAG in Beads (retry once — Dolt may need a moment after start)
     let dag: Awaited<ReturnType<typeof this.beads.createFeatureDAG>>;
     try {
       dag = await this.beads.createFeatureDAG(repoConfig.localPath, title, description);
-    } catch (err) {
-      return {
-        error: `Failed to create Beads DAG: ${err instanceof Error ? err.message : String(err)}`,
-      };
+    } catch (firstErr) {
+      // Retry once after a short wait — Dolt server may still be starting
+      this.log("", "beads:retry", "First DAG creation failed, retrying after 2s...");
+      await new Promise((r) => setTimeout(r, 2_000));
+      try {
+        await this.beads.ensureDoltRunning(repoConfig.localPath);
+        dag = await this.beads.createFeatureDAG(repoConfig.localPath, title, description);
+      } catch (retryErr) {
+        return {
+          error: `Failed to create Beads DAG: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+        };
+      }
     }
 
     const featureId = `feat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

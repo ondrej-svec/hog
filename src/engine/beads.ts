@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -130,15 +130,49 @@ export class BeadsClient {
     await this.ensureDoltRunning(cwd);
   }
 
-  /** Ensure the Dolt server is running for the given repo. */
+  /**
+   * Ensure the Dolt server is running and properly configured.
+   * This is the "zero-knowledge" setup — the user should never need
+   * to know about Dolt, ports, or server management.
+   */
   async ensureDoltRunning(cwd: string): Promise<void> {
     try {
+      // Pin the Dolt port if not already pinned (prevents port cycling)
+      await this.pinDoltPort(cwd);
+
       const status = await runBdAsync(["dolt", "status"], cwd);
       if (status.includes("not running")) {
         await runBdAsync(["dolt", "start"], cwd);
+        // Give Dolt a moment to fully start accepting connections
+        await new Promise((r) => setTimeout(r, 1_000));
       }
     } catch {
-      // Best-effort — bd may auto-start Dolt as fallback
+      // Try starting anyway — bd dolt start may work even if status failed
+      try {
+        await runBdAsync(["dolt", "start"], cwd);
+        await new Promise((r) => setTimeout(r, 1_000));
+      } catch {
+        // Last resort: let bd auto-start handle it
+      }
+    }
+  }
+
+  /** Pin the Dolt port in .beads/config.yaml to prevent random port cycling. */
+  private async pinDoltPort(cwd: string): Promise<void> {
+    const configPath = join(cwd, ".beads", "config.yaml");
+    if (!existsSync(configPath)) return;
+
+    try {
+      const content = readFileSync(configPath, "utf-8");
+      // Only add if no dolt port is already configured
+      if (content.includes("dolt:") && content.includes("port:")) return;
+
+      // Append dolt port config
+      const portConfig =
+        "\n# Auto-configured by hog to prevent Dolt port cycling\ndolt:\n  port: 23307\n";
+      writeFileSync(configPath, content + portConfig, "utf-8");
+    } catch {
+      // Non-critical — port cycling is annoying but not fatal
     }
   }
 
@@ -242,8 +276,7 @@ export class BeadsClient {
     featureDescription: string,
   ): Promise<{ stories: Bead; tests: Bead; impl: Bead; redteam: Bead; merge: Bead }> {
     // Truncate title for bead names (bd doesn't handle very long titles well)
-    const shortTitle =
-      featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
+    const shortTitle = featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
 
     const stories = await this.create(cwd, {
       title: `[hog:stories] ${shortTitle}`,
