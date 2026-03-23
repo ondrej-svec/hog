@@ -125,12 +125,17 @@ export function usePipelineData(
       const conductor = conductorRef.current;
       if (!conductor) return { error: "Conductor not initialized" };
 
-      const result = await conductor.startPipeline(repo, repoConfig, title, description);
-      if (!("error" in result)) {
-        setPipelines(conductor.getPipelines());
-        toast.info(`Pipeline started: ${title}`);
+      try {
+        const result = await conductor.startPipeline(repo, repoConfig, title, description);
+        if (!("error" in result)) {
+          setPipelines(conductor.getPipelines());
+          toast.info(`Pipeline started: ${title}`);
+        }
+        return result;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { error: msg };
       }
-      return result;
     },
     [toast],
   );

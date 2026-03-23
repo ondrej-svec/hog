@@ -171,7 +171,13 @@ export class Conductor {
     }
 
     if (!this.beads.isInitialized(repoConfig.localPath)) {
-      await this.beads.init(repoConfig.localPath);
+      try {
+        await this.beads.init(repoConfig.localPath);
+      } catch (err) {
+        return {
+          error: `Beads init failed in ${repoConfig.localPath}: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }
 
     const activePipelines = [...this.pipelines.values()].filter((p) => p.status === "running");
@@ -182,7 +188,14 @@ export class Conductor {
     }
 
     // Create the feature DAG in Beads
-    const dag = await this.beads.createFeatureDAG(repoConfig.localPath, title, description);
+    let dag: Awaited<ReturnType<typeof this.beads.createFeatureDAG>>;
+    try {
+      dag = await this.beads.createFeatureDAG(repoConfig.localPath, title, description);
+    } catch (err) {
+      return {
+        error: `Failed to create Beads DAG: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
 
     const featureId = `feat-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 

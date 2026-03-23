@@ -1307,8 +1307,9 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
                 }
                 ui.exitOverlay();
               })
-              .catch(() => {
-                toast.error("Pipeline start failed");
+              .catch((err: unknown) => {
+                const msg = err instanceof Error ? err.message : String(err);
+                toast.error(`Pipeline start failed: ${msg}`);
                 ui.exitOverlay();
               });
           }}
