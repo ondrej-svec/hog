@@ -26,6 +26,7 @@ import { useKeyboard } from "../hooks/use-keyboard.js";
 import { useMultiSelect } from "../hooks/use-multi-select.js";
 import { useNavigation } from "../hooks/use-navigation.js";
 import { useNudges } from "../hooks/use-nudges.js";
+import { usePipelineData } from "../hooks/use-pipeline-data.js";
 import { useToast } from "../hooks/use-toast.js";
 import { useUIState } from "../hooks/use-ui-state.js";
 import { useViewportScroll } from "../hooks/use-viewport-scroll.js";
@@ -53,6 +54,7 @@ import {
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
 import { ReposPanel } from "./repos-panel.js";
+import { StartPipelineOverlay } from "./start-pipeline-overlay.js";
 import { RowRenderer } from "./row-renderer.js";
 import { StatusesPanel } from "./statuses-panel.js";
 import { ToastContainer } from "./toast-container.js";
@@ -152,6 +154,9 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   // Background agent sessions
   const agentSessions = useAgentSessions(config, workflowState, toast);
 
+  // Pipeline conductor data
+  const pipelineData = usePipelineData(config, toast);
+
   // Panel focus state — default to Issues panel [3]
   const [activePanelId, setActivePanelId] = useState<PanelId>(3);
   const focusPanel = useCallback((id: PanelId) => setActivePanelId(id), []);
@@ -167,9 +172,18 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   }, []);
 
   // Board view: pipelines (cockpit) vs issues (classic)
-  // Default to issues — switches to pipelines when conductor has active pipelines
+  // Default to issues — auto-switches to pipelines when conductor has active pipelines
   const [boardView, setBoardView] = useState<"pipelines" | "issues">("issues");
   const [pipelineSelectedIndex, setPipelineSelectedIndex] = useState(0);
+  const [hasAutoSwitched, setHasAutoSwitched] = useState(false);
+
+  // Auto-switch to Pipeline View when pipelines appear (once)
+  useEffect(() => {
+    if (!hasAutoSwitched && pipelineData.pipelines.length > 0) {
+      setBoardView("pipelines");
+      setHasAutoSwitched(true);
+    }
+  }, [pipelineData.pipelines.length, hasAutoSwitched]);
 
   // Left panel visibility
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
@@ -1081,6 +1095,16 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         setBoardView("issues");
         return;
       }
+      if (input === "p" && boardView === "issues") {
+        setBoardView("pipelines");
+        return;
+      }
+
+      // P (uppercase) starts a new pipeline from either view
+      if (input === "P") {
+        ui.enterStartPipeline();
+        return;
+      }
 
       // In pipeline view: j/k navigate pipelines
       if (boardView === "pipelines") {
@@ -1256,6 +1280,37 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
 
       {error ? <Text color="red">Error: {error}</Text> : null}
 
+      {/* Start Pipeline overlay */}
+      {ui.state.mode === "overlay:startPipeline" ? (
+        <StartPipelineOverlay
+          beadsAvailable={pipelineData.beadsAvailable}
+          onSubmit={(description) => {
+            const targetRepo = config.repos.find((r) => r.localPath);
+            if (!targetRepo) {
+              toast.error("No repo with localPath configured");
+              ui.exitOverlay();
+              return;
+            }
+            pipelineData
+              .startPipeline(targetRepo.name, targetRepo, description, description)
+              .then((result) => {
+                if ("error" in result) {
+                  toast.error(`Pipeline failed: ${result.error}`);
+                } else {
+                  setBoardView("pipelines");
+                  setHasAutoSwitched(true);
+                }
+                ui.exitOverlay();
+              })
+              .catch(() => {
+                toast.error("Pipeline start failed");
+                ui.exitOverlay();
+              });
+          }}
+          onCancel={ui.exitOverlay}
+        />
+      ) : null}
+
       {/* Overlays — rendered by OverlayRenderer */}
       <OverlayRenderer
         uiState={ui.state}
@@ -1378,10 +1433,10 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         boardView === "pipelines" ? (
           <PipelineView
             data={{
-              pipelines: [],
-              agents: agentSessions.agents,
-              pendingDecisions: [],
-              mergeQueue: [],
+              pipelines: pipelineData.pipelines,
+              agents: pipelineData.agents.length > 0 ? pipelineData.agents : agentSessions.agents,
+              pendingDecisions: pipelineData.pendingDecisions,
+              mergeQueue: pipelineData.mergeQueue,
               selectedIndex: pipelineSelectedIndex,
             }}
             cols={termSize.cols}

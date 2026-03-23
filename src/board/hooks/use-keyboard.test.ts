@@ -73,6 +73,7 @@ function makeUIState(modeOverride: UseUIStateResult["state"]["mode"] = "normal")
     enterWorkflow: vi.fn(),
     enterNudge: vi.fn(),
     enterTriage: vi.fn(),
+    enterStartPipeline: vi.fn(),
     enterZen: vi.fn(),
     exitZen: vi.fn(),
     toggleHelp: vi.fn(),

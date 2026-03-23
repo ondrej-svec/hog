@@ -19,6 +19,7 @@ export type UIMode =
   | "overlay:workflow"
   | "overlay:nudge"
   | "overlay:triage"
+  | "overlay:startPipeline"
   | "multiSelect"
   | "focus"
   | "zen";
@@ -50,6 +51,7 @@ export type UIAction =
   | { type: "ENTER_WORKFLOW" }
   | { type: "ENTER_NUDGE" }
   | { type: "ENTER_TRIAGE" }
+  | { type: "ENTER_START_PIPELINE" }
   | { type: "ENTER_ZEN" }
   | { type: "EXIT_ZEN" }
   | { type: "TOGGLE_HELP" }
@@ -137,6 +139,10 @@ function uiReducer(state: UIState, action: UIAction): UIState {
       if (state.mode !== "normal") return state;
       return { ...state, mode: "overlay:triage", previousMode: "normal" };
 
+    case "ENTER_START_PIPELINE":
+      if (state.mode !== "normal") return state;
+      return { ...state, mode: "overlay:startPipeline", previousMode: "normal" };
+
     case "ENTER_ZEN":
       if (state.mode !== "normal") return state;
       return { ...state, mode: "zen", previousMode: "normal" };
@@ -208,6 +214,7 @@ export interface UseUIStateResult {
   enterWorkflow: () => void;
   enterNudge: () => void;
   enterTriage: () => void;
+  enterStartPipeline: () => void;
   enterZen: () => void;
   exitZen: () => void;
   toggleHelp: () => void;
@@ -240,6 +247,7 @@ export function useUIState(): UseUIStateResult {
     enterWorkflow: useCallback(() => dispatch({ type: "ENTER_WORKFLOW" }), []),
     enterNudge: useCallback(() => dispatch({ type: "ENTER_NUDGE" }), []),
     enterTriage: useCallback(() => dispatch({ type: "ENTER_TRIAGE" }), []),
+    enterStartPipeline: useCallback(() => dispatch({ type: "ENTER_START_PIPELINE" }), []),
     enterZen: useCallback(() => dispatch({ type: "ENTER_ZEN" }), []),
     exitZen: useCallback(() => dispatch({ type: "EXIT_ZEN" }), []),
     toggleHelp: useCallback(() => dispatch({ type: "TOGGLE_HELP" }), []),
