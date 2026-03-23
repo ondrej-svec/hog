@@ -1085,6 +1085,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
     showDetailPanel,
     leftPanelHidden,
     issuesPageSize: viewport.visibleCount,
+    boardView,
   });
 
   // Board view switching: `i` → issues, `Esc`/`p` in issues → pipelines
@@ -1111,10 +1112,24 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
         return;
       }
 
-      // In pipeline view: j/k navigate pipelines
+      // In pipeline view: all pipeline-specific keys
       if (boardView === "pipelines") {
+        if (input === "q") {
+          exit();
+          return;
+        }
+        if (input === "r" || input === "R") {
+          refresh();
+          return;
+        }
+        if (input === "?") {
+          ui.toggleHelp();
+          return;
+        }
         if (input === "j" || key.downArrow) {
-          setPipelineSelectedIndex((prev) => prev + 1);
+          setPipelineSelectedIndex((prev) =>
+            Math.min(prev + 1, pipelineData.pipelines.length - 1),
+          );
           return;
         }
         if (input === "k" || key.upArrow) {

@@ -63,6 +63,8 @@ interface UseKeyboardOptions {
   leftPanelHidden: boolean;
   /** Number of visible content rows in the issues panel (for page navigation). */
   issuesPageSize: number;
+  /** Current board view — keyboard handler is disabled when not in issues view. */
+  boardView?: "pipelines" | "issues";
 }
 
 /** Sets up all useInput keyboard handlers for the board. */
@@ -84,6 +86,7 @@ export function useKeyboard({
   showDetailPanel,
   leftPanelHidden,
   issuesPageSize,
+  boardView,
 }: UseKeyboardOptions): void {
   const {
     exit,
@@ -537,14 +540,16 @@ export function useKeyboard({
     ],
   );
 
-  // Active when NOT in a text-input overlay.
-  // overlay:detail needs Escape to close, so it must remain active.
+  // Active when in Issues View AND NOT in a text-input overlay.
+  // Disabled entirely in Pipeline View — pipeline has its own handlers.
+  const isIssuesView = boardView !== "pipelines";
   const inputActive =
-    ui.state.mode === "normal" ||
-    ui.state.mode === "multiSelect" ||
-    ui.state.mode === "focus" ||
-    ui.state.mode === "overlay:detail" ||
-    ui.state.mode === "zen";
+    isIssuesView &&
+    (ui.state.mode === "normal" ||
+      ui.state.mode === "multiSelect" ||
+      ui.state.mode === "focus" ||
+      ui.state.mode === "overlay:detail" ||
+      ui.state.mode === "zen");
   useInput(handleInput, { isActive: inputActive });
 
   // Search mode input handler
