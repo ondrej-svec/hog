@@ -399,4 +399,47 @@ describe("Conductor error handling", () => {
       expect("error" in result).toBe(true);
     });
   });
+
+  // STORY-039: As a user, repeated agent failures don't spam 55 questions —
+  // only ONE question is created per phase per pipeline
+  describe("STORY-039: Question deduplication on repeated failures", () => {
+    it("only creates one question even after many failures", () => {
+      const beads = createMockBeads();
+      const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
+
+      const pipeline = {
+        featureId: "feat-dedup",
+        title: "Dedup Test",
+        repo: "owner/repo",
+        localPath: "/tmp/test",
+        repoConfig: REPO_WITH_PATH,
+        beadIds: { stories: "bd-s", tests: "bd-t", impl: "bd-i", redteam: "bd-r", merge: "bd-m" },
+        status: "running" as const,
+        completedBeads: 0,
+        startedAt: new Date().toISOString(),
+      };
+      (conductor as unknown as { pipelines: Map<string, typeof pipeline> }).pipelines.set(
+        "feat-dedup",
+        pipeline,
+      );
+
+      // Fire 10 failures for the same phase
+      for (let i = 0; i < 10; i++) {
+        eventBus.emit("agent:failed", {
+          sessionId: `s${i}`,
+          repo: "owner/repo",
+          issueNumber: 0,
+          phase: "stories",
+          exitCode: 1,
+        });
+      }
+
+      // Should have at most 1 unresolved question for this pipeline+phase
+      const queue = conductor.getQuestionQueue();
+      const unresolvedForPhase = queue.questions.filter(
+        (q) => q.featureId === "feat-dedup" && !q.resolvedAt && q.question.includes("stories"),
+      );
+      expect(unresolvedForPhase.length).toBeLessThanOrEqual(1);
+    });
+  });
 });

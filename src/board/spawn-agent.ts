@@ -172,7 +172,7 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
   const command = opts.startCommand?.command ?? "claude";
   const extraArgs = opts.startCommand?.extraArgs ?? [];
 
-  const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json"];
+  const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json", "--verbose"];
 
   const child = spawn(command, args, {
     cwd: opts.localPath,

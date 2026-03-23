@@ -553,11 +553,20 @@ export class Conductor {
     });
 
     // Queue a question for the human if this is a repeated failure
+    // But only once per phase — don't spam questions
+    if (pipeline.status === "blocked") return; // already blocked, don't add more questions
+
     const failures = this.decisionLog.filter(
       (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
     );
 
     if (failures.length >= 2) {
+      // Check if we already have an unresolved question for this phase
+      const existingQuestion = this.questionQueue.questions.find(
+        (q) => q.featureId === pipeline.featureId && !q.resolvedAt && q.question.includes(phase),
+      );
+      if (existingQuestion) return; // already asked, don't spam
+
       const result = enqueueQuestion(this.questionQueue, {
         featureId: pipeline.featureId,
         question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
