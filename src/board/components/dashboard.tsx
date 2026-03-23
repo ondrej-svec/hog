@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { Spinner } from "@inkjs/ui";
-import { Box, Text, useApp, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
@@ -50,6 +50,8 @@ import {
   PanelLayout,
   STACKED_TOP_HEIGHT,
 } from "./panel-layout.js";
+import type { PipelineViewData } from "./pipeline-view.js";
+import { PipelineView } from "./pipeline-view.js";
 import { ReposPanel } from "./repos-panel.js";
 import { RowRenderer } from "./row-renderer.js";
 import { StatusesPanel } from "./statuses-panel.js";
@@ -163,6 +165,11 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
   const handleToggleMine = useCallback(() => {
     setMineOnly((prev) => !prev);
   }, []);
+
+  // Board view: pipelines (cockpit) vs issues (classic)
+  // Default to issues — switches to pipelines when conductor has active pipelines
+  const [boardView, setBoardView] = useState<"pipelines" | "issues">("issues");
+  const [pipelineSelectedIndex, setPipelineSelectedIndex] = useState(0);
 
   // Left panel visibility
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
@@ -1064,6 +1071,32 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
     issuesPageSize: viewport.visibleCount,
   });
 
+  // Board view switching: `i` → issues, `Esc`/`p` in issues → pipelines
+  useInput(
+    (input, key) => {
+      // Only handle in normal mode (not during overlays or search)
+      if (ui.state.mode !== "normal") return;
+
+      if (input === "i" && boardView === "pipelines") {
+        setBoardView("issues");
+        return;
+      }
+
+      // In pipeline view: j/k navigate pipelines
+      if (boardView === "pipelines") {
+        if (input === "j" || key.downArrow) {
+          setPipelineSelectedIndex((prev) => prev + 1);
+          return;
+        }
+        if (input === "k" || key.upArrow) {
+          setPipelineSelectedIndex((prev) => Math.max(0, prev - 1));
+          return;
+        }
+      }
+    },
+    { isActive: ui.state.mode === "normal" },
+  );
+
   // Loading state
   if (status === "loading" && !data) {
     return (
@@ -1330,7 +1363,7 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
         )
       ) : null}
 
-      {/* Main content: 5-panel layout (hidden during full-screen overlays) */}
+      {/* Main content: Pipeline View or Issues Layout (hidden during full-screen overlays) */}
       {!ui.state.helpVisible &&
       ui.state.mode !== "overlay:status" &&
       ui.state.mode !== "overlay:create" &&
@@ -1342,17 +1375,31 @@ function Dashboard({ config, options, activeProfile }: DashboardProps) {
       ui.state.mode !== "overlay:triage" &&
       ui.state.mode !== "focus" &&
       ui.state.mode !== "zen" ? (
-        <PanelLayout
-          cols={termSize.cols}
-          issuesPanelHeight={issuesPanelHeight}
-          totalHeight={totalPanelHeight}
-          reposPanel={reposPanel}
-          statusesPanel={statusesPanel}
-          issuesPanel={issuesPanel}
-          detailPanel={detailPanel}
-          activityPanel={activityPanel}
-          hideLeftPanel={leftPanelHidden}
-        />
+        boardView === "pipelines" ? (
+          <PipelineView
+            data={{
+              pipelines: [],
+              agents: agentSessions.agents,
+              pendingDecisions: [],
+              mergeQueue: [],
+              selectedIndex: pipelineSelectedIndex,
+            }}
+            cols={termSize.cols}
+            rows={totalPanelHeight}
+          />
+        ) : (
+          <PanelLayout
+            cols={termSize.cols}
+            issuesPanelHeight={issuesPanelHeight}
+            totalHeight={totalPanelHeight}
+            reposPanel={reposPanel}
+            statusesPanel={statusesPanel}
+            issuesPanel={issuesPanel}
+            detailPanel={detailPanel}
+            activityPanel={activityPanel}
+            hideLeftPanel={leftPanelHidden}
+          />
+        )
       ) : null}
 
       {/* Toast notifications */}
