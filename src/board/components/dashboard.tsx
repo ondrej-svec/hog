@@ -32,6 +32,7 @@ import { useUIState } from "../hooks/use-ui-state.js";
 import { useViewportScroll } from "../hooks/use-viewport-scroll.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
 import { useZenMode } from "../hooks/use-zen-mode.js";
+import { PIPELINE_ROLES } from "../../engine/roles.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
@@ -1175,22 +1176,15 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
               return;
             }
 
-            // Build brainstorm prompt with pipeline context
+            // Use the same prompt template as the conductor's brainstorm launch
             const slug = selected.title
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-|-$/g, "");
-            const brainstormPrompt = [
-              `You're brainstorming a new feature with the human.`,
-              ``,
-              `Feature idea: ${selected.title}`,
-              ``,
-              `Your job:`,
-              `1. Discuss the feature — ask questions, explore approaches`,
-              `2. Refine it into clear user stories with acceptance criteria`,
-              `3. Write stories to tests/stories/${slug}.md`,
-              `4. When the human confirms: hog pipeline create "${selected.title}" --brainstorm-done --stories tests/stories/${slug}.md`,
-            ].join("\n");
+            const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
+              .replace(/\{title\}/g, selected.title)
+              .replace(/\{slug\}/g, slug)
+              .replace(/\{spec\}/g, selected.title);
 
             const result = launchClaude({
               localPath,

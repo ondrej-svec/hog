@@ -206,7 +206,7 @@ describe("HintBar", () => {
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("P:new pipeline");
-      expect(frame).toContain("D:decide");
+      expect(frame).toContain("d:cancel");
       expect(frame).toContain("Tab:issues");
       expect(frame).toContain("q:quit");
     });

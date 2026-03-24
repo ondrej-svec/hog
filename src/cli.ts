@@ -326,7 +326,8 @@ pipelineCommand
         if (targetRepo) {
           repoName = targetRepo.name;
         } else {
-          // No configured repo — create ad-hoc config from cwd
+          // No configured repo — create minimal config from cwd
+          // All GitHub-specific fields get safe defaults
           const { basename } = await import("node:path");
           repoName = basename(cwd);
           targetRepo = {
@@ -335,6 +336,7 @@ pipelineCommand
             projectNumber: 0,
             statusFieldId: "",
             localPath: cwd,
+            completionAction: { type: "closeIssue" },
           } as RepoConfig;
         }
       }

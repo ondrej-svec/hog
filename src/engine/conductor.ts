@@ -97,21 +97,57 @@ export class Conductor {
   private readonly maxConcurrentPipelines: number;
   private static readonly PIPELINES_FILE = join(CONFIG_DIR, "pipelines.json");
 
-  /** Persist pipelines to disk so they survive process restarts. */
+  /**
+   * Persist pipelines to disk so they survive process restarts.
+   *
+   * Uses read-merge-write to avoid lost updates from concurrent processes:
+   * reads current file, merges with in-memory state, writes back.
+   * The atomic rename prevents partial reads but does NOT prevent lost updates
+   * from truly simultaneous writes — acceptable for this use case.
+   */
   private savePipelines(): void {
     try {
-      const data = [...this.pipelines.values()].map((p) => ({
-        featureId: p.featureId,
-        title: p.title,
-        repo: p.repo,
-        localPath: p.localPath,
-        beadIds: p.beadIds,
-        status: p.status,
-        completedBeads: p.completedBeads,
-        activePhase: p.activePhase,
-        startedAt: p.startedAt,
-        completedAt: p.completedAt,
-      }));
+      // Read existing pipelines from disk (may include state from other processes)
+      let diskPipelines: Map<string, Record<string, unknown>> = new Map();
+      if (existsSync(Conductor.PIPELINES_FILE)) {
+        try {
+          const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
+          if (Array.isArray(raw)) {
+            for (const entry of raw) {
+              if (typeof entry === "object" && entry !== null && typeof (entry as Record<string, unknown>)["featureId"] === "string") {
+                diskPipelines.set((entry as Record<string, unknown>)["featureId"] as string, entry as Record<string, unknown>);
+              }
+            }
+          }
+        } catch {
+          // Corrupted file — overwrite
+        }
+      }
+
+      // Merge: in-memory state wins for pipelines we own, disk state preserved for others
+      for (const p of this.pipelines.values()) {
+        diskPipelines.set(p.featureId, {
+          featureId: p.featureId,
+          title: p.title,
+          repo: p.repo,
+          localPath: p.localPath,
+          beadIds: p.beadIds,
+          status: p.status,
+          completedBeads: p.completedBeads,
+          activePhase: p.activePhase,
+          startedAt: p.startedAt,
+          completedAt: p.completedAt,
+        });
+      }
+
+      // Remove pipelines that were deleted in-memory (cancelled)
+      for (const id of diskPipelines.keys()) {
+        if (!this.pipelines.has(id) && this.decisionLog.some((e) => e.featureId === id && e.action === "pipeline:cancelled")) {
+          diskPipelines.delete(id);
+        }
+      }
+
+      const data = [...diskPipelines.values()];
       mkdirSync(CONFIG_DIR, { recursive: true });
       const tmp = `${Conductor.PIPELINES_FILE}.tmp`;
       writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
@@ -136,17 +172,39 @@ export class Conductor {
         // Skip completed/failed pipelines
         if (e["status"] === "completed" || e["status"] === "failed") continue;
 
-        // Re-resolve repoConfig from current config
-        const repoConfig = this.config.repos.find((r) => r.name === e["repo"]);
-        if (!repoConfig) continue;
+        // Validate beadIds structure (CRIT-2)
+        const beadIds = e["beadIds"];
+        if (
+          typeof beadIds !== "object" ||
+          beadIds === null ||
+          typeof (beadIds as Record<string, unknown>)["brainstorm"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["stories"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["tests"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["impl"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["redteam"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["merge"] !== "string"
+        ) {
+          continue; // Corrupted or old-schema pipeline — skip
+        }
+
+        // Re-resolve repoConfig from current config, fall back to ad-hoc config
+        const localPath = (e["localPath"] as string) ?? "";
+        const repoConfig = this.config.repos.find((r) => r.name === e["repo"]) ?? ({
+          name: e["repo"] as string,
+          shortName: e["repo"] as string,
+          projectNumber: 0,
+          statusFieldId: "",
+          localPath,
+          completionAction: { type: "closeIssue" },
+        } as RepoConfig);
 
         const pipeline: Pipeline = {
           featureId: e["featureId"] as string,
           title: (e["title"] as string) ?? "",
           repo: e["repo"] as string,
-          localPath: (e["localPath"] as string) ?? repoConfig.localPath ?? "",
+          localPath: localPath || repoConfig.localPath || "",
           repoConfig,
-          beadIds: e["beadIds"] as Pipeline["beadIds"],
+          beadIds: beadIds as Pipeline["beadIds"],
           status: (e["status"] as PipelineStatus) ?? "running",
           completedBeads: (e["completedBeads"] as number) ?? 0,
           activePhase: e["activePhase"] as string | undefined,
@@ -204,6 +262,9 @@ export class Conductor {
     const activeIds = new Set([...this.pipelines.keys()]);
     this.questionQueue = pruneOrphaned(this.questionQueue, activeIds);
     saveQuestionQueue(this.questionQueue);
+
+    // Immediate tick so loaded pipelines don't wait pollIntervalMs
+    this.tick().catch(() => {});
 
     this.pollTimer = setInterval(() => {
       this.tick().catch(() => {
@@ -350,10 +411,24 @@ export class Conductor {
     return true;
   }
 
-  /** Cancel and remove a pipeline. */
+  /** Cancel and remove a pipeline, cleaning up active agents and worktrees. */
   cancelPipeline(featureId: string): boolean {
     const pipeline = this.pipelines.get(featureId);
     if (!pipeline) return false;
+
+    // Clean up any active sessions for this pipeline
+    for (const [sessionId, pipelineId] of this.sessionToPipeline) {
+      if (pipelineId === featureId) {
+        this.sessionToPipeline.delete(sessionId);
+        // Clean up worktree if it exists
+        const worktreeInfo = this.sessionWorktrees.get(sessionId);
+        if (worktreeInfo && this.worktrees) {
+          this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
+        }
+        this.sessionWorktrees.delete(sessionId);
+      }
+    }
+
     this.pipelines.delete(featureId);
     this.savePipelines();
     this.log(featureId, "pipeline:cancelled", `Cancelled: ${pipeline.title}`);
