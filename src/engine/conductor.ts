@@ -1,5 +1,8 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
+import { CONFIG_DIR } from "../config.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
 import type { EventBus } from "./event-bus.js";
@@ -92,6 +95,70 @@ export class Conductor {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentPipelines: number;
+  private static readonly PIPELINES_FILE = join(CONFIG_DIR, "pipelines.json");
+
+  /** Persist pipelines to disk so they survive process restarts. */
+  private savePipelines(): void {
+    try {
+      const data = [...this.pipelines.values()].map((p) => ({
+        featureId: p.featureId,
+        title: p.title,
+        repo: p.repo,
+        localPath: p.localPath,
+        beadIds: p.beadIds,
+        status: p.status,
+        completedBeads: p.completedBeads,
+        activePhase: p.activePhase,
+        startedAt: p.startedAt,
+        completedAt: p.completedAt,
+      }));
+      mkdirSync(CONFIG_DIR, { recursive: true });
+      const tmp = `${Conductor.PIPELINES_FILE}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+      renameSync(tmp, Conductor.PIPELINES_FILE);
+    } catch {
+      // best-effort — tests and environments without writable config dir
+    }
+  }
+
+  /** Load persisted pipelines from disk and re-resolve repoConfig from current config. */
+  private loadPipelines(): void {
+    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
+    if (!existsSync(Conductor.PIPELINES_FILE)) return;
+    try {
+      const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
+      if (!Array.isArray(raw)) return;
+      for (const entry of raw) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const e = entry as Record<string, unknown>;
+        if (typeof e["featureId"] !== "string" || typeof e["repo"] !== "string") continue;
+
+        // Skip completed/failed pipelines
+        if (e["status"] === "completed" || e["status"] === "failed") continue;
+
+        // Re-resolve repoConfig from current config
+        const repoConfig = this.config.repos.find((r) => r.name === e["repo"]);
+        if (!repoConfig) continue;
+
+        const pipeline: Pipeline = {
+          featureId: e["featureId"] as string,
+          title: (e["title"] as string) ?? "",
+          repo: e["repo"] as string,
+          localPath: (e["localPath"] as string) ?? repoConfig.localPath ?? "",
+          repoConfig,
+          beadIds: e["beadIds"] as Pipeline["beadIds"],
+          status: (e["status"] as PipelineStatus) ?? "running",
+          completedBeads: (e["completedBeads"] as number) ?? 0,
+          activePhase: e["activePhase"] as string | undefined,
+          startedAt: (e["startedAt"] as string) ?? new Date().toISOString(),
+          ...(typeof e["completedAt"] === "string" ? { completedAt: e["completedAt"] } : {}),
+        };
+        this.pipelines.set(pipeline.featureId, pipeline);
+      }
+    } catch {
+      // Corrupted file — start fresh
+    }
+  }
 
   constructor(
     config: HogConfig,
@@ -112,6 +179,9 @@ export class Conductor {
     this.questionQueue = loadQuestionQueue();
     this.pollIntervalMs = options.pollIntervalMs ?? 10_000;
     this.maxConcurrentPipelines = options.maxConcurrentPipelines ?? 3;
+
+    // Restore pipelines from previous sessions
+    this.loadPipelines();
 
     // Listen for agent completion/failure to advance pipelines
     this.eventBus.on("agent:completed", (event) => {
@@ -251,6 +321,7 @@ export class Conductor {
     };
 
     this.pipelines.set(featureId, pipeline);
+    this.savePipelines();
     this.log(featureId, "pipeline:started", `Created DAG for: ${title}`);
 
     // Trigger initial tick to start the first phase (brainstorm)
@@ -264,6 +335,7 @@ export class Conductor {
     const pipeline = this.pipelines.get(featureId);
     if (!pipeline || pipeline.status !== "running") return false;
     pipeline.status = "paused";
+    this.savePipelines();
     this.log(featureId, "pipeline:paused", "Paused by user");
     return true;
   }
@@ -273,6 +345,7 @@ export class Conductor {
     const pipeline = this.pipelines.get(featureId);
     if (!pipeline || pipeline.status !== "paused") return false;
     pipeline.status = "running";
+    this.savePipelines();
     this.log(featureId, "pipeline:resumed", "Resumed by user");
     return true;
   }
@@ -518,7 +591,10 @@ export class Conductor {
         const bead = await this.beads.show(pipeline.localPath, id);
         if (bead.status === "closed") closed++;
       }
-      pipeline.completedBeads = closed;
+      if (pipeline.completedBeads !== closed) {
+        pipeline.completedBeads = closed;
+        this.savePipelines();
+      }
     } catch {
       // best-effort
     }
@@ -540,6 +616,7 @@ export class Conductor {
       if (allClosed) {
         pipeline.status = "completed";
         pipeline.completedAt = new Date().toISOString();
+        this.savePipelines();
         this.log(
           pipeline.featureId,
           "pipeline:completed",
@@ -663,6 +740,7 @@ export class Conductor {
         this.questionQueue = result.queue;
         saveQuestionQueue(this.questionQueue);
         pipeline.status = "blocked";
+        this.savePipelines();
         this.log(
           pipeline.featureId,
           "pipeline:blocked",
