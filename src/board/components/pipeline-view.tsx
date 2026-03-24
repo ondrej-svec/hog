@@ -84,8 +84,9 @@ function PipelineListItem({
   selected: boolean;
   width: number;
 }) {
-  const icon = statusIcon(pipeline.status);
-  const color = statusColor(pipeline.status);
+  const isBrainstorming = pipeline.activePhase === "brainstorm";
+  const icon = isBrainstorming ? "?" : statusIcon(pipeline.status);
+  const color = isBrainstorming ? "cyan" : statusColor(pipeline.status);
   // Allocate: 4 chars icon/selection + title + 1 space + bar(8) + percentage(5) + phase(10)
   const overhead = 28; // icon(4) + bar(8) + pct(5) + phase(10) + spaces
   const maxTitle = Math.max(10, width - overhead);
@@ -371,7 +372,11 @@ function PipelineDetailPanel({
 
       <Box marginTop={1}>
         <Text dimColor>Status: </Text>
-        <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
+        {pipeline.activePhase === "brainstorm" ? (
+          <Text color="cyan">waiting for you — press Z to brainstorm</Text>
+        ) : (
+          <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
+        )}
         <Text dimColor>
           {" "}
           · {progressPercent(pipeline)} · started {timeAgo(pipeline.startedAt)}
@@ -500,16 +505,10 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
             />
           ))}
 
-          {/* Decisions shown inline in narrow layout */}
-          {pendingDecisions.length > 0 ? (
-            <Box flexDirection="column" marginTop={1}>
-              <DecisionPanel question={pendingDecisions[0]!} />
-            </Box>
-          ) : selectedPipeline ? (
-            <Box flexDirection="column" marginTop={1}>
-              <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
-            </Box>
-          ) : null}
+          {/* Focus content inline in narrow layout */}
+          <Box flexDirection="column" marginTop={1}>
+            {focusContent}
+          </Box>
 
           {agents.length > 0 && pendingDecisions.length === 0 && !selectedPipeline ? (
             <Box flexDirection="column" marginTop={1}>
