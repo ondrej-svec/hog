@@ -1154,26 +1154,47 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           }
           return;
         }
-        // Z in pipeline view: launch/re-attach brainstorm session
+        // Z in pipeline view: launch brainstorm session
         if (input === "Z") {
           const selected = pipelineData.pipelines[pipelineSelectedIndex];
           if (selected?.activePhase === "brainstorm") {
-            const rc = config.repos.find((r) => r.name === selected.repo);
-            if (rc?.localPath) {
-              const result = launchClaude({
-                localPath: rc.localPath,
-                issue: { number: 0, title: selected.title, url: "" },
-                launchMode: config.board.claudeLaunchMode ?? "auto",
-                ...(config.board.claudeTerminalApp
-                  ? { terminalApp: config.board.claudeTerminalApp }
-                  : {}),
-              });
-              if (result.ok) {
-                toast.info("Brainstorm session opened");
-                zen.handleToggleZen();
-              } else {
-                toast.error(result.error.message);
-              }
+            // Use the pipeline's own localPath — not the configured repo
+            const localPath = selected.localPath;
+            if (!localPath) {
+              toast.error("Pipeline has no localPath configured");
+              return;
+            }
+
+            // Build brainstorm prompt with pipeline context
+            const slug = selected.title
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-|-$/g, "");
+            const brainstormPrompt = [
+              `You're brainstorming a new feature with the human.`,
+              ``,
+              `Feature idea: ${selected.title}`,
+              ``,
+              `Your job:`,
+              `1. Discuss the feature — ask questions, explore approaches`,
+              `2. Refine it into clear user stories with acceptance criteria`,
+              `3. Write stories to tests/stories/${slug}.md`,
+              `4. When the human confirms: hog pipeline create "${selected.title}" --brainstorm-done --stories tests/stories/${slug}.md`,
+            ].join("\n");
+
+            const result = launchClaude({
+              localPath,
+              issue: { number: 0, title: selected.title, url: "" },
+              promptTemplate: brainstormPrompt,
+              launchMode: config.board.claudeLaunchMode ?? "auto",
+              ...(config.board.claudeTerminalApp
+                ? { terminalApp: config.board.claudeTerminalApp }
+                : {}),
+            });
+            if (result.ok) {
+              toast.info("Brainstorm session opened");
+            } else {
+              toast.error(result.error.message);
             }
           }
           return;
