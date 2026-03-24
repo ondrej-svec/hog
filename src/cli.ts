@@ -306,12 +306,41 @@ pipelineCommand
         return;
       }
 
-      const targetRepo = opts.repo
-        ? cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo)
-        : cfg.repos[0];
+      // Resolve target repo: explicit --repo > match cwd > ad-hoc from cwd
+      const cwd = process.cwd();
+      let targetRepo: RepoConfig | undefined;
+      let repoName: string;
+
+      if (opts.repo) {
+        targetRepo = cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo);
+        if (!targetRepo) {
+          console.error(`Repo not found: ${opts.repo}`);
+          process.exitCode = 1;
+          return;
+        }
+        repoName = targetRepo.name;
+      } else {
+        // Try to match cwd to a configured repo
+        targetRepo = cfg.repos.find((r) => r.localPath && cwd.startsWith(r.localPath));
+
+        if (targetRepo) {
+          repoName = targetRepo.name;
+        } else {
+          // No configured repo — create ad-hoc config from cwd
+          const { basename } = await import("node:path");
+          repoName = basename(cwd);
+          targetRepo = {
+            name: repoName,
+            shortName: repoName,
+            projectNumber: 0,
+            statusFieldId: "",
+            localPath: cwd,
+          } as RepoConfig;
+        }
+      }
 
       if (!targetRepo) {
-        console.error(`Repo not found: ${opts.repo ?? "(none configured)"}`);
+        console.error("No repo configured. Run `hog init` first.");
         process.exitCode = 1;
         return;
       }
@@ -339,7 +368,7 @@ pipelineCommand
       if (opts.brainstormDone) {
         try {
           await engine.beads.close(
-            targetRepo.localPath!,
+            targetRepo.localPath ?? cwd,
             result.beadIds.brainstorm,
             "Brainstorm completed in session",
           );
