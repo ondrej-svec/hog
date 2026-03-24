@@ -1384,15 +1384,30 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
         <StartPipelineOverlay
           beadsAvailable={pipelineData.beadsAvailable}
           onSubmit={(description) => {
-            const targetRepo = config.repos.find((r) => r.localPath);
-            if (!targetRepo) {
-              toast.error("No repo with localPath configured");
-              ui.exitOverlay();
-              return;
+            // Resolve repo: match cwd to configured repo, or create ad-hoc from cwd
+            const cwd = process.cwd();
+            let targetRepo = config.repos.find(
+              (r) => r.localPath && cwd.startsWith(r.localPath),
+            );
+            let repoName: string;
+            if (targetRepo) {
+              repoName = targetRepo.name;
+            } else {
+              // Ad-hoc config from cwd — no GitHub config needed
+              const dirName = cwd.split("/").pop() ?? "project";
+              repoName = dirName;
+              targetRepo = {
+                name: dirName,
+                shortName: dirName,
+                projectNumber: 0,
+                statusFieldId: "",
+                localPath: cwd,
+                completionAction: { type: "closeIssue" },
+              } as RepoConfig;
             }
             pipelineData
               .startPipeline(
-                targetRepo.name,
+                repoName,
                 targetRepo,
                 // Title: first sentence or first 60 chars
                 description
