@@ -107,57 +107,34 @@ export class Conductor {
    */
   private savePipelines(): void {
     try {
-      // Read existing pipelines from disk (may include state from other processes)
-      const diskPipelines: Map<string, Record<string, unknown>> = new Map();
+      // Check if disk was explicitly cleared (empty array = "clear all" signal)
+      let diskCleared = false;
       if (existsSync(Conductor.PIPELINES_FILE)) {
         try {
           const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
-          if (Array.isArray(raw)) {
-            for (const entry of raw) {
-              if (
-                typeof entry === "object" &&
-                entry !== null &&
-                typeof (entry as Record<string, unknown>)["featureId"] === "string"
-              ) {
-                diskPipelines.set(
-                  (entry as Record<string, unknown>)["featureId"] as string,
-                  entry as Record<string, unknown>,
-                );
-              }
-            }
+          if (Array.isArray(raw) && raw.length === 0 && this.pipelines.size > 0) {
+            // Disk is empty but we have in-memory state → someone ran `hog pipeline clear`
+            diskCleared = true;
+            this.pipelines.clear();
           }
         } catch {
           // Corrupted file — overwrite
         }
       }
 
-      // Merge: in-memory state wins for pipelines we own, disk state preserved for others
-      for (const p of this.pipelines.values()) {
-        diskPipelines.set(p.featureId, {
-          featureId: p.featureId,
-          title: p.title,
-          repo: p.repo,
-          localPath: p.localPath,
-          beadIds: p.beadIds,
-          status: p.status,
-          completedBeads: p.completedBeads,
-          activePhase: p.activePhase,
-          startedAt: p.startedAt,
-          completedAt: p.completedAt,
-        });
-      }
-
-      // Remove pipelines that were deleted in-memory (cancelled)
-      for (const id of diskPipelines.keys()) {
-        if (
-          !this.pipelines.has(id) &&
-          this.decisionLog.some((e) => e.featureId === id && e.action === "pipeline:cancelled")
-        ) {
-          diskPipelines.delete(id);
-        }
-      }
-
-      const data = [...diskPipelines.values()];
+      // Write current in-memory state
+      const data = [...this.pipelines.values()].map((p) => ({
+        featureId: p.featureId,
+        title: p.title,
+        repo: p.repo,
+        localPath: p.localPath,
+        beadIds: p.beadIds,
+        status: p.status,
+        completedBeads: p.completedBeads,
+        activePhase: p.activePhase,
+        startedAt: p.startedAt,
+        completedAt: p.completedAt,
+      }));
       mkdirSync(CONFIG_DIR, { recursive: true });
       const tmp = `${Conductor.PIPELINES_FILE}.tmp`;
       writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
