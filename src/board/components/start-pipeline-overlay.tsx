@@ -1,5 +1,5 @@
 import { Spinner, TextInput } from "@inkjs/ui";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import { useRef, useState } from "react";
 
 interface StartPipelineOverlayProps {
@@ -15,6 +15,12 @@ export function StartPipelineOverlay({
 }: StartPipelineOverlayProps) {
   const lastValue = useRef("");
   const [submitting, setSubmitting] = useState(false);
+
+  useInput((_input, key) => {
+    if (key.escape && !submitting) {
+      onCancel();
+    }
+  });
 
   if (!beadsAvailable) {
     return (
