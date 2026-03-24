@@ -12,6 +12,7 @@ import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
 import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
+  CONFIG_DIR,
   clearLlmAuth,
   findRepo,
   getLlmAuth,
@@ -370,7 +371,9 @@ pipelineCommand
           console.log("  Mode:    brainstorm skipped — stories agent starts next");
         }
         console.log("  Watch:   background conductor advancing phases automatically");
+        console.log(`  Log:     ~/.config/hog/pipelines/${result.featureId}.log`);
         console.log("");
+        console.log("You'll get system notifications as phases complete.");
         console.log(
           "Run `hog board --live` for visual progress, or `hog pipeline list` to check status.",
         );
@@ -419,6 +422,78 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("status <featureId>")
+  .description("Show detailed status of a pipeline")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+    const { existsSync, readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const pipelines = conductor.getPipelines();
+    const pipeline = pipelines.find((p) => p.featureId === featureId);
+
+    if (!pipeline) {
+      // Check if there's a log file with history
+      const logFile = join(CONFIG_DIR, "pipelines", `${featureId}.log`);
+      if (existsSync(logFile)) {
+        console.log(`Pipeline ${featureId} is no longer active. Log:`);
+        console.log("");
+        console.log(readFileSync(logFile, "utf-8"));
+      } else {
+        console.error(`Pipeline not found: ${featureId}`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+
+    const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"];
+    const completed = pipeline.completedBeads ?? 0;
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { pipeline } });
+    } else {
+      console.log(`Pipeline: ${pipeline.featureId}`);
+      console.log(`Title:    ${pipeline.title}`);
+      console.log(`Status:   ${pipeline.status}`);
+      console.log(`Repo:     ${pipeline.repo}`);
+      console.log(`Started:  ${pipeline.startedAt}`);
+      console.log(`Progress: ${completed}/6 phases`);
+      console.log("");
+
+      // DAG visualization
+      for (let i = 0; i < phases.length; i++) {
+        const phase = phases[i]!;
+        let icon: string;
+        if (i < completed) {
+          icon = "✓";
+        } else if (phase === pipeline.activePhase) {
+          icon = "◐";
+        } else {
+          icon = "○";
+        }
+        console.log(`  ${icon} ${phase}`);
+      }
+
+      // Show log tail if available
+      const logFile = join(CONFIG_DIR, "pipelines", `${featureId}.log`);
+      if (existsSync(logFile)) {
+        const logContent = readFileSync(logFile, "utf-8");
+        const lines = logContent.trim().split("\n").slice(-5);
+        console.log("");
+        console.log("Recent log:");
+        for (const line of lines) {
+          console.log(`  ${line}`);
+        }
+      }
+    }
+  });
+
+pipelineCommand
   .command("pause <featureId>")
   .description("Pause a running pipeline")
   .action(async (featureId: string) => {
@@ -457,6 +532,9 @@ pipelineCommand
     const { resolved: cfg } = resolveProfile(rawCfg);
     const { Engine } = await import("./engine/engine.js");
     const { Conductor } = await import("./engine/conductor.js");
+    const { sendOsNotification } = await import("./notify.js");
+    const { mkdirSync, appendFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
 
     const engine = new Engine(cfg);
     if (!engine.beadsAvailable) {
@@ -464,25 +542,109 @@ pipelineCommand
       return;
     }
 
+    // Set up progress log
+    const logDir = join(CONFIG_DIR, "pipelines");
+    mkdirSync(logDir, { recursive: true });
+    const logFile = join(logDir, `${featureId}.log`);
+
+    const log = (msg: string) => {
+      const line = `[${new Date().toISOString()}] ${msg}\n`;
+      appendFileSync(logFile, line, "utf-8");
+    };
+
+    log(`Watcher started for pipeline ${featureId}`);
+
     const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
     engine.agents.start();
     conductor.start();
+
+    // Track phase transitions for notifications
+    let lastPhase: string | undefined;
+    let lastCompletedBeads = 0;
+
+    const PHASE_LABELS: Record<string, string> = {
+      brainstorm: "Brainstorm",
+      stories: "Stories",
+      test: "Tests",
+      impl: "Implementation",
+      redteam: "Red Team",
+      merge: "Merge",
+    };
 
     // Poll until the pipeline completes, fails, or disappears
     const checkInterval = setInterval(() => {
       const pipelines = conductor.getPipelines();
       const pipeline = pipelines.find((p) => p.featureId === featureId);
 
-      if (!pipeline || pipeline.status === "completed" || pipeline.status === "failed") {
+      if (!pipeline) {
+        log("Pipeline not found — watcher exiting");
+        clearInterval(checkInterval);
+        conductor.stop();
+        engine.agents.stop();
+        process.exit(0);
+        return;
+      }
+
+      // Detect phase transitions
+      if (pipeline.activePhase && pipeline.activePhase !== lastPhase) {
+        const label = PHASE_LABELS[pipeline.activePhase] ?? pipeline.activePhase;
+        log(`Phase: ${label} started (${pipeline.completedBeads}/6 complete)`);
+        sendOsNotification({
+          title: `hog: ${pipeline.title}`,
+          body: `${label} phase started (${pipeline.completedBeads}/6)`,
+        });
+        lastPhase = pipeline.activePhase;
+      }
+
+      // Detect bead completions
+      if (pipeline.completedBeads > lastCompletedBeads) {
+        log(`Progress: ${pipeline.completedBeads}/6 beads completed`);
+        lastCompletedBeads = pipeline.completedBeads;
+      }
+
+      // Terminal states
+      if (pipeline.status === "completed") {
+        log("Pipeline completed successfully!");
+        sendOsNotification({
+          title: `hog: ${pipeline.title}`,
+          body: "Pipeline complete! All 6 phases done.",
+        });
         clearInterval(checkInterval);
         conductor.stop();
         engine.agents.stop();
         process.exit(0);
       }
+
+      if (pipeline.status === "failed") {
+        const phase = pipeline.activePhase ?? "unknown";
+        log(`Pipeline FAILED at ${phase} phase`);
+        sendOsNotification({
+          title: `hog: ${pipeline.title}`,
+          body: `Pipeline failed at ${phase}. Run: hog pipeline list`,
+        });
+        clearInterval(checkInterval);
+        conductor.stop();
+        engine.agents.stop();
+        process.exit(1);
+      }
+
+      if (pipeline.status === "blocked") {
+        // Only notify once per block
+        if (lastPhase !== `blocked:${pipeline.activePhase}`) {
+          const phase = pipeline.activePhase ?? "unknown";
+          log(`Pipeline BLOCKED at ${phase} — needs human decision`);
+          sendOsNotification({
+            title: `hog: ${pipeline.title}`,
+            body: `Blocked at ${phase} — needs your decision. Run: hog board --live`,
+          });
+          lastPhase = `blocked:${pipeline.activePhase}`;
+        }
+      }
     }, 5_000);
 
     // Clean shutdown on SIGINT/SIGTERM
     const shutdown = () => {
+      log("Watcher stopped (signal received)");
       clearInterval(checkInterval);
       conductor.stop();
       engine.agents.stop();
