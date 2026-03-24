@@ -172,6 +172,12 @@ export class Conductor {
         // Skip completed/failed pipelines
         if (e["status"] === "completed" || e["status"] === "failed") continue;
 
+        // Auto-expire stale pipelines (>7 days old with no progress)
+        const startedAt = typeof e["startedAt"] === "string" ? new Date(e["startedAt"]).getTime() : 0;
+        const ageDays = (Date.now() - startedAt) / 86_400_000;
+        const completedBeads = typeof e["completedBeads"] === "number" ? e["completedBeads"] : 0;
+        if (ageDays > 7 && completedBeads === 0) continue;
+
         // Validate beadIds structure (CRIT-2)
         const beadIds = e["beadIds"];
         if (

@@ -555,6 +555,18 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("clear")
+  .description("Remove all pipelines")
+  .action(async () => {
+    const { writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const pipelinesFile = join(CONFIG_DIR, "pipelines.json");
+    writeFileSync(pipelinesFile, "[]\n", { mode: 0o600 });
+    console.log("All pipelines cleared.");
+  });
+
+pipelineCommand
   .command("cancel <featureId>")
   .description("Cancel and remove a pipeline")
   .action(async (featureId: string) => {
