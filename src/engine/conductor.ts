@@ -8,6 +8,7 @@ import {
   enqueueQuestion,
   getPendingForFeature,
   loadQuestionQueue,
+  pruneOrphaned,
   resolveQuestion as resolveQuestionInQueue,
   saveQuestionQueue,
 } from "./question-queue.js";
@@ -129,6 +130,11 @@ export class Conductor {
 
   /** Start the conductor polling loop. */
   start(): void {
+    // Clean up stale questions from pipelines that no longer exist
+    const activeIds = new Set([...this.pipelines.keys()]);
+    this.questionQueue = pruneOrphaned(this.questionQueue, activeIds);
+    saveQuestionQueue(this.questionQueue);
+
     this.pollTimer = setInterval(() => {
       this.tick().catch(() => {
         // error handling inside tick

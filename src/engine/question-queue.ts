@@ -110,6 +110,22 @@ export function isBlockedByQuestions(queue: QuestionQueue, featureId: string): b
   return queue.questions.some((q) => !q.resolvedAt && q.featureId === featureId);
 }
 
+/** Remove unresolved questions for pipelines that no longer exist. */
+export function pruneOrphaned(
+  queue: QuestionQueue,
+  activeFeatureIds: ReadonlySet<string>,
+): QuestionQueue {
+  return {
+    ...queue,
+    questions: queue.questions.filter((q) => {
+      // Keep resolved questions (they're historical)
+      if (q.resolvedAt) return true;
+      // Keep questions for active pipelines
+      return activeFeatureIds.has(q.featureId);
+    }),
+  };
+}
+
 /** Clean up resolved questions older than the given age in days. */
 export function pruneResolved(queue: QuestionQueue, maxAgeDays: number = 30): QuestionQueue {
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
