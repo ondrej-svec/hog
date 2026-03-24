@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PIPELINE_ROLES, beadToRole } from "./roles.js";
+import { beadToRole, PIPELINE_ROLES } from "./roles.js";
 
 describe("roles", () => {
+  it("maps [hog:brainstorm] title prefix to brainstorm role", () => {
+    expect(beadToRole({ title: "[hog:brainstorm] Brainstorm: Auth" })).toBe("brainstorm");
+  });
+
   it("maps [hog:stories] title prefix to stories role", () => {
     expect(beadToRole({ title: "[hog:stories] User stories: Auth" })).toBe("stories");
   });
@@ -34,9 +38,9 @@ describe("roles", () => {
     expect(beadToRole({ title: "[hog:test] Tests", labels: ["hog:impl"] })).toBe("test");
   });
 
-  it("all 5 pipeline roles have prompts", () => {
+  it("all 6 pipeline roles have prompts", () => {
     const roles = Object.keys(PIPELINE_ROLES);
-    expect(roles).toHaveLength(5);
+    expect(roles).toHaveLength(6);
     for (const role of roles) {
       const config = PIPELINE_ROLES[role as keyof typeof PIPELINE_ROLES];
       expect(config.promptTemplate.length).toBeGreaterThan(50);
@@ -53,5 +57,16 @@ describe("roles", () => {
   it("test prompt explicitly excludes spec access", () => {
     const testPrompt = PIPELINE_ROLES.test.promptTemplate;
     expect(testPrompt).toContain("do NOT have the original spec");
+  });
+
+  it("brainstorm prompt encourages collaboration", () => {
+    const prompt = PIPELINE_ROLES.brainstorm.promptTemplate;
+    expect(prompt).toContain("brainstorm");
+    expect(prompt).toContain("bd close");
+    expect(prompt).toContain("{beadId}");
+  });
+
+  it("brainstorm role detected from label fallback", () => {
+    expect(beadToRole({ title: "Some task", labels: ["hog:brainstorm"] })).toBe("brainstorm");
   });
 });

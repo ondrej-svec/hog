@@ -1,13 +1,13 @@
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import type { Pipeline } from "../../engine/conductor.js";
+import type { RepoConfig } from "../../config.js";
 import type { TrackedAgent } from "../../engine/agent-manager.js";
+import type { Pipeline } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
-import type { RepoConfig } from "../../config.js";
 
 // ── Helpers ──
 
@@ -28,6 +28,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
     localPath: "/tmp/repo",
     repoConfig: REPO_CONFIG,
     beadIds: {
+      brainstorm: "bd-b1",
       stories: "bd-s1",
       tests: "bd-t1",
       impl: "bd-i1",
@@ -145,12 +146,15 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
   // Flow 3: Stories done, tests running
   describe("Flow 3: Pipeline progressed — tests phase active", () => {
     const pipeline = makePipeline({ completedBeads: 1, activePhase: "test" });
-    const agent = makeAgent({ phase: "test", monitor: { sessionId: "s2", lastToolUse: "Write", lastText: undefined, isRunning: true } });
+    const agent = makeAgent({
+      phase: "test",
+      monitor: { sessionId: "s2", lastToolUse: "Write", lastText: undefined, isRunning: true },
+    });
 
-    it("shows 20% progress (1/5 beads done)", () => {
+    it("shows 17% progress (1/6 beads done)", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("20%");
+      expect(frame).toContain("17%");
     });
 
     it("shows test agent activity", () => {
@@ -204,10 +208,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     });
 
     it("decision shows even in narrow layout", () => {
-      const { lastFrame } = renderView(
-        { pipelines: [pipeline], pendingDecisions: [question] },
-        80,
-      );
+      const { lastFrame } = renderView({ pipelines: [pipeline], pendingDecisions: [question] }, 80);
       const frame = lastFrame() ?? "";
       expect(frame).toContain("DECISION NEEDED");
       expect(frame).toContain("LinkedIn");
@@ -218,7 +219,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
   describe("Flow 5: Pipeline completed — celebration", () => {
     const pipeline = makePipeline({
       status: "completed",
-      completedBeads: 5,
+      completedBeads: 6,
       completedAt: new Date().toISOString(),
     });
 
@@ -238,7 +239,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
       const frame = lastFrame() ?? "";
       expect(frame).toContain("Complete");
-      expect(frame).toContain("5/5");
+      expect(frame).toContain("6/6");
     });
   });
 
@@ -285,8 +286,14 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
   // Flow 8: Multiple pipelines
   describe("Flow 8: Multiple pipelines with different states", () => {
     const pipelines = [
-      makePipeline({ featureId: "f1", title: "Auth", status: "completed", completedBeads: 5 }),
-      makePipeline({ featureId: "f2", title: "Rate limit", status: "running", completedBeads: 2, activePhase: "impl" }),
+      makePipeline({ featureId: "f1", title: "Auth", status: "completed", completedBeads: 6 }),
+      makePipeline({
+        featureId: "f2",
+        title: "Rate limit",
+        status: "running",
+        completedBeads: 2,
+        activePhase: "impl",
+      }),
       makePipeline({ featureId: "f3", title: "Search", status: "blocked", completedBeads: 1 }),
     ];
 
@@ -318,10 +325,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     });
 
     it("shows decisions inline (not hidden in detail panel)", () => {
-      const { lastFrame } = renderView(
-        { pipelines: [pipeline], pendingDecisions: [question] },
-        80,
-      );
+      const { lastFrame } = renderView({ pipelines: [pipeline], pendingDecisions: [question] }, 80);
       const frame = lastFrame() ?? "";
       expect(frame).toContain("DECISION NEEDED");
       expect(frame).toContain("[1]");
@@ -331,6 +335,50 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] }, 80);
       const frame = lastFrame() ?? "";
       expect(frame).toContain("pipeline");
+    });
+  });
+
+  // Flow 10: Brainstorm phase — shows "Press Z" not "DECISION NEEDED"
+  describe("Flow 10: Brainstorm phase shows correct prompt", () => {
+    const pipeline = makePipeline({ completedBeads: 0, activePhase: "brainstorm" });
+
+    it("shows brainstorm prompt not DECISION NEEDED", () => {
+      const { lastFrame } = renderView({ pipelines: [pipeline] });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("brainstorm");
+      expect(frame).not.toContain("DECISION NEEDED");
+    });
+
+    it("shows Z key instruction", () => {
+      const { lastFrame } = renderView({ pipelines: [pipeline] });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("Z");
+    });
+
+    it("DAG shows brainstorm as first phase", () => {
+      const { lastFrame } = renderView({ pipelines: [pipeline] });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("brainstorm");
+      expect(frame).toContain("stories");
+    });
+
+    it("status bar shows brainstorming state", () => {
+      const { lastFrame } = renderView({ pipelines: [pipeline] });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("brainstorming");
+    });
+  });
+
+  // Flow 11: Quick picks still work for operational questions
+  describe("Flow 11: Quick picks still work alongside brainstorm", () => {
+    const pipeline = makePipeline({ completedBeads: 2, activePhase: "impl" });
+    const question = makeQuestion();
+
+    it("shows DECISION NEEDED for non-brainstorm phases", () => {
+      const { lastFrame } = renderView({ pipelines: [pipeline], pendingDecisions: [question] });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("DECISION NEEDED");
+      expect(frame).toContain("[1]");
     });
   });
 });

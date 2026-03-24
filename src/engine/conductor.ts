@@ -1,3 +1,4 @@
+import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
@@ -28,6 +29,7 @@ export interface Pipeline {
   readonly localPath: string;
   readonly repoConfig: RepoConfig;
   readonly beadIds: {
+    brainstorm: string;
     stories: string;
     tests: string;
     impl: string;
@@ -35,7 +37,7 @@ export interface Pipeline {
     merge: string;
   };
   status: PipelineStatus;
-  /** Number of completed (closed) beads out of 5. Updated by conductor tick. */
+  /** Number of completed (closed) beads out of 6. Updated by conductor tick. */
   completedBeads: number;
   /** Currently active phase (if any agent is running). */
   activePhase?: string | undefined;
@@ -167,7 +169,7 @@ export class Conductor {
    * Start a new feature pipeline.
    *
    * Creates a Beads DAG and begins orchestrating agents through
-   * stories → tests → implementation → red team → merge.
+   * brainstorm → stories → tests → implementation → red team → merge.
    */
   async startPipeline(
     repo: string,
@@ -230,6 +232,7 @@ export class Conductor {
       localPath: repoConfig.localPath,
       repoConfig,
       beadIds: {
+        brainstorm: dag.brainstorm.id,
         stories: dag.stories.id,
         tests: dag.tests.id,
         impl: dag.impl.id,
@@ -244,7 +247,7 @@ export class Conductor {
     this.pipelines.set(featureId, pipeline);
     this.log(featureId, "pipeline:started", `Created DAG for: ${title}`);
 
-    // Trigger initial tick to spawn the first agent (stories)
+    // Trigger initial tick to start the first phase (brainstorm)
     await this.tickPipeline(pipeline);
 
     return pipeline;
@@ -312,6 +315,9 @@ export class Conductor {
     const pipelineBeadIds = new Set(Object.values(pipeline.beadIds));
     const pipelineReady = readyBeads.filter((b) => pipelineBeadIds.has(b.id));
 
+    // Sync completedBeads from actual bead state (handles externally-closed beads like brainstorm)
+    await this.syncCompletedBeads(pipeline);
+
     for (const bead of pipelineReady) {
       // Skip beads already being worked on
       if (bead.status === "in_progress") continue;
@@ -329,6 +335,12 @@ export class Conductor {
   /** Spawn an agent for a specific role. */
   private async spawnForRole(pipeline: Pipeline, bead: Bead, role: PipelineRole): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
+
+    // Brainstorm: launch interactive tmux session instead of background agent
+    if (role === "brainstorm") {
+      await this.launchBrainstormSession(pipeline, bead);
+      return;
+    }
 
     // RED verification: before spawning impl agent, verify tests fail
     if (role === "impl") {
@@ -441,6 +453,72 @@ export class Conductor {
     }
   }
 
+  /** Launch an interactive brainstorm session in tmux. */
+  private async launchBrainstormSession(pipeline: Pipeline, bead: Bead): Promise<void> {
+    // Claim the bead
+    try {
+      await this.beads.claim(pipeline.localPath, bead.id);
+    } catch {
+      return; // Already claimed
+    }
+
+    const slug = pipeline.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    const prompt = PIPELINE_ROLES.brainstorm.promptTemplate
+      .replace(/\{title\}/g, pipeline.title)
+      .replace(/\{slug\}/g, slug)
+      .replace(/\{spec\}/g, bead.description ?? pipeline.title)
+      .replace(/\{beadId\}/g, bead.id);
+
+    const result = launchClaude({
+      localPath: pipeline.localPath,
+      issue: { number: 0, title: pipeline.title, url: "" },
+      promptTemplate: prompt,
+    });
+
+    if (result.ok) {
+      pipeline.activePhase = "brainstorm";
+      this.log(
+        pipeline.featureId,
+        "brainstorm:launched",
+        `Interactive brainstorm session opened for bead ${bead.id}`,
+      );
+    } else {
+      this.log(
+        pipeline.featureId,
+        "brainstorm:failed",
+        `Failed to launch brainstorm: ${result.error.message}`,
+      );
+      // Unblock the bead so it can be retried
+      try {
+        await this.beads.updateStatus(pipeline.localPath, bead.id, "open");
+      } catch {
+        // best-effort
+      }
+    }
+  }
+
+  /**
+   * Sync completedBeads count from actual bead state.
+   * Needed because interactive sessions (brainstorm) close beads directly
+   * without going through onAgentCompleted.
+   */
+  private async syncCompletedBeads(pipeline: Pipeline): Promise<void> {
+    try {
+      let closed = 0;
+      for (const id of Object.values(pipeline.beadIds)) {
+        const bead = await this.beads.show(pipeline.localPath, id);
+        if (bead.status === "closed") closed++;
+      }
+      pipeline.completedBeads = closed;
+    } catch {
+      // best-effort
+    }
+  }
+
   /** Check if all pipeline beads are closed. */
   private async checkPipelineCompletion(pipeline: Pipeline): Promise<void> {
     try {
@@ -507,8 +585,12 @@ export class Conductor {
     this.beads
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
       .then(() => {
-        pipeline.completedBeads = Math.min(5, pipeline.completedBeads + 1);
-        this.log(pipeline.featureId, `bead:closed:${phase}`, `Bead ${beadId} completed (${pipeline.completedBeads}/5)`);
+        pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
+        this.log(
+          pipeline.featureId,
+          `bead:closed:${phase}`,
+          `Bead ${beadId} completed (${pipeline.completedBeads}/6)`,
+        );
       })
       .catch(() => {
         // best-effort
@@ -522,94 +604,96 @@ export class Conductor {
     phase: string,
     exitCode: number,
   ): void {
-  // Clean up worktree for failed agent
-  const worktreeInfo = this.sessionWorktrees.get(sessionId);
-  if (worktreeInfo && this.worktrees) {
-    this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
-    this.sessionWorktrees.delete(sessionId);
-  }
+    // Clean up worktree for failed agent
+    const worktreeInfo = this.sessionWorktrees.get(sessionId);
+    if (worktreeInfo && this.worktrees) {
+      this.worktrees.remove(worktreeInfo.repoPath, worktreeInfo.worktreePath).catch(() => {});
+      this.sessionWorktrees.delete(sessionId);
+    }
 
-  // Find the specific pipeline this session belongs to
-  const featureId = this.sessionToPipeline.get(sessionId);
-  this.sessionToPipeline.delete(sessionId);
+    // Find the specific pipeline this session belongs to
+    const featureId = this.sessionToPipeline.get(sessionId);
+    this.sessionToPipeline.delete(sessionId);
 
-  const matchedPipelines = featureId
-    ? ([this.pipelines.get(featureId)].filter(Boolean) as Pipeline[])
-    : [...this.pipelines.values()]; // fallback for sessions without mapping
+    const matchedPipelines = featureId
+      ? ([this.pipelines.get(featureId)].filter(Boolean) as Pipeline[])
+      : [...this.pipelines.values()]; // fallback for sessions without mapping
 
-  for (const pipeline of matchedPipelines) {
-    const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
-    if (!beadId) continue;
+    for (const pipeline of matchedPipelines) {
+      const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
+      if (!beadId) continue;
 
-    this.log(
-      pipeline.featureId,
-      `agent:failed:${phase}`,
-      `Agent failed with exit code ${exitCode}`,
-    );
-
-    // Mark bead as blocked so it can be retried
-    this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
-      // best-effort
-    });
-
-    // Queue a question for the human if this is a repeated failure
-    // But only once per phase — don't spam questions
-    if (pipeline.status === "blocked") return; // already blocked, don't add more questions
-
-    const failures = this.decisionLog.filter(
-      (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
-    );
-
-    if (failures.length >= 2) {
-      // Check if we already have an unresolved question for this phase
-      const existingQuestion = this.questionQueue.questions.find(
-        (q) => q.featureId === pipeline.featureId && !q.resolvedAt && q.question.includes(phase),
-      );
-      if (existingQuestion) return; // already asked, don't spam
-
-      const result = enqueueQuestion(this.questionQueue, {
-        featureId: pipeline.featureId,
-        question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
-        options: ["Retry", "Skip phase", "Stop pipeline"],
-        source: "conductor",
-      });
-      this.questionQueue = result.queue;
-      saveQuestionQueue(this.questionQueue);
-      pipeline.status = "blocked";
       this.log(
         pipeline.featureId,
-        "pipeline:blocked",
-        `Repeated ${phase} failures — queued for human decision`,
+        `agent:failed:${phase}`,
+        `Agent failed with exit code ${exitCode}`,
       );
+
+      // Mark bead as blocked so it can be retried
+      this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
+        // best-effort
+      });
+
+      // Queue a question for the human if this is a repeated failure
+      // But only once per phase — don't spam questions
+      if (pipeline.status === "blocked") return; // already blocked, don't add more questions
+
+      const failures = this.decisionLog.filter(
+        (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
+      );
+
+      if (failures.length >= 2) {
+        // Check if we already have an unresolved question for this phase
+        const existingQuestion = this.questionQueue.questions.find(
+          (q) => q.featureId === pipeline.featureId && !q.resolvedAt && q.question.includes(phase),
+        );
+        if (existingQuestion) return; // already asked, don't spam
+
+        const result = enqueueQuestion(this.questionQueue, {
+          featureId: pipeline.featureId,
+          question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
+          options: ["Retry", "Skip phase", "Stop pipeline"],
+          source: "conductor",
+        });
+        this.questionQueue = result.queue;
+        saveQuestionQueue(this.questionQueue);
+        pipeline.status = "blocked";
+        this.log(
+          pipeline.featureId,
+          "pipeline:blocked",
+          `Repeated ${phase} failures — queued for human decision`,
+        );
+      }
     }
   }
-}
 
-// ── Helpers ──
+  // ── Helpers ──
 
   private roleToBeadId(pipeline: Pipeline, role: PipelineRole): string | undefined {
-  switch (role) {
-    case "stories":
-      return pipeline.beadIds.stories;
-    case "test":
-      return pipeline.beadIds.tests;
-    case "impl":
-      return pipeline.beadIds.impl;
-    case "redteam":
-      return pipeline.beadIds.redteam;
-    case "merge":
-      return pipeline.beadIds.merge;
-    default:
-      return undefined;
+    switch (role) {
+      case "brainstorm":
+        return pipeline.beadIds.brainstorm;
+      case "stories":
+        return pipeline.beadIds.stories;
+      case "test":
+        return pipeline.beadIds.tests;
+      case "impl":
+        return pipeline.beadIds.impl;
+      case "redteam":
+        return pipeline.beadIds.redteam;
+      case "merge":
+        return pipeline.beadIds.merge;
+      default:
+        return undefined;
+    }
   }
-}
 
   private log(featureId: string, action: string, detail: string): void {
-  this.decisionLog.push({
-    timestamp: new Date().toISOString(),
-    featureId,
-    action,
-    detail,
-  });
-}
+    this.decisionLog.push({
+      timestamp: new Date().toISOString(),
+      featureId,
+      action,
+      detail,
+    });
+  }
 }

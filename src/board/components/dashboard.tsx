@@ -1154,6 +1154,30 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           }
           return;
         }
+        // Z in pipeline view: launch/re-attach brainstorm session
+        if (input === "Z") {
+          const selected = pipelineData.pipelines[pipelineSelectedIndex];
+          if (selected?.activePhase === "brainstorm") {
+            const rc = config.repos.find((r) => r.name === selected.repo);
+            if (rc?.localPath) {
+              const result = launchClaude({
+                localPath: rc.localPath,
+                issue: { number: 0, title: selected.title, url: "" },
+                launchMode: config.board.claudeLaunchMode ?? "auto",
+                ...(config.board.claudeTerminalApp
+                  ? { terminalApp: config.board.claudeTerminalApp }
+                  : {}),
+              });
+              if (result.ok) {
+                toast.info("Brainstorm session opened");
+                zen.handleToggleZen();
+              } else {
+                toast.error(result.error.message);
+              }
+            }
+          }
+          return;
+        }
         // Number keys 1-9 answer the first pending decision
         if (/^[1-9]$/.test(input) && pipelineData.pendingDecisions.length > 0) {
           const decision = pipelineData.pendingDecisions[0];
@@ -1533,6 +1557,9 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
         mineOnly={mineOnly}
         hasUndoable={hasUndoable}
         boardView={boardView}
+        pipelineBrainstorming={
+          pipelineData.pipelines[pipelineSelectedIndex]?.activePhase === "brainstorm"
+        }
       />
     </Box>
   );

@@ -14,6 +14,30 @@ import type { PipelineRole } from "./roles.js";
 
 // ── Role CLAUDE.md Templates ──
 
+const BRAINSTORM_CLAUDE_MD = `# Interactive Session: Brainstorm
+
+## Your Role
+You are brainstorming a new feature with the human. This is a collaborative, interactive session.
+
+## Rules
+- Ask questions, explore approaches, challenge assumptions
+- Refine the idea into clear user stories with acceptance criteria
+- Write stories to \`tests/stories/\` when ready
+- Each story MUST have a unique ID (STORY-001, STORY-002, etc.)
+- When the human confirms the stories are good, close the bead with \`bd close\`
+
+## Allowed Actions
+- Read any file (for context and understanding the codebase)
+- Write files in \`tests/stories/\` only
+- Use git to commit stories
+- Run \`bd close\` when brainstorming is complete
+
+## Forbidden Actions
+- Do NOT write implementation code or tests
+- Do NOT modify source files in \`src/\`
+- Do NOT close the bead without human confirmation
+`;
+
 const STORIES_CLAUDE_MD = `# Agent Role: Story Writer
 
 ## Your Role
@@ -145,6 +169,7 @@ You are the Merge Gatekeeper. You ensure code is ready to merge.
 `;
 
 const ROLE_CLAUDE_MDS: Record<PipelineRole, string> = {
+  brainstorm: BRAINSTORM_CLAUDE_MD,
   stories: STORIES_CLAUDE_MD,
   test: TEST_CLAUDE_MD,
   impl: IMPL_CLAUDE_MD,

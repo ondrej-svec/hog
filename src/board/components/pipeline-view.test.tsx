@@ -1,13 +1,13 @@
 import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
-import type { Pipeline } from "../../engine/conductor.js";
+import type { RepoConfig } from "../../config.js";
 import type { TrackedAgent } from "../../engine/agent-manager.js";
+import type { Pipeline } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
-import type { RepoConfig } from "../../config.js";
 
 // ── Helpers ──
 
@@ -28,6 +28,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
     localPath: "/tmp/repo",
     repoConfig: REPO_CONFIG,
     beadIds: {
+      brainstorm: "bd-b1",
       stories: "bd-s1",
       tests: "bd-t1",
       impl: "bd-i1",
@@ -94,9 +95,7 @@ function renderPipelineView(data: Partial<PipelineViewData> = {}) {
     selectedIndex: 0,
     ...data,
   };
-  return render(
-    React.createElement(PipelineView, { data: fullData, cols: 160, rows: 40 }),
-  );
+  return render(React.createElement(PipelineView, { data: fullData, cols: 160, rows: 40 }));
 }
 
 // ── User Stories ──
@@ -180,7 +179,10 @@ describe("PipelineView", () => {
 
     it("highlights the selected pipeline", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline(), makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
+        pipelines: [
+          makePipeline(),
+          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+        ],
         selectedIndex: 0,
       });
       const frame = lastFrame() ?? "";
@@ -368,7 +370,10 @@ describe("PipelineView", () => {
     it("shows merge queue count", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],
-        mergeQueue: [makeMergeEntry(), makeMergeEntry({ id: "merge-002", branch: "hog/feat-002/tests" })],
+        mergeQueue: [
+          makeMergeEntry(),
+          makeMergeEntry({ id: "merge-002", branch: "hog/feat-002/tests" }),
+        ],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("Merge Queue (2)");

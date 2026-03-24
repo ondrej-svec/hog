@@ -1,9 +1,9 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { EventBus } from "./event-bus.js";
-import { Conductor } from "./conductor.js";
 import type { AgentManager } from "./agent-manager.js";
-import type { BeadsClient, Bead } from "./beads.js";
+import type { Bead, BeadsClient } from "./beads.js";
+import { Conductor } from "./conductor.js";
+import { EventBus } from "./event-bus.js";
 
 // ── Test Helpers ──
 
@@ -62,6 +62,7 @@ function createMockBeads(overrides: Partial<BeadsClient> = {}): BeadsClient {
     compact: vi.fn().mockResolvedValue(undefined),
     ensureDoltRunning: vi.fn().mockResolvedValue(undefined),
     createFeatureDAG: vi.fn().mockResolvedValue({
+      brainstorm: makeBead("bd-b", "[hog:brainstorm] Brainstorm"),
       stories: makeBead("bd-s", "[hog:stories] Stories"),
       tests: makeBead("bd-t", "[hog:test] Tests"),
       impl: makeBead("bd-i", "[hog:impl] Impl"),
@@ -77,8 +78,12 @@ function createMockAgentManager(): AgentManager {
     start: vi.fn(),
     stop: vi.fn(),
     getAgents: vi.fn().mockReturnValue([]),
-    get runningCount() { return 0; },
-    get maxConcurrent() { return 3; },
+    get runningCount() {
+      return 0;
+    },
+    get maxConcurrent() {
+      return 3;
+    },
     reconcileResults: vi.fn(),
     pollLiveness: vi.fn(),
     launchAgent: vi.fn().mockReturnValue("session-1"),
@@ -135,12 +140,7 @@ describe("Conductor error handling", () => {
       const beads = createMockBeads({ isInstalled: vi.fn().mockReturnValue(false) });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -164,16 +164,13 @@ describe("Conductor error handling", () => {
     it("returns error with bd init failure details", async () => {
       const beads = createMockBeads({
         isInitialized: vi.fn().mockReturnValue(false),
-        init: vi.fn().mockRejectedValue(new Error("bd init failed — .beads/ directory was not created")),
+        init: vi
+          .fn()
+          .mockRejectedValue(new Error("bd init failed — .beads/ directory was not created")),
       });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -200,18 +197,17 @@ describe("Conductor error handling", () => {
   describe("STORY-024: DAG creation failure", () => {
     it("returns error with DAG creation failure details", async () => {
       const beads = createMockBeads({
-        createFeatureDAG: vi.fn().mockRejectedValue(
-          new Error("failed to begin transaction: dial tcp 127.0.0.1:13307: connect: connection refused"),
-        ),
+        createFeatureDAG: vi
+          .fn()
+          .mockRejectedValue(
+            new Error(
+              "failed to begin transaction: dial tcp 127.0.0.1:13307: connect: connection refused",
+            ),
+          ),
       });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -226,12 +222,7 @@ describe("Conductor error handling", () => {
       });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -245,12 +236,7 @@ describe("Conductor error handling", () => {
       });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -269,21 +255,11 @@ describe("Conductor error handling", () => {
       });
 
       // Start first pipeline (succeeds)
-      const first = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "First",
-        "Desc",
-      );
+      const first = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "First", "Desc");
       expect("error" in first).toBe(false);
 
       // Start second pipeline (should fail — limit is 1)
-      const second = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Second",
-        "Desc",
-      );
+      const second = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Second", "Desc");
       expect("error" in second).toBe(true);
       if ("error" in second) {
         expect(second.error).toContain("Max concurrent pipelines");
@@ -299,18 +275,14 @@ describe("Conductor error handling", () => {
       const beads = createMockBeads({
         createFeatureDAG: vi.fn().mockRejectedValue(
           Object.assign(new Error("Command failed: bd create"), {
-            stderr: "Warning: Dolt server endpoint changed\ncircuit-breaker: tripped after 5 failures",
+            stderr:
+              "Warning: Dolt server endpoint changed\ncircuit-breaker: tripped after 5 failures",
           }),
         ),
       });
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       expect("error" in result).toBe(true);
       if ("error" in result) {
@@ -322,7 +294,7 @@ describe("Conductor error handling", () => {
   // STORY-027: As a user, a successful pipeline returns all bead IDs
   // so the UI can display them
   describe("STORY-027: Successful pipeline has all bead IDs", () => {
-    it("returns pipeline with all 5 bead IDs", async () => {
+    it("returns pipeline with all 6 bead IDs", async () => {
       const beads = createMockBeads();
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
@@ -335,6 +307,7 @@ describe("Conductor error handling", () => {
 
       expect("error" in result).toBe(false);
       if (!("error" in result)) {
+        expect(result.beadIds.brainstorm).toBeDefined();
         expect(result.beadIds.stories).toBeDefined();
         expect(result.beadIds.tests).toBeDefined();
         expect(result.beadIds.impl).toBeDefined();
@@ -376,8 +349,8 @@ describe("Conductor error handling", () => {
       const beads = createMockBeads({
         isInitialized: vi
           .fn()
-          .mockReturnValueOnce(false)  // First call: not initialized
-          .mockReturnValueOnce(true),  // After init attempt: exists now
+          .mockReturnValueOnce(false) // First call: not initialized
+          .mockReturnValueOnce(true), // After init attempt: exists now
         init: vi.fn().mockRejectedValue(new Error("bd init exited with warnings")),
       });
 
@@ -386,12 +359,7 @@ describe("Conductor error handling", () => {
       // but our init in beads.ts already handles this by checking .beads/ exists
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads);
 
-      const result = await conductor.startPipeline(
-        "owner/repo",
-        REPO_WITH_PATH,
-        "Feature",
-        "Desc",
-      );
+      const result = await conductor.startPipeline("owner/repo", REPO_WITH_PATH, "Feature", "Desc");
 
       // Should return an error because the conductor doesn't have the
       // "init fails but check again" logic — that's in beads.ts init()
@@ -413,7 +381,14 @@ describe("Conductor error handling", () => {
         repo: "owner/repo",
         localPath: "/tmp/test",
         repoConfig: REPO_WITH_PATH,
-        beadIds: { stories: "bd-s", tests: "bd-t", impl: "bd-i", redteam: "bd-r", merge: "bd-m" },
+        beadIds: {
+          brainstorm: "bd-b",
+          stories: "bd-s",
+          tests: "bd-t",
+          impl: "bd-i",
+          redteam: "bd-r",
+          merge: "bd-m",
+        },
         status: "running" as const,
         completedBeads: 0,
         startedAt: new Date().toISOString(),

@@ -8,7 +8,7 @@
 
 // ── Role Types ──
 
-export type PipelineRole = "stories" | "test" | "impl" | "redteam" | "merge";
+export type PipelineRole = "brainstorm" | "stories" | "test" | "impl" | "redteam" | "merge";
 
 export interface RoleConfig {
   readonly role: PipelineRole;
@@ -18,6 +18,27 @@ export interface RoleConfig {
 }
 
 // ── Role Prompts ──
+
+const BRAINSTORM_PROMPT = [
+  "You're brainstorming a new feature with the human.",
+  "",
+  "Feature idea: {title}",
+  "",
+  "Specification:",
+  "{spec}",
+  "",
+  "Your job:",
+  "1. Discuss the feature with the human — ask questions, explore approaches",
+  "2. Refine it into clear user stories with acceptance criteria",
+  "3. Write stories to tests/stories/{slug}.md",
+  '4. When you and the human are satisfied: bd close {beadId} --reason "Brainstorm complete"',
+  "",
+  "Rules:",
+  "- Be collaborative — this is a conversation, not an output",
+  "- Challenge assumptions, suggest alternatives, explore edge cases",
+  "- Each story needs a unique ID (STORY-001, etc.) and testable acceptance criteria",
+  "- Don't close the bead until the human confirms the stories are good",
+].join("\n");
 
 const STORIES_PROMPT = [
   "You are the Story Writer for: {title}",
@@ -117,6 +138,12 @@ const MERGE_PROMPT = [
 // ── Role Registry ──
 
 export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
+  brainstorm: {
+    role: "brainstorm",
+    label: "Brainstorm",
+    envRole: "HOG_ROLE=brainstorm",
+    promptTemplate: BRAINSTORM_PROMPT,
+  },
   stories: {
     role: "stories",
     label: "Story Writer",
@@ -156,6 +183,7 @@ export function beadToRole(bead: { title: string; labels?: string[] }): Pipeline
   if (titleMatch?.[1]) {
     const role = titleMatch[1];
     if (
+      role === "brainstorm" ||
       role === "stories" ||
       role === "test" ||
       role === "impl" ||
@@ -169,6 +197,7 @@ export function beadToRole(bead: { title: string; labels?: string[] }): Pipeline
   // Fallback: check labels
   if (bead.labels) {
     for (const label of bead.labels) {
+      if (label === "hog:brainstorm") return "brainstorm";
       if (label === "hog:stories") return "stories";
       if (label === "hog:test") return "test";
       if (label === "hog:impl") return "impl";

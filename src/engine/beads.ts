@@ -267,16 +267,30 @@ export class BeadsClient {
   /**
    * Create a feature DAG: a standard bead dependency graph for a feature.
    *
-   * Creates: stories → tests → impl → redteam → merge beads
+   * Creates: brainstorm → stories → tests → impl → redteam → merge beads
    * with blocking dependencies between each phase.
    */
   async createFeatureDAG(
     cwd: string,
     featureTitle: string,
     featureDescription: string,
-  ): Promise<{ stories: Bead; tests: Bead; impl: Bead; redteam: Bead; merge: Bead }> {
+  ): Promise<{
+    brainstorm: Bead;
+    stories: Bead;
+    tests: Bead;
+    impl: Bead;
+    redteam: Bead;
+    merge: Bead;
+  }> {
     // Truncate title for bead names (bd doesn't handle very long titles well)
     const shortTitle = featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
+
+    const brainstorm = await this.create(cwd, {
+      title: `[hog:brainstorm] ${shortTitle}`,
+      description: featureDescription,
+      type: "task",
+      priority: 1,
+    });
 
     const stories = await this.create(cwd, {
       title: `[hog:stories] ${shortTitle}`,
@@ -309,12 +323,13 @@ export class BeadsClient {
       priority: 1,
     });
 
-    // Set up blocking dependencies: stories → tests → impl → redteam → merge
+    // Set up blocking dependencies: brainstorm → stories → tests → impl → redteam → merge
+    await this.addDependency(cwd, stories.id, brainstorm.id, "blocks");
     await this.addDependency(cwd, tests.id, stories.id, "blocks");
     await this.addDependency(cwd, impl.id, tests.id, "blocks");
     await this.addDependency(cwd, redteam.id, impl.id, "blocks");
     await this.addDependency(cwd, merge.id, redteam.id, "blocks");
 
-    return { stories, tests, impl, redteam, merge };
+    return { brainstorm, stories, tests, impl, redteam, merge };
   }
 }

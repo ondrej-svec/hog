@@ -1,11 +1,12 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { EventBus } from "./event-bus.js";
-import { Conductor } from "./conductor.js";
 import type { AgentManager } from "./agent-manager.js";
-import type { BeadsClient, Bead } from "./beads.js";
-import type { WorktreeManager } from "./worktree.js";
+import type { Bead, BeadsClient } from "./beads.js";
+import type { PipelineStatus } from "./conductor.js";
+import { Conductor } from "./conductor.js";
+import { EventBus } from "./event-bus.js";
 import type { Refinery } from "./refinery.js";
+import type { WorktreeManager } from "./worktree.js";
 
 // ── Test Helpers ──
 
@@ -44,9 +45,11 @@ function createMockBeadsClient(): BeadsClient {
     isInstalled: vi.fn().mockReturnValue(true),
     isInitialized: vi.fn().mockReturnValue(true),
     init: vi.fn().mockResolvedValue(undefined),
-    create: vi.fn().mockImplementation(async (_cwd: string, opts: { title: string; labels?: string[] }) =>
-      makeBead({ title: opts.title, labels: opts.labels ?? [] }),
-    ),
+    create: vi
+      .fn()
+      .mockImplementation(async (_cwd: string, opts: { title: string; labels?: string[] }) =>
+        makeBead({ title: opts.title, labels: opts.labels ?? [] }),
+      ),
     ready: vi.fn().mockResolvedValue([]),
     list: vi.fn().mockResolvedValue([]),
     show: vi.fn().mockResolvedValue(makeBead()),
@@ -58,6 +61,7 @@ function createMockBeadsClient(): BeadsClient {
     compact: vi.fn().mockResolvedValue(undefined),
     ensureDoltRunning: vi.fn().mockResolvedValue(undefined),
     createFeatureDAG: vi.fn().mockImplementation(async (_cwd: string, title: string) => ({
+      brainstorm: makeBead({ id: "bd-brainstorm", title: `[hog:brainstorm] Brainstorm: ${title}` }),
       stories: makeBead({ id: "bd-stories", title: `[hog:stories] User stories: ${title}` }),
       tests: makeBead({ id: "bd-tests", title: `[hog:test] Acceptance tests: ${title}` }),
       impl: makeBead({ id: "bd-impl", title: `[hog:impl] Implement: ${title}` }),
@@ -90,15 +94,17 @@ function createMockAgentManager(): AgentManager {
 
 function createMockWorktreeManager(): WorktreeManager {
   return {
-    create: vi.fn().mockImplementation(async (_repo: string, branch: string) =>
-      `/tmp/worktrees/${branch.replace(/\//g, "-")}`,
-    ),
+    create: vi
+      .fn()
+      .mockImplementation(
+        async (_repo: string, branch: string) => `/tmp/worktrees/${branch.replace(/\//g, "-")}`,
+      ),
     remove: vi.fn().mockResolvedValue(undefined),
     list: vi.fn().mockResolvedValue([]),
     cleanup: vi.fn().mockResolvedValue(0),
-    branchName: vi.fn().mockImplementation((featureId: string, role: string) =>
-      `hog/${featureId}/${role}`,
-    ),
+    branchName: vi
+      .fn()
+      .mockImplementation((featureId: string, role: string) => `hog/${featureId}/${role}`),
   } as unknown as WorktreeManager;
 }
 
@@ -218,15 +224,14 @@ describe("Conductor Pipeline", () => {
       });
 
       // Set up: stories bead is ready
-      const storiesBead = makeBead({ id: "bd-stories", status: "open", title: "[hog:stories] User stories" });
+      const storiesBead = makeBead({
+        id: "bd-stories",
+        status: "open",
+        title: "[hog:stories] User stories",
+      });
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
-      await conductor.startPipeline(
-        "owner/repo",
-        TEST_REPO_CONFIG,
-        "Feature X",
-        "Description",
-      );
+      await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature X", "Description");
 
       expect(worktrees.create).toHaveBeenCalled();
       const createCall = vi.mocked(worktrees.create).mock.calls[0];
@@ -243,7 +248,11 @@ describe("Conductor Pipeline", () => {
         refinery,
       });
 
-      const storiesBead = makeBead({ id: "bd-stories", status: "open", title: "[hog:stories] User stories" });
+      const storiesBead = makeBead({
+        id: "bd-stories",
+        status: "open",
+        title: "[hog:stories] User stories",
+      });
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
@@ -263,7 +272,11 @@ describe("Conductor Pipeline", () => {
       });
 
       // Stories bead ready first
-      const storiesBead = makeBead({ id: "bd-stories", status: "open", title: "[hog:stories] User stories" });
+      const storiesBead = makeBead({
+        id: "bd-stories",
+        status: "open",
+        title: "[hog:stories] User stories",
+      });
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
@@ -273,7 +286,11 @@ describe("Conductor Pipeline", () => {
 
       // Now simulate stories complete, tests bead ready
       vi.mocked(agents.launchAgent).mockClear();
-      const testsBead = makeBead({ id: "bd-tests", status: "open", title: "[hog:test] Acceptance tests" });
+      const testsBead = makeBead({
+        id: "bd-tests",
+        status: "open",
+        title: "[hog:test] Acceptance tests",
+      });
       beads.ready = vi.fn().mockResolvedValue([testsBead]);
       // Skip RED verification for this test
       vi.mocked(beads.show).mockResolvedValue(makeBead({ status: "open" }));
@@ -298,7 +315,11 @@ describe("Conductor Pipeline", () => {
       });
 
       // Spawn test agent
-      const testsBead = makeBead({ id: "bd-tests", status: "open", title: "[hog:test] Acceptance tests" });
+      const testsBead = makeBead({
+        id: "bd-tests",
+        status: "open",
+        title: "[hog:test] Acceptance tests",
+      });
       beads.ready = vi.fn().mockResolvedValue([testsBead]);
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
 
@@ -325,7 +346,11 @@ describe("Conductor Pipeline", () => {
         refinery,
       });
 
-      const storiesBead = makeBead({ id: "bd-stories", status: "open", title: "[hog:stories] User stories" });
+      const storiesBead = makeBead({
+        id: "bd-stories",
+        status: "open",
+        title: "[hog:stories] User stories",
+      });
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
@@ -361,13 +386,14 @@ describe("Conductor Pipeline", () => {
         localPath: "/tmp/test",
         repoConfig: TEST_REPO_CONFIG,
         beadIds: {
+          brainstorm: "bd-b",
           stories: "bd-s",
           tests: "bd-t",
           impl: "bd-i",
           redteam: "bd-r",
           merge: "bd-m",
         },
-        status: "running" as const,
+        status: "running" as PipelineStatus,
         completedBeads: 0,
         startedAt: new Date().toISOString(),
       };
@@ -463,7 +489,11 @@ describe("Conductor Pipeline", () => {
         refinery,
       });
 
-      const storiesBead = makeBead({ id: "bd-stories", status: "open", title: "[hog:stories] User stories" });
+      const storiesBead = makeBead({
+        id: "bd-stories",
+        status: "open",
+        title: "[hog:stories] User stories",
+      });
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");

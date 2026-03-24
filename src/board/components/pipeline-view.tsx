@@ -62,14 +62,14 @@ function statusColor(status: PipelineStatus): string {
 }
 
 function progressBar(pipeline: Pipeline, width: number): string {
-  const total = 5;
+  const total = 6;
   const completed = pipeline.completedBeads ?? 0;
   const filled = Math.round((completed / total) * width);
   return "█".repeat(filled) + "░".repeat(width - filled);
 }
 
 function progressPercent(pipeline: Pipeline): string {
-  const pct = Math.round(((pipeline.completedBeads ?? 0) / 5) * 100);
+  const pct = Math.round(((pipeline.completedBeads ?? 0) / 6) * 100);
   return `${pct}%`;
 }
 
@@ -109,9 +109,7 @@ function PipelineListItem({
       <Text> </Text>
       <Text color="yellow">{bar}</Text>
       <Text dimColor> {progressPercent(pipeline)}</Text>
-      {pipeline.activePhase ? (
-        <Text dimColor> {pipeline.activePhase}</Text>
-      ) : null}
+      {pipeline.activePhase ? <Text dimColor> {pipeline.activePhase}</Text> : null}
     </Box>
   );
 }
@@ -174,6 +172,37 @@ function DecisionPanel({ question }: { question: Question }) {
   );
 }
 
+// ── Brainstorm Panel ──
+
+function BrainstormPanel({ pipeline }: { pipeline: Pipeline }) {
+  return (
+    <Box flexDirection="column" paddingX={1}>
+      <Box marginBottom={1}>
+        <Text color="cyan" bold>
+          Ready to brainstorm: {pipeline.title}
+        </Text>
+      </Box>
+      <Box>
+        <Text dimColor>Pipeline: </Text>
+        <Text>{pipeline.featureId}</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text>Press </Text>
+        <Text color="cyan" bold>
+          Z
+        </Text>
+        <Text> to start the brainstorm session</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text dimColor>
+          You'll brainstorm with Claude to refine the spec into user stories.
+          {"\n"}When done, close the bead and autonomous work begins.
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
 // ── All Clear Panel ──
 
 function AllClearPanel({ pipelines }: { pipelines: Pipeline[] }) {
@@ -220,20 +249,35 @@ function PipelineStatusBar({
   mergeQueue: readonly MergeQueueEntry[];
 }) {
   const running = pipelines.filter((p) => p.status === "running").length;
+  const brainstorming = pipelines.filter(
+    (p) => p.status === "running" && p.activePhase === "brainstorm",
+  ).length;
+  const autonomous = running - brainstorming;
   const blocked = pipelines.filter((p) => p.status === "blocked").length;
   const agentCount = agents.filter((a) => a.monitor.isRunning).length;
   const decisions = pendingDecisions.length;
   const queueDepth = mergeQueue.filter((e) => e.status === "pending").length;
 
+  const pipelineLabel =
+    brainstorming > 0 && autonomous > 0
+      ? `${brainstorming} brainstorming, ${autonomous} autonomous`
+      : brainstorming > 0
+        ? `${running} pipeline${running !== 1 ? "s" : ""} (brainstorming)`
+        : `${running} pipeline${running !== 1 ? "s" : ""}`;
+
   return (
     <Box>
-      <Text dimColor>{running} pipeline{running !== 1 ? "s" : ""}</Text>
+      <Text dimColor>{pipelineLabel}</Text>
       <Text dimColor> · </Text>
-      <Text dimColor>{agentCount} agent{agentCount !== 1 ? "s" : ""}</Text>
+      <Text dimColor>
+        {agentCount} agent{agentCount !== 1 ? "s" : ""}
+      </Text>
       {decisions > 0 ? (
         <>
           <Text dimColor> · </Text>
-          <Text color="red" bold>⚠ {decisions} decision{decisions !== 1 ? "s" : ""}</Text>
+          <Text color="red" bold>
+            ⚠ {decisions} decision{decisions !== 1 ? "s" : ""}
+          </Text>
         </>
       ) : null}
       {blocked > 0 ? (
@@ -282,7 +326,7 @@ function PipelineDetailPanel({
   pipeline: Pipeline;
   agents: readonly TrackedAgent[];
 }) {
-  const phases = ["stories", "tests", "impl", "redteam", "merge"] as const;
+  const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
   // Filter agents belonging to this pipeline (match by repo)
   const pipelineAgents = agents.filter((a) => a.repo === pipeline.repo);
 
@@ -316,7 +360,9 @@ function PipelineDetailPanel({
 
           return (
             <Text key={phase}>
-              <Text color={phaseColor}>{phase} {phaseIcon}</Text>
+              <Text color={phaseColor}>
+                {phase} {phaseIcon}
+              </Text>
               {i < phases.length - 1 ? <Text dimColor> → </Text> : null}
             </Text>
           );
@@ -326,7 +372,10 @@ function PipelineDetailPanel({
       <Box marginTop={1}>
         <Text dimColor>Status: </Text>
         <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
-        <Text dimColor> · {progressPercent(pipeline)} · started {timeAgo(pipeline.startedAt)}</Text>
+        <Text dimColor>
+          {" "}
+          · {progressPercent(pipeline)} · started {timeAgo(pipeline.startedAt)}
+        </Text>
       </Box>
 
       {/* Active agents for this pipeline */}
@@ -346,7 +395,10 @@ function PipelineDetailPanel({
                   {agent.monitor.isRunning ? "◐ " : "✓ "}
                 </Text>
                 <Text bold>{agent.phase}</Text>
-                <Text dimColor> {activity} · {elapsed}m</Text>
+                <Text dimColor>
+                  {" "}
+                  {activity} · {elapsed}m
+                </Text>
               </Box>
             );
           })}
@@ -356,18 +408,22 @@ function PipelineDetailPanel({
       {/* Blocked/failed indicator */}
       {pipeline.status === "blocked" ? (
         <Box marginTop={1}>
-          <Text color="red" bold>⚠ Blocked — waiting for your decision (see above or press 1-9)</Text>
+          <Text color="red" bold>
+            ⚠ Blocked — waiting for your decision (see above or press 1-9)
+          </Text>
         </Box>
       ) : null}
       {pipeline.status === "failed" ? (
         <Box marginTop={1}>
-          <Text color="red" bold>✗ Pipeline failed at {pipeline.activePhase ?? "unknown"} phase</Text>
+          <Text color="red" bold>
+            ✗ Pipeline failed at {pipeline.activePhase ?? "unknown"} phase
+          </Text>
         </Box>
       ) : null}
       {pipeline.status === "completed" ? (
         <Box marginTop={1}>
           <Text color="green" bold>
-            ✓ Complete! {pipeline.completedBeads}/5 phases done.
+            ✓ Complete! {pipeline.completedBeads}/6 phases done.
             {pipeline.completedAt ? ` Finished ${timeAgo(pipeline.completedAt)}` : ""}
           </Text>
         </Box>
@@ -418,14 +474,17 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
   const selectedPipeline = pipelines[selectedIndex];
 
   // Determine what the focus panel shows
-  const focusContent =
-    pendingDecisions.length > 0 ? (
-      <DecisionPanel question={pendingDecisions[0]!} />
-    ) : selectedPipeline ? (
-      <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
-    ) : (
-      <AllClearPanel pipelines={pipelines} />
-    );
+  const brainstormPipeline =
+    selectedPipeline?.activePhase === "brainstorm" ? selectedPipeline : undefined;
+  const focusContent = brainstormPipeline ? (
+    <BrainstormPanel pipeline={brainstormPipeline} />
+  ) : pendingDecisions.length > 0 ? (
+    <DecisionPanel question={pendingDecisions[0]!} />
+  ) : selectedPipeline ? (
+    <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
+  ) : (
+    <AllClearPanel pipelines={pipelines} />
+  );
 
   // Narrow layout: list + inline focus content (decisions/detail)
   if (!isWide) {

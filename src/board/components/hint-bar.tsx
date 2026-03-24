@@ -10,6 +10,7 @@ interface HintBarProps {
   readonly mineOnly: boolean;
   readonly hasUndoable?: boolean;
   readonly boardView?: "pipelines" | "issues";
+  readonly pipelineBrainstorming?: boolean;
 }
 
 function HintBar({
@@ -20,6 +21,7 @@ function HintBar({
   mineOnly,
   hasUndoable,
   boardView,
+  pipelineBrainstorming,
 }: HintBarProps) {
   if (uiMode === "multiSelect") {
     return (
@@ -106,11 +108,12 @@ function HintBar({
 
   // Pipeline View hints
   if (boardView === "pipelines") {
+    const pipelineHint = pipelineBrainstorming
+      ? "Z:brainstorm  j/k:navigate  P:new pipeline  Tab:issues  q:quit"
+      : "j/k:navigate  P:new pipeline  D:decide  Z:zen  Tab:issues  ? help  q:quit";
     return (
       <Box>
-        <Text color="gray">
-          j/k:navigate  P:new pipeline  D:decide  Z:zen  Tab:issues  ? help  q:quit
-        </Text>
+        <Text color="gray">{pipelineHint}</Text>
       </Box>
     );
   }

@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildAgentLaunchArgs, buildTmuxSessionName, writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
@@ -19,7 +19,7 @@ describe("role-context", () => {
   // STORY-008: As a pipeline operator, each worktree gets a role-specific CLAUDE.md
   // that restricts what the agent can do
   describe("STORY-008: Role-specific CLAUDE.md generation", () => {
-    const roles: PipelineRole[] = ["stories", "test", "impl", "redteam", "merge"];
+    const roles: PipelineRole[] = ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
 
     for (const role of roles) {
       it(`writes CLAUDE.md for ${role} role`, () => {
@@ -30,7 +30,12 @@ describe("role-context", () => {
 
         const content = readFileSync(claudeMdPath, "utf-8");
         expect(content.length).toBeGreaterThan(100);
-        expect(content).toContain("Agent Role:");
+        // Brainstorm is an "Interactive Session", all others are "Agent Role"
+        if (role === "brainstorm") {
+          expect(content).toContain("Interactive Session:");
+        } else {
+          expect(content).toContain("Agent Role:");
+        }
       });
     }
 
@@ -65,6 +70,15 @@ describe("role-context", () => {
 
       expect(content).toContain("Do NOT modify implementation code");
       expect(content).toContain("only expose them with failing tests");
+    });
+
+    it("brainstorm CLAUDE.md allows reading anything but restricts writing", () => {
+      writeRoleClaudeMd(tempDir, "brainstorm");
+      const content = readFileSync(join(tempDir, "CLAUDE.md"), "utf-8");
+
+      expect(content).toContain("Read any file");
+      expect(content).toContain("Do NOT write implementation code");
+      expect(content).toContain("bd close");
     });
 
     it("merge CLAUDE.md forbids modifying source and tests", () => {
