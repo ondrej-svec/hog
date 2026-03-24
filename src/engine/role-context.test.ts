@@ -78,7 +78,7 @@ describe("role-context", () => {
 
       expect(content).toContain("Read any file");
       expect(content).toContain("Do NOT write implementation code");
-      expect(content).toContain("bd close");
+      expect(content).toContain("hog pipeline create");
     });
 
     it("merge CLAUDE.md forbids modifying source and tests", () => {

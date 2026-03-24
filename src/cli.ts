@@ -269,23 +269,25 @@ program
     }
   });
 
-// -- Work command (Conductor pipeline) --
+// -- Pipeline commands --
 
-program
-  .command("work [specOrRef]")
-  .description("Start an autonomous development pipeline for a feature")
+const pipelineCommand = program.command("pipeline").description("Pipeline management");
+
+pipelineCommand
+  .command("create <title>")
+  .description("Create an autonomous development pipeline")
+  .option("--description <text>", "Feature description (defaults to title)")
+  .option("--stories <path>", "Path to stories file")
+  .option("--brainstorm-done", "Skip brainstorm phase (mark as already completed)")
   .option("--repo <name>", "Target repo (short name or full)")
-  .option("--status", "Show active pipelines")
-  .option("--pause <featureId>", "Pause a running pipeline")
-  .option("--resume <featureId>", "Resume a paused pipeline")
   .action(
     async (
-      specOrRef: string | undefined,
+      title: string,
       opts: {
+        description?: string;
+        stories?: string;
+        brainstormDone?: true;
         repo?: string;
-        status?: true;
-        pause?: string;
-        resume?: string;
       },
     ) => {
       const rawCfg = loadFullConfig();
@@ -303,46 +305,6 @@ program
         return;
       }
 
-      const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-
-      if (opts.status) {
-        const pipelines = conductor.getPipelines();
-        if (pipelines.length === 0) {
-          console.log("No active pipelines.");
-        } else {
-          for (const p of pipelines) {
-            console.log(`${p.featureId}  ${p.status.padEnd(10)}  ${p.title}`);
-          }
-        }
-        return;
-      }
-
-      if (opts.pause) {
-        const ok = conductor.pausePipeline(opts.pause);
-        console.log(
-          ok ? `Paused: ${opts.pause}` : `Pipeline not found or not running: ${opts.pause}`,
-        );
-        return;
-      }
-
-      if (opts.resume) {
-        const ok = conductor.resumePipeline(opts.resume);
-        console.log(
-          ok ? `Resumed: ${opts.resume}` : `Pipeline not found or not paused: ${opts.resume}`,
-        );
-        return;
-      }
-
-      if (!specOrRef) {
-        console.error("Usage: hog work <description or issueRef>");
-        console.error('  hog work "Add user authentication"');
-        console.error("  hog work myrepo/42");
-        console.error("  hog work --status");
-        process.exitCode = 1;
-        return;
-      }
-
-      // Determine target repo
       const targetRepo = opts.repo
         ? cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo)
         : cfg.repos[0];
@@ -353,19 +315,15 @@ program
         return;
       }
 
-      // Start the pipeline
+      const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
       engine.agents.start();
       conductor.start();
-
-      console.log(`Starting pipeline: ${specOrRef}`);
-      console.log(`Repo: ${targetRepo.shortName ?? targetRepo.name}`);
-      console.log("");
 
       const result = await conductor.startPipeline(
         targetRepo.name,
         targetRepo,
-        specOrRef,
-        specOrRef,
+        title,
+        opts.description ?? title,
       );
 
       if ("error" in result) {
@@ -376,27 +334,156 @@ program
         return;
       }
 
-      console.log(`Pipeline started: ${result.featureId}`);
-      console.log("Beads created:");
-      console.log(`  Stories:  ${result.beadIds.stories}`);
-      console.log(`  Tests:    ${result.beadIds.tests}`);
-      console.log(`  Impl:     ${result.beadIds.impl}`);
-      console.log(`  Red Team: ${result.beadIds.redteam}`);
-      console.log(`  Merge:    ${result.beadIds.merge}`);
-      console.log("");
-      console.log("Conductor running. Press Ctrl+C to stop (agents continue in background).");
+      // Close brainstorm bead if --brainstorm-done (fire-and-forget mode)
+      if (opts.brainstormDone) {
+        try {
+          await engine.beads.close(
+            targetRepo.localPath!,
+            result.beadIds.brainstorm,
+            "Brainstorm completed in session",
+          );
+        } catch (err) {
+          console.error(
+            `Warning: failed to close brainstorm bead: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
 
-      process.on("SIGINT", () => {
-        conductor.stop();
-        engine.agents.stop();
-        console.log("\nConductor stopped. Active agents continue running.");
-        process.exit(0);
-      });
+      if (useJson()) {
+        jsonOut({
+          ok: true,
+          data: {
+            featureId: result.featureId,
+            title: result.title,
+            repo: result.repo,
+            beadIds: result.beadIds,
+            brainstormDone: opts.brainstormDone ?? false,
+          },
+        });
+      } else {
+        console.log(`Pipeline started: ${result.featureId}`);
+        console.log(`  Repo:    ${targetRepo.shortName ?? targetRepo.name}`);
+        console.log(
+          `  Beads:   brainstorm${opts.brainstormDone ? " ✓" : ""} → stories → tests → impl → redteam → merge`,
+        );
+        if (opts.brainstormDone) {
+          console.log("  Mode:    brainstorm skipped — stories agent starts next");
+        }
+      }
 
-      // Keep alive
-      await new Promise(() => {});
+      // Fire-and-forget: stop conductor and exit
+      conductor.stop();
+      engine.agents.stop();
     },
   );
+
+pipelineCommand
+  .command("list")
+  .description("Show active pipelines")
+  .action(async () => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const pipelines = conductor.getPipelines();
+
+    if (useJson()) {
+      jsonOut({ ok: true, data: { pipelines } });
+    } else if (pipelines.length === 0) {
+      console.log("No active pipelines.");
+    } else {
+      for (const p of pipelines) {
+        console.log(`${p.featureId}  ${p.status.padEnd(10)}  ${p.title}`);
+      }
+    }
+  });
+
+pipelineCommand
+  .command("pause <featureId>")
+  .description("Pause a running pipeline")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const ok = conductor.pausePipeline(featureId);
+    console.log(ok ? `Paused: ${featureId}` : `Pipeline not found or not running: ${featureId}`);
+  });
+
+pipelineCommand
+  .command("resume <featureId>")
+  .description("Resume a paused pipeline")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const ok = conductor.resumePipeline(featureId);
+    console.log(ok ? `Resumed: ${featureId}` : `Pipeline not found or not paused: ${featureId}`);
+  });
+
+pipelineCommand
+  .command("init")
+  .description("Add pipeline instructions to your project's CLAUDE.md")
+  .action(async () => {
+    const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+
+    const claudeMdPath = join(process.cwd(), "CLAUDE.md");
+    const section = `
+## Hog Pipelines
+
+This project uses [hog](https://github.com/ondrejsvec/hog) for autonomous development pipelines.
+
+When the user wants to turn a feature into autonomous work ("ship it", "build this", "/pipeline"):
+1. Write user stories to \`tests/stories/{slug}.md\` using STORY-001 format with acceptance criteria
+2. Run: \`hog pipeline create "Feature title" --brainstorm-done --stories tests/stories/{slug}.md\`
+3. The pipeline runs autonomously: stories → tests → impl → redteam → merge
+
+Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeline resume <id>\`
+`;
+
+    const marker = "## Hog Pipelines";
+
+    if (existsSync(claudeMdPath)) {
+      const existing = readFileSync(claudeMdPath, "utf-8");
+      if (existing.includes(marker)) {
+        console.log("CLAUDE.md already has a Hog Pipelines section. No changes needed.");
+        return;
+      }
+      writeFileSync(claudeMdPath, `${existing}\n${section}`, "utf-8");
+      console.log("Added Hog Pipelines section to CLAUDE.md");
+    } else {
+      writeFileSync(claudeMdPath, `# CLAUDE.md\n${section}`, "utf-8");
+      console.log("Created CLAUDE.md with Hog Pipelines section");
+    }
+  });
+
+// Deprecation alias for hog work
+program
+  .command("work", { hidden: true })
+  .description("Deprecated: use `hog pipeline create` instead")
+  .allowUnknownOption()
+  .action(() => {
+    console.error("'hog work' has been replaced by 'hog pipeline create'.");
+    console.error("");
+    console.error("Usage:");
+    console.error('  hog pipeline create "Add user authentication"');
+    console.error("  hog pipeline create --brainstorm-done --stories tests/stories/auth.md");
+    console.error("  hog pipeline list");
+    console.error("  hog pipeline pause <featureId>");
+    console.error("  hog pipeline resume <featureId>");
+    process.exitCode = 1;
+  });
 
 // -- Decisions command --
 

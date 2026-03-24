@@ -31,13 +31,13 @@ const BRAINSTORM_PROMPT = [
   "1. Discuss the feature with the human — ask questions, explore approaches",
   "2. Refine it into clear user stories with acceptance criteria",
   "3. Write stories to tests/stories/{slug}.md",
-  '4. When you and the human are satisfied: bd close {beadId} --reason "Brainstorm complete"',
+  '4. When the human confirms: hog pipeline create "{title}" --brainstorm-done --stories tests/stories/{slug}.md',
   "",
   "Rules:",
   "- Be collaborative — this is a conversation, not an output",
   "- Challenge assumptions, suggest alternatives, explore edge cases",
   "- Each story needs a unique ID (STORY-001, etc.) and testable acceptance criteria",
-  "- Don't close the bead until the human confirms the stories are good",
+  "- Don't create the pipeline until the human confirms the stories are good",
 ].join("\n");
 
 const STORIES_PROMPT = [

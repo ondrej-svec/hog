@@ -62,8 +62,8 @@ describe("roles", () => {
   it("brainstorm prompt encourages collaboration", () => {
     const prompt = PIPELINE_ROLES.brainstorm.promptTemplate;
     expect(prompt).toContain("brainstorm");
-    expect(prompt).toContain("bd close");
-    expect(prompt).toContain("{beadId}");
+    expect(prompt).toContain("hog pipeline create");
+    expect(prompt).toContain("--brainstorm-done");
   });
 
   it("brainstorm role detected from label fallback", () => {

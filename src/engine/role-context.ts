@@ -24,18 +24,19 @@ You are brainstorming a new feature with the human. This is a collaborative, int
 - Refine the idea into clear user stories with acceptance criteria
 - Write stories to \`tests/stories/\` when ready
 - Each story MUST have a unique ID (STORY-001, STORY-002, etc.)
-- When the human confirms the stories are good, close the bead with \`bd close\`
+- When the human confirms the stories are good, create the pipeline:
+  \`hog pipeline create "{title}" --brainstorm-done --stories tests/stories/{slug}.md\`
 
 ## Allowed Actions
 - Read any file (for context and understanding the codebase)
 - Write files in \`tests/stories/\` only
 - Use git to commit stories
-- Run \`bd close\` when brainstorming is complete
+- Run \`hog pipeline create\` when brainstorming is complete
 
 ## Forbidden Actions
 - Do NOT write implementation code or tests
 - Do NOT modify source files in \`src/\`
-- Do NOT close the bead without human confirmation
+- Do NOT create the pipeline without human confirmation
 `;
 
 const STORIES_CLAUDE_MD = `# Agent Role: Story Writer

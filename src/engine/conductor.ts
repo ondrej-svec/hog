@@ -470,8 +470,7 @@ export class Conductor {
     const prompt = PIPELINE_ROLES.brainstorm.promptTemplate
       .replace(/\{title\}/g, pipeline.title)
       .replace(/\{slug\}/g, slug)
-      .replace(/\{spec\}/g, bead.description ?? pipeline.title)
-      .replace(/\{beadId\}/g, bead.id);
+      .replace(/\{spec\}/g, bead.description ?? pipeline.title);
 
     const result = launchClaude({
       localPath: pipeline.localPath,
