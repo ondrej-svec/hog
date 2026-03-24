@@ -32,4 +32,27 @@ describe("BeadsClient", () => {
       expect(match).toBeNull();
     });
   });
+
+  describe("projectPort", () => {
+    it("returns a port in the 23000-23999 range", async () => {
+      const { projectPort } = await import("./beads.js");
+      const port = projectPort("/Users/test/projects/myapp");
+      expect(port).toBeGreaterThanOrEqual(23000);
+      expect(port).toBeLessThan(24000);
+    });
+
+    it("returns consistent port for same path", async () => {
+      const { projectPort } = await import("./beads.js");
+      const port1 = projectPort("/Users/test/projects/myapp");
+      const port2 = projectPort("/Users/test/projects/myapp");
+      expect(port1).toBe(port2);
+    });
+
+    it("returns different ports for different paths", async () => {
+      const { projectPort } = await import("./beads.js");
+      const port1 = projectPort("/Users/test/projects/alpha");
+      const port2 = projectPort("/Users/test/projects/beta");
+      expect(port1).not.toBe(port2);
+    });
+  });
 });

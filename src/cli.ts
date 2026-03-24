@@ -667,6 +667,9 @@ pipelineCommand
           title: `hog: ${pipeline.title}`,
           body: "Pipeline complete! All 6 phases done.",
         });
+        // Auto-stop Dolt server — no longer needed
+        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
+        log("Dolt server stopped (auto-cleanup)");
         clearInterval(checkInterval);
         conductor.stop();
         engine.agents.stop();
@@ -680,6 +683,8 @@ pipelineCommand
           title: `hog: ${pipeline.title}`,
           body: `Pipeline failed at ${phase}. Run: hog pipeline list`,
         });
+        // Auto-stop Dolt server on failure too
+        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
         clearInterval(checkInterval);
         conductor.stop();
         engine.agents.stop();
@@ -747,6 +752,123 @@ Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeli
       writeFileSync(claudeMdPath, `# CLAUDE.md\n${section}`, "utf-8");
       console.log("Created CLAUDE.md with Hog Pipelines section");
     }
+  });
+
+// -- Beads server management --
+
+const beadsCommand = program.command("beads").description("Beads/Dolt server management");
+
+beadsCommand
+  .command("status")
+  .description("Show Dolt server status")
+  .option("--all", "Show ALL running Dolt servers across projects")
+  .action(async (opts: { all?: true }) => {
+    const { Engine } = await import("./engine/engine.js");
+    const { BeadsClient, projectPort } = await import("./engine/beads.js");
+
+    if (opts.all) {
+      const servers = BeadsClient.findRunningDoltServers();
+      if (servers.length === 0) {
+        console.log("No running Dolt servers found.");
+        return;
+      }
+      console.log("Running Dolt servers:");
+      for (const s of servers) {
+        const portStr = s.port ? `port ${s.port}` : "port unknown";
+        const cwdStr = s.cwd ?? "unknown project";
+        const timeStr = s.startTime ?? "";
+        console.log(`  PID ${s.pid}  ${portStr.padEnd(12)}  ${cwdStr}  ${timeStr}`);
+      }
+      return;
+    }
+
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const engine = new Engine(cfg);
+
+    if (!engine.beadsAvailable) {
+      console.error("Beads (bd) is not installed.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const cwd = process.cwd();
+    const beads = engine.beads;
+
+    if (!beads.isInitialized(cwd)) {
+      console.log(`No .beads/ in ${cwd}. Run \`hog pipeline create\` to initialize.`);
+      return;
+    }
+
+    const status = await beads.doltStatus(cwd);
+    const expectedPort = projectPort(cwd);
+    console.log(`Beads server for ${cwd}:`);
+    console.log(`  Status:  ${status.running ? "running" : "stopped"}`);
+    console.log(`  Port:    ${status.port ?? expectedPort} (assigned: ${expectedPort})`);
+    if (status.pid) console.log(`  PID:     ${status.pid}`);
+  });
+
+beadsCommand
+  .command("start")
+  .description("Start Dolt server for current project")
+  .action(async () => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+
+    const engine = new Engine(cfg);
+    if (!engine.beadsAvailable) {
+      console.error("Beads (bd) is not installed.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const cwd = process.cwd();
+    await engine.beads.ensureDoltRunning(cwd);
+    const status = await engine.beads.doltStatus(cwd);
+    console.log(`Dolt server started${status.port ? ` on port ${status.port}` : ""}.`);
+  });
+
+beadsCommand
+  .command("stop")
+  .description("Stop Dolt server")
+  .option("--all", "Stop ALL running Dolt servers")
+  .action(async (opts: { all?: true }) => {
+    if (opts.all) {
+      const { BeadsClient } = await import("./engine/beads.js");
+      const servers = BeadsClient.findRunningDoltServers();
+      if (servers.length === 0) {
+        console.log("No running Dolt servers found.");
+        return;
+      }
+      let killed = 0;
+      for (const s of servers) {
+        try {
+          process.kill(s.pid, "SIGTERM");
+          killed++;
+          console.log(`Stopped PID ${s.pid}${s.cwd ? ` (${s.cwd})` : ""}`);
+        } catch {
+          console.error(`Failed to stop PID ${s.pid}`);
+        }
+      }
+      console.log(`\nStopped ${killed}/${servers.length} server(s).`);
+      return;
+    }
+
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+
+    const engine = new Engine(cfg);
+    if (!engine.beadsAvailable) {
+      console.error("Beads (bd) is not installed.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const cwd = process.cwd();
+    const stopped = await engine.beads.stopDolt(cwd);
+    console.log(stopped ? "Dolt server stopped." : "No running server found for this project.");
   });
 
 // Deprecation alias for hog work

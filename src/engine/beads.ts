@@ -87,6 +87,33 @@ async function runBdJsonAsync<T>(args: string[], cwd: string): Promise<T> {
   return JSON.parse(output) as T;
 }
 
+// ── Dolt Server Types ──
+
+export interface DoltStatus {
+  readonly running: boolean;
+  readonly port?: number | undefined;
+  readonly pid?: number | undefined;
+}
+
+export interface DoltServerInfo {
+  readonly pid: number;
+  readonly port?: number | undefined;
+  readonly cwd?: string | undefined;
+  readonly startTime?: string | undefined;
+}
+
+/**
+ * Generate a deterministic port for a project based on its absolute path.
+ * Returns a port in the range 23000–23999 to avoid conflicts between projects.
+ */
+export function projectPort(cwd: string): number {
+  let hash = 0;
+  for (const ch of cwd) {
+    hash = ((hash << 5) - hash + ch.charCodeAt(0)) | 0;
+  }
+  return 23000 + (Math.abs(hash) % 1000);
+}
+
 // ── BeadsClient ──
 
 /**
@@ -142,22 +169,150 @@ export class BeadsClient {
 
       const status = await runBdAsync(["dolt", "status"], cwd);
       if (status.includes("not running")) {
-        await runBdAsync(["dolt", "start"], cwd);
-        // Give Dolt a moment to fully start accepting connections
-        await new Promise((r) => setTimeout(r, 1_000));
+        await this.startDoltWithConflictHandling(cwd);
       }
     } catch {
       // Try starting anyway — bd dolt start may work even if status failed
       try {
-        await runBdAsync(["dolt", "start"], cwd);
-        await new Promise((r) => setTimeout(r, 1_000));
-      } catch {
+        await this.startDoltWithConflictHandling(cwd);
+      } catch (err) {
+        // Provide user-friendly error for port conflicts
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("port") && msg.includes("in use")) {
+          const port = projectPort(cwd);
+          throw new Error(
+            `Dolt port ${port} is in use by another process.\n` +
+              `Run \`hog beads stop --all\` to clean up, or \`hog beads status --all\` to see what's running.`,
+          );
+        }
         // Last resort: let bd auto-start handle it
       }
     }
   }
 
-  /** Pin the Dolt port in .beads/config.yaml to prevent random port cycling. */
+  /** Start Dolt, handling port conflicts by killing the blocking process. */
+  private async startDoltWithConflictHandling(cwd: string): Promise<void> {
+    try {
+      await runBdAsync(["dolt", "start"], cwd);
+      await new Promise((r) => setTimeout(r, 1_000));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Detect port conflict and try to auto-resolve
+      if (msg.includes("port") && msg.includes("in use")) {
+        const port = projectPort(cwd);
+        try {
+          // Find and kill the process using our port
+          const lsofOut = execFileSync("lsof", ["-ti", `:${port}`], {
+            encoding: "utf-8",
+            timeout: 3_000,
+            stdio: "pipe",
+          }).trim();
+          if (lsofOut) {
+            const pid = parseInt(lsofOut.split("\n")[0] ?? "", 10);
+            if (pid) {
+              process.kill(pid, "SIGTERM");
+              await new Promise((r) => setTimeout(r, 1_000));
+              // Retry start
+              await runBdAsync(["dolt", "start"], cwd);
+              await new Promise((r) => setTimeout(r, 1_000));
+              return;
+            }
+          }
+        } catch {
+          // Auto-resolve failed — re-throw with helpful message
+        }
+      }
+      throw err;
+    }
+  }
+
+  /** Get the Dolt server status for a project. */
+  async doltStatus(cwd: string): Promise<DoltStatus> {
+    try {
+      const output = await runBdAsync(["dolt", "status"], cwd);
+      const running = !output.includes("not running");
+      const portMatch = output.match(/port[:\s]+(\d+)/i);
+      const pidMatch = output.match(/PID[:\s]+(\d+)/i);
+      return {
+        running,
+        port: portMatch ? parseInt(portMatch[1]!, 10) : undefined,
+        pid: pidMatch ? parseInt(pidMatch[1]!, 10) : undefined,
+      };
+    } catch {
+      return { running: false };
+    }
+  }
+
+  /** Stop the Dolt server for a project. */
+  async stopDolt(cwd: string): Promise<boolean> {
+    try {
+      await runBdAsync(["dolt", "stop"], cwd);
+      return true;
+    } catch {
+      // bd dolt stop may not exist — try PID-based fallback
+      try {
+        const status = await this.doltStatus(cwd);
+        if (status.pid) {
+          process.kill(status.pid, "SIGTERM");
+          return true;
+        }
+      } catch {
+        // best-effort
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Find all running Dolt server processes system-wide.
+   * Parses ps output to extract PID, port, and working directory.
+   */
+  static findRunningDoltServers(): DoltServerInfo[] {
+    try {
+      const output = execFileSync("ps", ["aux"], {
+        encoding: "utf-8",
+        timeout: 5_000,
+        stdio: "pipe",
+      });
+      const servers: DoltServerInfo[] = [];
+      for (const line of output.split("\n")) {
+        if (!(line.includes("dolt") && line.includes("sql-server"))) continue;
+        if (line.includes("grep")) continue;
+
+        const parts = line.trim().split(/\s+/);
+        const pid = parseInt(parts[1] ?? "", 10);
+        if (!pid) continue;
+
+        // Extract port from -P flag
+        const portIdx = parts.indexOf("-P");
+        const port = portIdx >= 0 ? parseInt(parts[portIdx + 1] ?? "", 10) : undefined;
+
+        // Try to find cwd from /proc or lsof (best-effort)
+        let cwd: string | undefined;
+        try {
+          const lsofOut = execFileSync("lsof", ["-p", String(pid), "-Fn"], {
+            encoding: "utf-8",
+            timeout: 3_000,
+            stdio: "pipe",
+          });
+          const cwdMatch = lsofOut.match(/n(\/[^\n]+)\/\.beads/);
+          if (cwdMatch) cwd = cwdMatch[1];
+        } catch {
+          // lsof may not be available
+        }
+
+        // Estimate uptime from process start time
+        const startTime = parts[8]; // TIME column in ps aux
+
+        servers.push({ pid, port, cwd, startTime });
+      }
+      return servers;
+    } catch {
+      return [];
+    }
+  }
+
+  /** Pin the Dolt port in .beads/config.yaml — deterministic per project. */
   private async pinDoltPort(cwd: string): Promise<void> {
     const configPath = join(cwd, ".beads", "config.yaml");
     if (!existsSync(configPath)) return;
@@ -167,9 +322,9 @@ export class BeadsClient {
       // Only add if no dolt port is already configured
       if (content.includes("dolt:") && content.includes("port:")) return;
 
-      // Append dolt port config
-      const portConfig =
-        "\n# Auto-configured by hog to prevent Dolt port cycling\ndolt:\n  port: 23307\n";
+      // Use deterministic port based on project path
+      const port = projectPort(cwd);
+      const portConfig = `\n# Auto-configured by hog — deterministic port for this project\ndolt:\n  port: ${port}\n`;
       writeFileSync(configPath, content + portConfig, "utf-8");
     } catch {
       // Non-critical — port cycling is annoying but not fatal

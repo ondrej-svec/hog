@@ -108,14 +108,21 @@ export class Conductor {
   private savePipelines(): void {
     try {
       // Read existing pipelines from disk (may include state from other processes)
-      let diskPipelines: Map<string, Record<string, unknown>> = new Map();
+      const diskPipelines: Map<string, Record<string, unknown>> = new Map();
       if (existsSync(Conductor.PIPELINES_FILE)) {
         try {
           const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
           if (Array.isArray(raw)) {
             for (const entry of raw) {
-              if (typeof entry === "object" && entry !== null && typeof (entry as Record<string, unknown>)["featureId"] === "string") {
-                diskPipelines.set((entry as Record<string, unknown>)["featureId"] as string, entry as Record<string, unknown>);
+              if (
+                typeof entry === "object" &&
+                entry !== null &&
+                typeof (entry as Record<string, unknown>)["featureId"] === "string"
+              ) {
+                diskPipelines.set(
+                  (entry as Record<string, unknown>)["featureId"] as string,
+                  entry as Record<string, unknown>,
+                );
               }
             }
           }
@@ -142,7 +149,10 @@ export class Conductor {
 
       // Remove pipelines that were deleted in-memory (cancelled)
       for (const id of diskPipelines.keys()) {
-        if (!this.pipelines.has(id) && this.decisionLog.some((e) => e.featureId === id && e.action === "pipeline:cancelled")) {
+        if (
+          !this.pipelines.has(id) &&
+          this.decisionLog.some((e) => e.featureId === id && e.action === "pipeline:cancelled")
+        ) {
           diskPipelines.delete(id);
         }
       }
@@ -173,7 +183,8 @@ export class Conductor {
         if (e["status"] === "completed" || e["status"] === "failed") continue;
 
         // Auto-expire stale pipelines (>7 days old with no progress)
-        const startedAt = typeof e["startedAt"] === "string" ? new Date(e["startedAt"]).getTime() : 0;
+        const startedAt =
+          typeof e["startedAt"] === "string" ? new Date(e["startedAt"]).getTime() : 0;
         const ageDays = (Date.now() - startedAt) / 86_400_000;
         const completedBeads = typeof e["completedBeads"] === "number" ? e["completedBeads"] : 0;
         if (ageDays > 7 && completedBeads === 0) continue;
@@ -195,14 +206,16 @@ export class Conductor {
 
         // Re-resolve repoConfig from current config, fall back to ad-hoc config
         const localPath = (e["localPath"] as string) ?? "";
-        const repoConfig = this.config.repos.find((r) => r.name === e["repo"]) ?? ({
-          name: e["repo"] as string,
-          shortName: e["repo"] as string,
-          projectNumber: 0,
-          statusFieldId: "",
-          localPath,
-          completionAction: { type: "closeIssue" },
-        } as RepoConfig);
+        const repoConfig =
+          this.config.repos.find((r) => r.name === e["repo"]) ??
+          ({
+            name: e["repo"] as string,
+            shortName: e["repo"] as string,
+            projectNumber: 0,
+            statusFieldId: "",
+            localPath,
+            completionAction: { type: "closeIssue" },
+          } as RepoConfig);
 
         const pipeline: Pipeline = {
           featureId: e["featureId"] as string,
