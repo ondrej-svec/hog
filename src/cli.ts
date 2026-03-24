@@ -369,9 +369,26 @@ pipelineCommand
         if (opts.brainstormDone) {
           console.log("  Mode:    brainstorm skipped — stories agent starts next");
         }
+        console.log("  Watch:   background conductor advancing phases automatically");
+        console.log("");
+        console.log(
+          "Run `hog board --live` for visual progress, or `hog pipeline list` to check status.",
+        );
       }
 
-      // Fire-and-forget: stop conductor and exit
+      // Spawn a background conductor to advance the pipeline through all phases.
+      // Without this, the pipeline stalls after the first agent completes.
+      const { spawn: spawnProcess } = await import("node:child_process");
+      const { fileURLToPath } = await import("node:url");
+      const cliPath = fileURLToPath(import.meta.url).replace(/\.js$/, ".js");
+      const watchArgs = ["pipeline", "watch", result.featureId, "--repo", targetRepo.name];
+      const child = spawnProcess(process.execPath, [cliPath, ...watchArgs], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Stop the conductor in THIS process — the background watcher takes over
       conductor.stop();
       engine.agents.stop();
     },
@@ -429,6 +446,50 @@ pipelineCommand
     const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
     const ok = conductor.resumePipeline(featureId);
     console.log(ok ? `Resumed: ${featureId}` : `Pipeline not found or not paused: ${featureId}`);
+  });
+
+pipelineCommand
+  .command("watch <featureId>", { hidden: true })
+  .description("Internal: keep conductor alive until a pipeline completes")
+  .option("--repo <name>", "Target repo")
+  .action(async (featureId: string, opts: { repo?: string }) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    if (!engine.beadsAvailable) {
+      process.exitCode = 1;
+      return;
+    }
+
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    engine.agents.start();
+    conductor.start();
+
+    // Poll until the pipeline completes, fails, or disappears
+    const checkInterval = setInterval(() => {
+      const pipelines = conductor.getPipelines();
+      const pipeline = pipelines.find((p) => p.featureId === featureId);
+
+      if (!pipeline || pipeline.status === "completed" || pipeline.status === "failed") {
+        clearInterval(checkInterval);
+        conductor.stop();
+        engine.agents.stop();
+        process.exit(0);
+      }
+    }, 5_000);
+
+    // Clean shutdown on SIGINT/SIGTERM
+    const shutdown = () => {
+      clearInterval(checkInterval);
+      conductor.stop();
+      engine.agents.stop();
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
   });
 
 pipelineCommand
