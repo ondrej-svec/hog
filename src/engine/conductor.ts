@@ -350,6 +350,16 @@ export class Conductor {
     return true;
   }
 
+  /** Cancel and remove a pipeline. */
+  cancelPipeline(featureId: string): boolean {
+    const pipeline = this.pipelines.get(featureId);
+    if (!pipeline) return false;
+    this.pipelines.delete(featureId);
+    this.savePipelines();
+    this.log(featureId, "pipeline:cancelled", `Cancelled: ${pipeline.title}`);
+    return true;
+  }
+
   // ── Core Loop ──
 
   /** One tick of the conductor — check all running pipelines for ready work. */

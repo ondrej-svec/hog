@@ -553,6 +553,21 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("cancel <featureId>")
+  .description("Cancel and remove a pipeline")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const ok = conductor.cancelPipeline(featureId);
+    console.log(ok ? `Cancelled: ${featureId}` : `Pipeline not found: ${featureId}`);
+  });
+
+pipelineCommand
   .command("watch <featureId>", { hidden: true })
   .description("Internal: keep conductor alive until a pipeline completes")
   .option("--repo <name>", "Target repo")

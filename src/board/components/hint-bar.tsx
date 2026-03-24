@@ -109,8 +109,8 @@ function HintBar({
   // Pipeline View hints
   if (boardView === "pipelines") {
     const pipelineHint = pipelineBrainstorming
-      ? "Z:brainstorm  j/k:navigate  P:new pipeline  Tab:issues  q:quit"
-      : "j/k:navigate  P:new pipeline  D:decide  Z:zen  Tab:issues  ? help  q:quit";
+      ? "Z:brainstorm  d:cancel  j/k:navigate  P:new pipeline  Tab:issues  q:quit"
+      : "j/k:navigate  P:new pipeline  d:cancel  x:pause  Tab:issues  ? help  q:quit";
     return (
       <Box>
         <Text color="gray">{pipelineHint}</Text>

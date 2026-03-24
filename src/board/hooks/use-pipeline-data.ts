@@ -39,6 +39,8 @@ export interface UsePipelineDataResult {
   readonly pausePipeline: (featureId: string) => boolean;
   /** Resume a pipeline. */
   readonly resumePipeline: (featureId: string) => boolean;
+  /** Cancel and remove a pipeline. */
+  readonly cancelPipeline: (featureId: string) => boolean;
   /** Resolve a pending question. */
   readonly resolveDecision: (questionId: string, answer: string) => void;
 }
@@ -157,6 +159,14 @@ export function usePipelineData(
     return ok;
   }, []);
 
+  const cancelPipeline = useCallback((featureId: string): boolean => {
+    const conductor = conductorRef.current;
+    if (!conductor) return false;
+    const ok = conductor.cancelPipeline(featureId);
+    if (ok) setPipelines(conductor.getPipelines());
+    return ok;
+  }, []);
+
   const resolveDecision = useCallback(
     (questionId: string, answer: string) => {
       const conductor = conductorRef.current;
@@ -178,6 +188,7 @@ export function usePipelineData(
     startPipeline,
     pausePipeline,
     resumePipeline,
+    cancelPipeline,
     resolveDecision,
   };
 }

@@ -1154,6 +1154,16 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           }
           return;
         }
+        // d cancels/removes selected pipeline
+        if (input === "d") {
+          const selected = pipelineData.pipelines[pipelineSelectedIndex];
+          if (selected) {
+            pipelineData.cancelPipeline(selected.featureId);
+            toast.info(`Cancelled: ${selected.title}`);
+            setPipelineSelectedIndex((prev) => Math.max(0, prev - 1));
+          }
+          return;
+        }
         // Z in pipeline view: launch brainstorm session
         if (input === "Z") {
           const selected = pipelineData.pipelines[pipelineSelectedIndex];
