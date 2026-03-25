@@ -106,6 +106,7 @@ export class Conductor {
    * from truly simultaneous writes — acceptable for this use case.
    */
   private savePipelines(): void {
+    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
     try {
       // Write current in-memory state to disk
       const data = [...this.pipelines.values()].map((p) => ({
