@@ -42,6 +42,7 @@ export function loadQuestionQueue(): QuestionQueue {
 }
 
 export function saveQuestionQueue(queue: QuestionQueue): void {
+  if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
   mkdirSync(CONFIG_DIR, { recursive: true });
   const tmp = `${QUEUE_FILE}.tmp`;
   writeFileSync(tmp, `${JSON.stringify(queue, null, 2)}\n`, { mode: 0o600 });
