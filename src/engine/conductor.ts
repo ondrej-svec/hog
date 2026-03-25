@@ -543,6 +543,9 @@ export class Conductor {
 
       await this.tickPipeline(pipeline);
     }
+
+    // Persist any state changes from this tick cycle
+    this.savePipelines();
   }
 
   /** Check a single pipeline for ready beads and spawn agents. */

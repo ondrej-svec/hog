@@ -1,4 +1,6 @@
 import { execFile, spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -190,17 +192,15 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
         return;
       }
       try {
-        const { existsSync: exists, readFileSync: readFs } = require("node:fs") as typeof import("node:fs");
-        const { join: joinPath } = require("node:path") as typeof import("node:path");
-        const logFile = joinPath(
+        const logFile = join(
           process.env["HOME"] ?? "",
           ".config",
           "hog",
           "pipelines",
           `${selected.featureId}.log`,
         );
-        if (exists(logFile)) {
-          const content = readFs(logFile, "utf-8");
+        if (existsSync(logFile)) {
+          const content = readFileSync(logFile, "utf-8");
           const lines = content.trim().split("\n").slice(-8);
           setPipelineLogEntries(lines);
         } else {
