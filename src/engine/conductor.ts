@@ -107,22 +107,7 @@ export class Conductor {
    */
   private savePipelines(): void {
     try {
-      // Check if disk was explicitly cleared (empty array = "clear all" signal)
-      let diskCleared = false;
-      if (existsSync(Conductor.PIPELINES_FILE)) {
-        try {
-          const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
-          if (Array.isArray(raw) && raw.length === 0 && this.pipelines.size > 0) {
-            // Disk is empty but we have in-memory state → someone ran `hog pipeline clear`
-            diskCleared = true;
-            this.pipelines.clear();
-          }
-        } catch {
-          // Corrupted file — overwrite
-        }
-      }
-
-      // Write current in-memory state
+      // Write current in-memory state to disk
       const data = [...this.pipelines.values()].map((p) => ({
         featureId: p.featureId,
         title: p.title,
