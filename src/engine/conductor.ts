@@ -431,10 +431,90 @@ export class Conductor {
     return true;
   }
 
+  /**
+   * Sync pipelines from disk — picks up new pipelines created by other processes
+   * and respects "clear all" signal (empty file).
+   */
+  private syncFromDisk(): void {
+    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
+    if (!existsSync(Conductor.PIPELINES_FILE)) return;
+
+    try {
+      const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
+      if (!Array.isArray(raw)) return;
+
+      // Empty file = clear signal
+      if (raw.length === 0 && this.pipelines.size > 0) {
+        this.pipelines.clear();
+        return;
+      }
+
+      // Add pipelines from disk that we don't already have
+      for (const entry of raw) {
+        if (typeof entry !== "object" || entry === null) continue;
+        const e = entry as Record<string, unknown>;
+        const featureId = e["featureId"];
+        if (typeof featureId !== "string") continue;
+
+        // Skip if we already have it in memory
+        if (this.pipelines.has(featureId)) continue;
+
+        // Skip terminal states
+        if (e["status"] === "completed" || e["status"] === "failed") continue;
+
+        // Validate beadIds
+        const beadIds = e["beadIds"];
+        if (
+          typeof beadIds !== "object" ||
+          beadIds === null ||
+          typeof (beadIds as Record<string, unknown>)["brainstorm"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["stories"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["tests"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["impl"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["redteam"] !== "string" ||
+          typeof (beadIds as Record<string, unknown>)["merge"] !== "string"
+        ) {
+          continue;
+        }
+
+        const localPath = (e["localPath"] as string) ?? "";
+        const repoConfig =
+          this.config.repos.find((r) => r.name === e["repo"]) ??
+          ({
+            name: (e["repo"] as string) ?? "",
+            shortName: (e["repo"] as string) ?? "",
+            projectNumber: 0,
+            statusFieldId: "",
+            localPath,
+            completionAction: { type: "closeIssue" },
+          } as RepoConfig);
+
+        this.pipelines.set(featureId, {
+          featureId,
+          title: (e["title"] as string) ?? "",
+          repo: (e["repo"] as string) ?? "",
+          localPath: localPath || repoConfig.localPath || "",
+          repoConfig,
+          beadIds: beadIds as Pipeline["beadIds"],
+          status: (e["status"] as PipelineStatus) ?? "running",
+          completedBeads: (e["completedBeads"] as number) ?? 0,
+          activePhase: e["activePhase"] as string | undefined,
+          startedAt: (e["startedAt"] as string) ?? new Date().toISOString(),
+          ...(typeof e["completedAt"] === "string" ? { completedAt: e["completedAt"] } : {}),
+        });
+      }
+    } catch {
+      // best-effort
+    }
+  }
+
   // ── Core Loop ──
 
   /** One tick of the conductor — check all running pipelines for ready work. */
   private async tick(): Promise<void> {
+    // Pick up pipelines created by other processes (CLI, watcher)
+    this.syncFromDisk();
+
     for (const pipeline of this.pipelines.values()) {
       // Skip completed/failed pipelines
       if (pipeline.status === "completed" || pipeline.status === "failed") continue;
