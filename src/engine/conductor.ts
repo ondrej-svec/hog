@@ -367,8 +367,9 @@ export class Conductor {
     this.savePipelines();
     this.log(featureId, "pipeline:started", `Created DAG for: ${title}`);
 
-    // Trigger initial tick to start the first phase (brainstorm)
-    await this.tickPipeline(pipeline);
+    // Don't tick here — the watcher process handles advancement.
+    // This prevents the brainstorm tmux session from opening before
+    // --brainstorm-done can close the bead.
 
     return pipeline;
   }
