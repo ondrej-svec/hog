@@ -4,6 +4,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClipboardArgs } from "../../clipboard.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import { PIPELINE_ROLES } from "../../engine/roles.js";
 import type { EnrichmentData } from "../../enrichment.js";
 import type { GitHubIssue, IssueComment, LabelOption } from "../../github.js";
 import { fetchIssueCommentsAsync } from "../../github.js";
@@ -32,7 +33,6 @@ import { useUIState } from "../hooks/use-ui-state.js";
 import { useViewportScroll } from "../hooks/use-viewport-scroll.js";
 import { useWorkflowState } from "../hooks/use-workflow-state.js";
 import { useZenMode } from "../hooks/use-zen-mode.js";
-import { PIPELINE_ROLES } from "../../engine/roles.js";
 import { DEFAULT_PHASE_PROMPTS, launchClaude } from "../launch-claude.js";
 import { ActionLog } from "./action-log.js";
 import { ActivityPanel } from "./activity-panel.js";
@@ -179,6 +179,41 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
   const [boardView, setBoardView] = useState<"pipelines" | "issues">(initialView ?? "pipelines");
   const [pipelineSelectedIndex, setPipelineSelectedIndex] = useState(0);
   const [hasAutoSwitched, setHasAutoSwitched] = useState(false);
+
+  // Read pipeline log file for the selected pipeline
+  const [pipelineLogEntries, setPipelineLogEntries] = useState<string[]>([]);
+  useEffect(() => {
+    const readLog = () => {
+      const selected = pipelineData.pipelines[pipelineSelectedIndex];
+      if (!selected) {
+        setPipelineLogEntries([]);
+        return;
+      }
+      try {
+        const { existsSync: exists, readFileSync: readFs } = require("node:fs") as typeof import("node:fs");
+        const { join: joinPath } = require("node:path") as typeof import("node:path");
+        const logFile = joinPath(
+          process.env["HOME"] ?? "",
+          ".config",
+          "hog",
+          "pipelines",
+          `${selected.featureId}.log`,
+        );
+        if (exists(logFile)) {
+          const content = readFs(logFile, "utf-8");
+          const lines = content.trim().split("\n").slice(-8);
+          setPipelineLogEntries(lines);
+        } else {
+          setPipelineLogEntries([]);
+        }
+      } catch {
+        setPipelineLogEntries([]);
+      }
+    };
+    readLog();
+    const interval = setInterval(readLog, 3_000);
+    return () => clearInterval(interval);
+  }, [pipelineSelectedIndex, pipelineData.pipelines]);
 
   // Auto-switch to Pipeline View when pipelines appear (once)
   useEffect(() => {
@@ -1184,7 +1219,8 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
             const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
               .replace(/\{title\}/g, selected.title)
               .replace(/\{slug\}/g, slug)
-              .replace(/\{spec\}/g, selected.title);
+              .replace(/\{spec\}/g, selected.title)
+              .replace(/\{featureId\}/g, selected.featureId);
 
             const result = launchClaude({
               localPath,
@@ -1386,9 +1422,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           onSubmit={(description) => {
             // Resolve repo: match cwd to configured repo, or create ad-hoc from cwd
             const cwd = process.cwd();
-            let targetRepo = config.repos.find(
-              (r) => r.localPath && cwd.startsWith(r.localPath),
-            );
+            let targetRepo = config.repos.find((r) => r.localPath && cwd.startsWith(r.localPath));
             let repoName: string;
             if (targetRepo) {
               repoName = targetRepo.name;
@@ -1563,6 +1597,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
               pendingDecisions: pipelineData.pendingDecisions,
               mergeQueue: pipelineData.mergeQueue,
               selectedIndex: pipelineSelectedIndex,
+              logEntries: pipelineLogEntries,
             }}
             cols={termSize.cols}
             rows={totalPanelHeight}

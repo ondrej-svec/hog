@@ -21,6 +21,8 @@ export interface PipelineViewData {
   readonly pendingDecisions: Question[];
   readonly mergeQueue: readonly MergeQueueEntry[];
   readonly selectedIndex: number;
+  /** Recent log entries for the selected pipeline. */
+  readonly logEntries?: readonly string[] | undefined;
 }
 
 interface PipelineViewProps {
@@ -323,9 +325,11 @@ function EmptyState() {
 function PipelineDetailPanel({
   pipeline,
   agents,
+  logEntries,
 }: {
   pipeline: Pipeline;
   agents: readonly TrackedAgent[];
+  logEntries?: readonly string[] | undefined;
 }) {
   const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
   // Filter agents belonging to this pipeline (match by repo)
@@ -410,6 +414,25 @@ function PipelineDetailPanel({
         </Box>
       ) : null}
 
+      {/* Recent log entries */}
+      {logEntries && logEntries.length > 0 ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>── Log ──</Text>
+          {logEntries.map((entry, i) => {
+            // Parse timestamp and message from "[ISO] message" format
+            const match = entry.match(/^\[([^\]]+)\]\s+(.*)/);
+            const msg = match ? match[2] : entry;
+            const ts = match ? timeAgo(match[1]!) : "";
+            return (
+              <Box key={`${i}`}>
+                <Text dimColor>  {ts ? `${ts}: ` : ""}</Text>
+                <Text>{msg}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      ) : null}
+
       {/* Blocked/failed indicator */}
       {pipeline.status === "blocked" ? (
         <Box marginTop={1}>
@@ -462,7 +485,7 @@ function MergeQueueSection({ entries }: { entries: readonly MergeQueueEntry[] })
 // ── Main Pipeline View ──
 
 export function PipelineView({ data, cols, rows }: PipelineViewProps) {
-  const { pipelines, agents, pendingDecisions, mergeQueue, selectedIndex } = data;
+  const { pipelines, agents, pendingDecisions, mergeQueue, selectedIndex, logEntries } = data;
   const isWide = cols >= 100;
   const listWidth = isWide ? Math.min(40, Math.floor(cols * 0.35)) : cols - 2;
   const detailWidth = isWide ? cols - listWidth - 4 : 0;
@@ -486,7 +509,7 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
   ) : pendingDecisions.length > 0 ? (
     <DecisionPanel question={pendingDecisions[0]!} />
   ) : selectedPipeline ? (
-    <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} />
+    <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} logEntries={logEntries} />
   ) : (
     <AllClearPanel pipelines={pipelines} />
   );
