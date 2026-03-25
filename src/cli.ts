@@ -567,6 +567,66 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("done <featureId>")
+  .description("Complete the current phase of a pipeline (closes the active bead)")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    if (!engine.beadsAvailable) {
+      console.error("Beads (bd) is not installed.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const pipelines = conductor.getPipelines();
+    const pipeline = pipelines.find((p) => p.featureId === featureId);
+
+    if (!pipeline) {
+      console.error(`Pipeline not found: ${featureId}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    // Find the active phase's bead ID
+    const phase = pipeline.activePhase;
+    if (!phase) {
+      console.error("No active phase to complete.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const beadIdMap: Record<string, string> = {
+      brainstorm: pipeline.beadIds.brainstorm,
+      stories: pipeline.beadIds.stories,
+      test: pipeline.beadIds.tests,
+      impl: pipeline.beadIds.impl,
+      redteam: pipeline.beadIds.redteam,
+      merge: pipeline.beadIds.merge,
+    };
+
+    const beadId = beadIdMap[phase];
+    if (!beadId) {
+      console.error(`Unknown phase: ${phase}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    try {
+      await engine.beads.close(pipeline.localPath, beadId, `${phase} completed by user`);
+      console.log(`Phase "${phase}" completed for pipeline ${featureId}.`);
+      console.log("The conductor will advance to the next phase automatically.");
+    } catch (err) {
+      console.error(`Failed to close bead: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+pipelineCommand
   .command("cancel <featureId>")
   .description("Cancel and remove a pipeline")
   .action(async (featureId: string) => {

@@ -43,9 +43,10 @@ Write to \`tests/stories/\` with this structure:
 - Clear acceptance criteria as a checklist
 - Edge cases to consider
 
-## Pipeline Creation (final step)
+## Completing the Brainstorm (final step)
 When the human says the stories are good:
-\`hog pipeline create "<title>" --brainstorm-done --stories tests/stories/<slug>.md\`
+- If this is an existing pipeline: \`hog pipeline done <featureId>\`
+- If starting fresh (no existing pipeline): \`hog pipeline create "<title>" --brainstorm-done --stories tests/stories/<slug>.md\`
 
 ## Allowed Actions
 - Read any file (for context)
