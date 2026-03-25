@@ -1239,7 +1239,7 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           }
           return;
         }
-        // l key: open full log in less
+        // l key: open full log in tmux window
         if (input === "l") {
           const selected = pipelineData.pipelines[pipelineSelectedIndex];
           if (selected) {
@@ -1252,11 +1252,16 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
             );
             if (existsSync(logFile)) {
               try {
-                spawn("less", ["+G", logFile], {
-                  stdio: "inherit",
-                });
+                // Use tail -f in a tmux window so it doesn't fight with Ink
+                const child = spawn(
+                  "tmux",
+                  ["new-window", "-n", "pipeline-log", "tail", "-f", logFile],
+                  { stdio: "ignore", detached: true },
+                );
+                child.unref();
+                toast.info("Log opened in tmux window");
               } catch {
-                toast.error("Could not open log file");
+                toast.error("tmux required for log view");
               }
             } else {
               toast.info("No log file yet");
