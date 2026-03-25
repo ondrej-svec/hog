@@ -1239,6 +1239,31 @@ function Dashboard({ config, options, activeProfile, initialView }: DashboardPro
           }
           return;
         }
+        // l key: open full log in less
+        if (input === "l") {
+          const selected = pipelineData.pipelines[pipelineSelectedIndex];
+          if (selected) {
+            const logFile = join(
+              process.env["HOME"] ?? "",
+              ".config",
+              "hog",
+              "pipelines",
+              `${selected.featureId}.log`,
+            );
+            if (existsSync(logFile)) {
+              try {
+                spawn("less", ["+G", logFile], {
+                  stdio: "inherit",
+                });
+              } catch {
+                toast.error("Could not open log file");
+              }
+            } else {
+              toast.info("No log file yet");
+            }
+          }
+          return;
+        }
         // Number keys 1-9 answer the first pending decision
         if (/^[1-9]$/.test(input) && pipelineData.pendingDecisions.length > 0) {
           const decision = pipelineData.pendingDecisions[0];

@@ -583,9 +583,9 @@ export class Conductor {
   private async spawnForRole(pipeline: Pipeline, bead: Bead, role: PipelineRole): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
-    // Brainstorm: launch interactive tmux session instead of background agent
+    // Brainstorm is a HUMAN activity — only launched by the user pressing Z
+    // in the cockpit. The watcher/conductor never auto-launches it.
     if (role === "brainstorm") {
-      await this.launchBrainstormSession(pipeline, bead);
       return;
     }
 
