@@ -442,10 +442,27 @@ export class Conductor {
         const featureId = e["featureId"];
         if (typeof featureId !== "string") continue;
 
-        // Skip if we already have it in memory
-        if (this.pipelines.has(featureId)) continue;
+        // Update existing pipelines with progress from other processes
+        const existing = this.pipelines.get(featureId);
+        if (existing) {
+          const diskCompleted = typeof e["completedBeads"] === "number" ? e["completedBeads"] : 0;
+          if (diskCompleted > existing.completedBeads) {
+            existing.completedBeads = diskCompleted;
+          }
+          if (typeof e["activePhase"] === "string" && e["activePhase"] !== existing.activePhase) {
+            existing.activePhase = e["activePhase"];
+          }
+          const diskStatus = e["status"] as string;
+          if (diskStatus === "completed" || diskStatus === "failed") {
+            existing.status = diskStatus as Pipeline["status"];
+            if (diskStatus === "completed" && typeof e["completedAt"] === "string") {
+              existing.completedAt = e["completedAt"];
+            }
+          }
+          continue;
+        }
 
-        // Skip terminal states
+        // Skip terminal states for new pipelines
         if (e["status"] === "completed" || e["status"] === "failed") continue;
 
         // Validate beadIds
