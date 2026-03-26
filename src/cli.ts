@@ -531,9 +531,20 @@ pipelineCommand
   .command("clear")
   .description("Remove all pipelines")
   .action(async () => {
+    // Cancel all pipelines via daemon if running
+    const { tryConnectDaemon } = await import("./daemon/client.js");
+    const client = await tryConnectDaemon();
+    if (client) {
+      const pipelines = await client.call("pipeline.list", {});
+      for (const p of pipelines) {
+        await client.call("pipeline.cancel", { featureId: p.featureId });
+      }
+      client.close();
+    }
+
+    // Also clear the file directly (in case daemon had stale state)
     const { writeFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-
     const pipelinesFile = join(CONFIG_DIR, "pipelines.json");
     writeFileSync(pipelinesFile, "[]\n", { mode: 0o600 });
     console.log("All pipelines cleared.");
