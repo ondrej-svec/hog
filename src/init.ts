@@ -230,6 +230,7 @@ async function promptAutoStatus(
 
 export interface InitOptions {
   force?: boolean;
+  noGithub?: boolean;
 }
 
 export async function runInit(opts: InitOptions = {}): Promise<void> {
@@ -247,7 +248,7 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: interactive setup wizard with many steps
 async function runWizard(opts: InitOptions): Promise<void> {
-  console.log("\n🐗 hog init — Setup Wizard\n");
+  console.log("\n🐗 hog init — Pipeline Setup Wizard\n");
 
   // Step 1: Check existing config
   const configExists = existsSync(`${CONFIG_DIR}/config.json`);
@@ -262,29 +263,42 @@ async function runWizard(opts: InitOptions): Promise<void> {
     }
   }
 
-  // Step 2: Check gh CLI auth
-  console.log("Checking GitHub CLI authentication...");
-  if (!isGhAuthenticated()) {
-    console.error(
-      "\nGitHub CLI is not authenticated. Run:\n\n  gh auth login\n\nThen re-run `hog init`.",
-    );
-    process.exit(1);
-  }
-  console.log("  GitHub CLI authenticated.\n");
+  // Step 2: Pipeline owner (username)
+  let login: string;
+  const connectGithub = !opts.noGithub;
 
-  // Step 3: Detect GitHub user
-  const login = getGitHubLogin();
-  console.log(`  Detected GitHub user: ${login}\n`);
-
-  // Step 4: Select repos (personal + org repos)
-  console.log("Fetching repositories...");
-  const allRepos = listAllRepos();
-  if (allRepos.length === 0) {
-    console.error("No repositories found. Check your GitHub CLI access.");
-    process.exit(1);
+  if (connectGithub && isGhAuthenticated()) {
+    login = getGitHubLogin();
+    console.log(`  Detected user from GitHub CLI: ${login}\n`);
+  } else if (connectGithub && !opts.noGithub) {
+    console.log("  GitHub CLI not authenticated (optional — needed only for GitHub sync).");
+    login = await input({
+      message: "  Your username (for Beads and pipelines):",
+      validate: (v) => (v.trim().length > 0 ? true : "Username is required"),
+    });
+  } else {
+    login = await input({
+      message: "  Your username (for Beads and pipelines):",
+      validate: (v) => (v.trim().length > 0 ? true : "Username is required"),
+    });
   }
 
-  const selectedRepoNames = await checkbox<string>({
+  // Step 3: GitHub integration (optional)
+  let shouldSetupGithub = false;
+  if (connectGithub && isGhAuthenticated()) {
+    shouldSetupGithub = await confirm({
+      message: "Connect to GitHub? (optional — for syncing pipeline status to issues)",
+      default: true,
+    });
+  }
+
+  // Step 4: Select repos (only if GitHub is connected)
+  const allRepos = shouldSetupGithub ? (() => { console.log("Fetching repositories..."); return listAllRepos(); })() : [];
+  if (shouldSetupGithub && allRepos.length === 0) {
+    console.log("  No repositories found. Skipping GitHub setup.");
+  }
+
+  const selectedRepoNames = !shouldSetupGithub || allRepos.length === 0 ? [] : await checkbox<string>({
     message: "Select repositories to track:",
     choices: allRepos.map((r) => ({
       name: r.nameWithOwner,

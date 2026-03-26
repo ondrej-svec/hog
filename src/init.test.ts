@@ -87,6 +87,8 @@ describe("hog init wizard", () => {
   it("should create config from wizard answers", async () => {
     mockGhCalls();
 
+    // "Connect to GitHub?" → yes
+    mockConfirm.mockResolvedValueOnce(true);
     // Select repos
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
     // For repo config: project, completion action, short name
@@ -98,6 +100,10 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce("60") // refresh interval
       .mockResolvedValueOnce("20") // backlog limit
       .mockResolvedValueOnce("1500"); // focus duration
+    // LLM setup → no
+    mockConfirm.mockResolvedValueOnce(false);
+    // Workflow template → none
+    mockSelect.mockResolvedValueOnce("none");
 
     await runInit({ force: true });
 
@@ -159,8 +165,8 @@ describe("hog init wizard", () => {
     mockGhCalls();
     mockedExistsSync.mockReturnValue(false);
 
-    // Simulate user cancellation
-    mockCheckbox.mockRejectedValue(new Error("User force closed the prompt"));
+    // "Connect to GitHub?" → user cancels here
+    mockConfirm.mockRejectedValue(new Error("User force closed the prompt"));
 
     await runInit();
 
@@ -171,10 +177,17 @@ describe("hog init wizard", () => {
   it("should handle addLabel completion action", async () => {
     mockGhCalls();
 
+    mockConfirm
+      .mockResolvedValueOnce(true) // Connect to GitHub?
+      .mockResolvedValueOnce(false) // auto-status for repo
+      .mockResolvedValueOnce(false) // use due date field
+      .mockResolvedValueOnce(false) // LLM setup
+    ;
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
     mockSelect
       .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("addLabel"); // completion action
+      .mockResolvedValueOnce("addLabel") // completion action
+      .mockResolvedValueOnce("none"); // workflow template
     mockInput
       .mockResolvedValueOnce("review:pending") // label name
       .mockResolvedValueOnce("r1") // short name
@@ -193,11 +206,17 @@ describe("hog init wizard", () => {
   it("should show status option selector for updateProjectStatus", async () => {
     mockGhCalls();
 
+    mockConfirm
+      .mockResolvedValueOnce(true) // Connect to GitHub?
+      .mockResolvedValueOnce(false) // auto-status
+      .mockResolvedValueOnce(false) // use due date field
+      .mockResolvedValueOnce(false); // LLM setup
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
     mockSelect
       .mockResolvedValueOnce(1) // project number
       .mockResolvedValueOnce("updateProjectStatus") // completion action
-      .mockResolvedValueOnce("opt-done"); // status option selector
+      .mockResolvedValueOnce("opt-done") // status option selector
+      .mockResolvedValueOnce("none"); // workflow template
     mockInput
       .mockResolvedValueOnce("r1") // short name
       .mockResolvedValueOnce("60")
@@ -218,6 +237,13 @@ describe("hog init wizard", () => {
   it("should configure multiple repos", async () => {
     mockGhCalls();
 
+    mockConfirm
+      .mockResolvedValueOnce(true) // Connect to GitHub?
+      .mockResolvedValueOnce(false) // auto-status repo 1
+      .mockResolvedValueOnce(false) // use due date repo 1
+      .mockResolvedValueOnce(false) // auto-status repo 2
+      .mockResolvedValueOnce(false) // use due date repo 2
+      .mockResolvedValueOnce(false); // LLM setup
     mockCheckbox.mockResolvedValue(["org/repo-one", "org/repo-two"]);
     // Repo 1
     mockSelect
@@ -233,6 +259,7 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce("30") // refresh interval
       .mockResolvedValueOnce("10") // backlog limit
       .mockResolvedValueOnce("900"); // focus duration
+    mockSelect.mockResolvedValueOnce("none"); // workflow template
 
     await runInit({ force: true });
 

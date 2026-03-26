@@ -85,8 +85,9 @@ program
   .command("init")
   .description("Interactive setup wizard")
   .option("--force", "Overwrite existing config without prompt")
-  .action(async (opts: InitOptions) => {
-    await runInit({ force: opts.force ?? false });
+  .option("--no-github", "Skip GitHub integration (pipeline-only setup)")
+  .action(async (opts: InitOptions & { github?: boolean }) => {
+    await runInit({ force: opts.force ?? false, noGithub: opts.github === false });
   });
 
 // -- Cockpit command (v2 primary TUI) --
