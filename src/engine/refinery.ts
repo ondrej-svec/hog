@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { EventBus } from "./event-bus.js";
-import type { QualityReport } from "./quality-gates.js";
-import { runQualityGates } from "./quality-gates.js";
+import type { QualityGate, QualityReport } from "./quality-gates.js";
+import { ALL_GATES, createRoleAuditGate, runQualityGates } from "./quality-gates.js";
 import type { WorktreeManager } from "./worktree.js";
 
 const execFileAsync = promisify(execFile);
@@ -24,6 +24,7 @@ export interface MergeQueueEntry {
   readonly branch: string;
   readonly worktreePath: string;
   readonly repoPath: string;
+  readonly role?: string;
   readonly submittedAt: string;
   status: MergeStatus;
   result?: MergeResult | undefined;
@@ -100,9 +101,9 @@ export class Refinery {
   }
 
   /** Submit a completed branch to the merge queue. */
-  submit(featureId: string, branch: string, worktreePath: string, repoPath: string): string {
+  submit(featureId: string, branch: string, worktreePath: string, repoPath: string, role?: string): string {
     const id = `merge-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    this.queue.push({
+    const entry: MergeQueueEntry = {
       id,
       featureId,
       branch,
@@ -110,7 +111,11 @@ export class Refinery {
       repoPath,
       submittedAt: new Date().toISOString(),
       status: "pending",
-    });
+    };
+    if (role !== undefined) {
+      (entry as { role?: string }).role = role;
+    }
+    this.queue.push(entry);
     return id;
   }
 
@@ -181,7 +186,11 @@ export class Refinery {
       // Step 3: Quality gates
       next.status = "gating";
       const changedFiles = await this.getChangedFiles(next.repoPath, next.branch);
-      const gatesReport = await runQualityGates(next.repoPath, changedFiles);
+      // Add role-audit gate if the entry has a role (Amodei: structural enforcement)
+      const gates: QualityGate[] | undefined = next.role
+        ? [...ALL_GATES, createRoleAuditGate(next.role)]
+        : undefined;
+      const gatesReport = await runQualityGates(next.repoPath, changedFiles, gates);
       if (!gatesReport.passed) {
         next.status = "failed";
         next.result = {

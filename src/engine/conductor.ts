@@ -832,6 +832,7 @@ export class Conductor {
         worktreeInfo.branch,
         worktreeInfo.worktreePath,
         worktreeInfo.repoPath,
+        phase, // Pass role for diff-audit gate (Amodei)
       );
       this.log(
         pipeline.featureId,

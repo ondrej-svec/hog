@@ -299,6 +299,101 @@ const abuseGate: QualityGate = {
   },
 };
 
+// ── Role Audit Gate (Amodei) ──
+
+const TEST_FILE_PATTERNS = [
+	/\.test\.[jt]sx?$/,
+	/\.spec\.[jt]sx?$/,
+	/\/__tests__\//,
+	/\/tests?\//,
+	/_test\.[jt]sx?$/,
+	/_test\.py$/,
+	/test_[^/]+\.py$/,
+];
+
+const SOURCE_PATTERNS = [
+	/^src\//,
+	/^lib\//,
+	/^app\//,
+	/^pkg\//,
+];
+
+function isTestFile(path: string): boolean {
+	return TEST_FILE_PATTERNS.some((p) => p.test(path));
+}
+
+function isSourceFile(path: string): boolean {
+	return SOURCE_PATTERNS.some((p) => p.test(path));
+}
+
+/**
+ * Create a role-scoped audit gate that verifies an agent only modified
+ * files appropriate for its role. Catches the most dangerous prompt violations.
+ *
+ * Usage: `createRoleAuditGate("test")` returns a gate that fails if non-test files were modified.
+ */
+export function createRoleAuditGate(role: string): QualityGate {
+	return {
+		name: `role-audit:${role}`,
+		severity: "error",
+
+		isAvailable(): boolean {
+			// Always available — no external tools needed
+			return true;
+		},
+
+		async check(_cwd: string, files: string[]): Promise<GateResult> {
+			const violations: GateIssue[] = [];
+
+			for (const file of files) {
+				let violation = false;
+
+				switch (role) {
+					case "test":
+					case "redteam":
+						// Test/redteam agents should only modify test files
+						if (!isTestFile(file)) {
+							violation = true;
+						}
+						break;
+					case "impl":
+						// Impl agent should only modify source files (not tests)
+						if (isTestFile(file)) {
+							violation = true;
+						}
+						break;
+					case "stories":
+						// Stories agent should only modify docs/stories files
+						if (!file.startsWith("docs/") && !file.startsWith("tests/stories/") && !file.endsWith(".md")) {
+							violation = true;
+						}
+						break;
+					// brainstorm and merge: no restrictions
+				}
+
+				if (violation) {
+					violations.push({
+						file,
+						message: `${role} agent modified file outside its allowed scope`,
+						rule: "role-boundary",
+					});
+				}
+			}
+
+			return {
+				gate: `role-audit:${role}`,
+				severity: "error",
+				passed: violations.length === 0,
+				issues: violations,
+				detail:
+					violations.length === 0
+						? `${role} agent stayed within its file scope`
+						: `${role} agent modified ${violations.length} file(s) outside its allowed scope`,
+			};
+		},
+	};
+}
+
 // ── Registry ──
 
 export const ALL_GATES: QualityGate[] = [lintingGate, securityGate, abuseGate];
