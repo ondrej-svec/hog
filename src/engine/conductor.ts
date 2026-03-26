@@ -52,6 +52,13 @@ export interface Pipeline {
 export interface ConductorOptions {
   readonly pollIntervalMs?: number;
   readonly maxConcurrentPipelines?: number;
+  /** Called when a pipeline phase completes. Used by GitHubSync to push labels/status. */
+  readonly onPhaseCompleted?: (
+    pipeline: Pipeline,
+    phase: string,
+    githubRepo: string,
+    issueNumber: number,
+  ) => Promise<void>;
 }
 
 // ── Decision Log ──
@@ -95,6 +102,7 @@ export class Conductor {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentPipelines: number;
+  private readonly onPhaseCompleted?: ConductorOptions["onPhaseCompleted"];
   private static readonly PIPELINES_FILE = join(CONFIG_DIR, "pipelines.json");
 
   /**
@@ -219,6 +227,7 @@ export class Conductor {
     this.questionQueue = loadQuestionQueue();
     this.pollIntervalMs = options.pollIntervalMs ?? 10_000;
     this.maxConcurrentPipelines = options.maxConcurrentPipelines ?? 3;
+    this.onPhaseCompleted = options.onPhaseCompleted;
 
     // Restore pipelines from previous sessions
     this.loadPipelines();
@@ -835,13 +844,27 @@ export class Conductor {
     // Close the bead
     this.beads
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
-      .then(() => {
+      .then(async () => {
         pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
         this.log(
           pipeline.featureId,
           `bead:closed:${phase}`,
           `Bead ${beadId} completed (${pipeline.completedBeads}/6)`,
         );
+
+        // Notify GitHub sync (if configured)
+        if (this.onPhaseCompleted) {
+          const { findGitHubIssue, loadBeadsSyncState } = await import("./beads-sync.js");
+          const syncState = loadBeadsSyncState();
+          const linked = findGitHubIssue(syncState, pipeline.featureId);
+          if (linked) {
+            await this.onPhaseCompleted(pipeline, phase, linked.repo, linked.issueNumber).catch(
+              () => {
+                // best-effort — GitHub sync never blocks pipeline
+              },
+            );
+          }
+        }
       })
       .catch(() => {
         // best-effort
