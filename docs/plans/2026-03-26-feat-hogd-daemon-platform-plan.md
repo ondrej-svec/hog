@@ -2,7 +2,7 @@
 title: "feat: hogd daemon + platform foundations — the 2026 play"
 type: plan
 date: 2026-03-26
-status: in_progress
+status: complete
 brainstorm: docs/brainstorms/2026-03-26-strategic-platform-review.md
 confidence: medium
 ---
@@ -116,7 +116,7 @@ hog decisions ────┘
 
 ### Tasks
 
-- [ ] **2.1 Rewrite `use-pipeline-data.ts` as daemon client**
+- [x] **2.1 Rewrite `use-pipeline-data.ts` as daemon client**
   Replace file polling with socket connection:
   - On mount: connect to daemon, call `pipeline.list` + `agent.list` + `decision.list`
   - Call `subscribe` to receive push events
@@ -125,7 +125,7 @@ hog decisions ────┘
   - Mutations: `startPipeline` → `pipeline.create` RPC, etc.
   Remove: `conductorRef`, `agentManagerRef`, `BeadsClient` instantiation from the hook.
 
-- [ ] **2.2 Show live agent telemetry in pipeline-view.tsx**
+- [x] **2.2 Show live agent telemetry in pipeline-view.tsx**
   With daemon streaming `agent:progress` events, show:
   ```
   ── Agents ──
@@ -133,10 +133,10 @@ hog decisions ────┘
   ```
   Update `lastToolUse` in real-time from events.
 
-- [ ] **2.3 Show pipeline log streaming**
+- [x] **2.3 Show pipeline log streaming**
   Instead of reading last 20 lines from log file on selection change, subscribe to daemon's event stream filtered by `featureId`. Show events as they happen.
 
-- [ ] **2.4 Auto-start daemon from cockpit**
+- [x] **2.4 Auto-start daemon from cockpit**
   If `hog cockpit` runs and daemon isn't up, start it in background before connecting.
   Show "Starting daemon..." briefly.
 
@@ -154,19 +154,19 @@ hog decisions ────┘
 
 ### 3A: Demo Mode (week 4)
 
-- [ ] **3A.1 Add in-memory Beads driver**
+- [x] **3A.1 Add in-memory Beads driver**
   `beadDriver: "beads" | "memory"` in config. Memory driver simulates `bd ready`, `bd close` etc. with in-memory state. No Dolt dependency.
 
-- [ ] **3A.2 Add `hog demo` command**
+- [x] **3A.2 Add `hog demo` command**
   Starts daemon with memory driver, creates a sample pipeline on a bundled tiny project, runs it with mock agents (simulated tool use at 2x speed), shows cockpit.
   Total time: <2 minutes. Zero external dependencies.
 
-- [ ] **3A.3 Bundled sample project**
+- [x] **3A.3 Bundled sample project**
   Tiny TypeScript project with 3 files, 2 existing tests. The demo pipeline adds a "greeting" feature. Stories agent writes 2 stories. Test agent writes 3 tests. Impl agent writes ~20 lines. Redteam writes 1 edge case test. Merge rebases and passes.
 
 ### 3B: Model Router (week 5)
 
-- [ ] **3B.1 Add `pipeline.models` config**
+- [x] **3B.1 Add `pipeline.models` config**
   ```
   pipeline:
     models:
@@ -178,26 +178,26 @@ hog decisions ────┘
       merge: claude-haiku-4-5
   ```
 
-- [ ] **3B.2 Wire model selection into spawn-agent.ts**
+- [x] **3B.2 Wire model selection into spawn-agent.ts**
   Resolve model from pipeline config → role → pass to Claude CLI via `--model` flag.
   Default: use whatever `claude` CLI defaults to.
 
-- [ ] **3B.3 Add budget tracking**
+- [x] **3B.3 Add budget tracking**
   Track estimated token cost per phase. Store in pipeline state.
   Add `pipeline.budget` config with per-pipeline and per-phase limits.
   When budget exceeded → block pipeline + queue decision for human.
 
 ### 3C: Run Replay Foundation (week 6)
 
-- [ ] **3C.1 Append-only event log per pipeline**
+- [x] **3C.1 Append-only event log per pipeline**
   Daemon writes every EventBus event to `~/.config/hog/pipelines/<featureId>.events.jsonl`.
   Schema: `{ timestamp, event, data }` per line.
 
-- [ ] **3C.2 `hog pipeline replay <featureId>` command**
+- [x] **3C.2 `hog pipeline replay <featureId>` command**
   Reads the event log. Replays in the cockpit at 10x speed (configurable).
   Shows: which agent ran when, what tools were used, how long each phase took.
 
-- [ ] **3C.3 `hog pipeline compare <id1> <id2>` command**
+- [x] **3C.3 `hog pipeline compare <id1> <id2>` command**
   Side-by-side comparison: phase durations, agent count, cost, test count, quality gate results.
 
 ---
