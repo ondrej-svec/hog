@@ -48,14 +48,14 @@ hog decisions ────┘
 
 ### Tasks
 
-- [ ] **1.1 Create `src/daemon/hogd.ts` — daemon entry point**
+- [x] **1.1 Create `src/daemon/hogd.ts` — daemon entry point**
   Starts a `net.createServer()` Unix domain socket at `~/.config/hog/hogd.sock`.
   Instantiates: Engine, Conductor, AgentManager, PipelineStore, BeadsClient.
   Calls `conductor.start()` — the daemon IS the conductor.
   Writes PID file to `~/.config/hog/hogd.pid`.
   Handles SIGINT/SIGTERM for graceful shutdown (stop agents, stop Dolt, remove socket).
 
-- [ ] **1.2 Define IPC protocol — JSON-RPC over Unix socket**
+- [x] **1.2 Define IPC protocol — JSON-RPC over Unix socket**
   Simple protocol: newline-delimited JSON messages.
   Request: `{ "id": 1, "method": "pipeline.list", "params": {} }`
   Response: `{ "id": 1, "result": [...] }`
@@ -72,29 +72,29 @@ hog decisions ────┘
   - `daemon.status` → `{ pid, uptime, pipelines, agents }`
   - `subscribe` → start receiving push events
 
-- [ ] **1.3 Create `src/daemon/client.ts` — IPC client**
+- [x] **1.3 Create `src/daemon/client.ts` — IPC client**
   `connect(socketPath)` → returns a typed client with methods matching the protocol.
   `subscribe(callback)` → receives push events.
   Auto-reconnect on disconnect.
   Timeout after 5s if daemon not running.
 
-- [ ] **1.4 Add `hog daemon start/stop/status` CLI commands**
+- [x] **1.4 Add `hog daemon start/stop/status` CLI commands**
   - `hog daemon start` — starts hogd in background (detached), or foreground with `--foreground`
   - `hog daemon stop` — sends SIGTERM via PID file
   - `hog daemon status` — connects to socket, calls `daemon.status`
   - Auto-start: if any `hog pipeline *` command runs and daemon isn't up, start it automatically
 
-- [ ] **1.5 Bridge EventBus to connected clients**
+- [x] **1.5 Bridge EventBus to connected clients**
   Daemon-side: listen on all EventBus events, serialize payload, write to all connected sockets that called `subscribe`.
   Key events to bridge: `agent:spawned`, `agent:progress`, `agent:completed`, `agent:failed`, `workflow:phase-changed`.
   `agent:progress` is high-frequency (every Claude stream line) — throttle to max 2 events/second per client.
 
-- [ ] **1.6 Migrate `pipeline create` to use daemon**
+- [x] **1.6 Migrate `pipeline create` to use daemon**
   Instead of spawning a watcher process at `cli.ts:411`, send `pipeline.create` RPC to daemon.
   Daemon creates the pipeline, starts ticking it — no watcher needed.
   Fallback: if daemon not running, auto-start it.
 
-- [ ] **1.7 Migrate `pipeline watch` command to daemon-only**
+- [x] **1.7 Migrate `pipeline watch` command to daemon-only**
   The watch command becomes a thin wrapper: connect to daemon, call `subscribe`, print events until pipeline completes.
   Used for backward compat and for log streaming.
 

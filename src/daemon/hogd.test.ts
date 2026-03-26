@@ -1,10 +1,10 @@
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DaemonClient } from "./client.js";
-import { isDaemonRunning, PID_FILE, SOCKET_PATH } from "./hogd.js";
+import { isDaemonRunning } from "./hogd.js";
 import type { RpcRequest } from "./protocol.js";
 import { isRpcRequest } from "./protocol.js";
 
@@ -114,9 +114,9 @@ describe("DaemonClient + mock server", () => {
   });
 
   it("rejects on unknown method", async () => {
-    await expect(
-      client.call("nonexistent.method" as "daemon.status", {}),
-    ).rejects.toThrow("Method not found");
+    await expect(client.call("nonexistent.method" as "daemon.status", {})).rejects.toThrow(
+      "Method not found",
+    );
   });
 
   it("receives push events after subscribe", async () => {
