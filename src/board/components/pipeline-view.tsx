@@ -63,6 +63,17 @@ function statusColor(status: PipelineStatus): string {
   }
 }
 
+// ── Phase Descriptions ──
+
+const PHASE_DESCRIPTIONS: Record<string, string> = {
+	brainstorm: "Interactive session — you brainstorm with Claude to define the feature",
+	stories: "Writing testable user stories with acceptance criteria",
+	test: "Writing tests that FAIL (RED state) — cannot see the spec, only stories",
+	impl: "Writing minimum code to make tests pass (GREEN) — can only see failing tests",
+	redteam: "Adversarial review — writing new tests for edge cases and security",
+	merge: "Rebasing, running full test suite, linting, and security scan",
+};
+
 function progressBar(pipeline: Pipeline, width: number): string {
   const total = 6;
   const completed = pipeline.completedBeads ?? 0;
@@ -310,12 +321,12 @@ function EmptyState() {
         <Text color="cyan" bold>
           P
         </Text>
-        <Text dimColor> to start a pipeline, or </Text>
-        <Text color="cyan" bold>
-          i
-        </Text>
-        <Text dimColor> to browse issues</Text>
+        <Text dimColor> to start a new pipeline</Text>
       </Box>
+      <Box marginTop={1}>
+        <Text dimColor>Describe a feature and hog will:</Text>
+      </Box>
+      <Text dimColor>brainstorm → write stories → write tests → implement → red team → merge</Text>
     </Box>
   );
 }
@@ -387,6 +398,17 @@ function PipelineDetailPanel({
         </Text>
       </Box>
 
+      {/* Current phase description */}
+      {pipeline.activePhase && pipeline.status === "running" ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>── Current Phase ──</Text>
+          <Box>
+            <Text color="yellow" bold>◐ {pipeline.activePhase}</Text>
+            <Text dimColor>  {PHASE_DESCRIPTIONS[pipeline.activePhase] ?? ""}</Text>
+          </Box>
+        </Box>
+      ) : null}
+
       {/* Active agents for this pipeline */}
       {pipelineAgents.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
@@ -411,6 +433,10 @@ function PipelineDetailPanel({
               </Box>
             );
           })}
+        </Box>
+      ) : pipeline.status === "running" ? (
+        <Box marginTop={1}>
+          <Text dimColor>No active agents — waiting for watcher to advance pipeline</Text>
         </Box>
       ) : null}
 
