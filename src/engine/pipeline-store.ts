@@ -32,6 +32,8 @@ const PIPELINE_SCHEMA = z.object({
   activePhase: z.string().optional(),
   startedAt: z.string().default(() => new Date().toISOString()),
   completedAt: z.string().optional(),
+  costByPhase: z.record(z.string(), z.number()).optional(),
+  totalCost: z.number().optional(),
 });
 
 export type PipelineData = z.infer<typeof PIPELINE_SCHEMA>;
@@ -57,6 +59,8 @@ export interface PipelineSnapshot {
   readonly activePhase?: string | undefined;
   readonly startedAt: string;
   readonly completedAt?: string;
+  readonly costByPhase?: Record<string, number>;
+  readonly totalCost?: number;
 }
 
 // ── PipelineStore ──
@@ -125,6 +129,8 @@ export class PipelineStore {
         activePhase: p.activePhase,
         startedAt: p.startedAt,
         completedAt: p.completedAt,
+        costByPhase: p.costByPhase,
+        totalCost: p.totalCost,
       }));
       mkdirSync(CONFIG_DIR, { recursive: true });
       const tmp = `${PIPELINES_FILE}.tmp`;
@@ -178,6 +184,8 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
+          ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         };
         this.pipelines.set(pipeline.featureId, pipeline);
       }
@@ -225,6 +233,8 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
+          ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         });
       }
     } catch {

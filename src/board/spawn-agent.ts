@@ -25,6 +25,8 @@ export interface SpawnAgentOptions {
   readonly promptTemplate?: string | undefined;
   readonly promptVariables?: PromptVariables | undefined;
   readonly startCommand?: { command: string; extraArgs: readonly string[] } | undefined;
+  /** Claude model to use (e.g., "claude-sonnet-4-5"). Passed as --model flag. */
+  readonly model?: string | undefined;
 }
 
 export interface SpawnAgentResult {
@@ -173,6 +175,11 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
   const extraArgs = opts.startCommand?.extraArgs ?? [];
 
   const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json", "--verbose"];
+
+  // Pass --model flag if specified
+  if (opts.model) {
+    args.push("--model", opts.model);
+  }
 
   const child = spawn(command, args, {
     cwd: opts.localPath,

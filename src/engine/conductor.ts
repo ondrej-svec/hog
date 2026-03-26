@@ -46,6 +46,10 @@ export interface Pipeline {
   activePhase?: string | undefined;
   readonly startedAt: string;
   completedAt?: string;
+  /** Estimated cost tracking per phase (in USD). */
+  costByPhase?: Record<string, number>;
+  /** Total estimated cost (in USD). */
+  totalCost?: number;
 }
 
 export interface ConductorOptions {
@@ -499,6 +503,9 @@ export class Conductor {
       }
     }
 
+    // Resolve model from config for this role
+    const roleModel = this.config.pipeline?.models?.[role];
+
     // Spawn the agent
     const result = this.agentManager.launchAgent({
       localPath: agentCwd,
@@ -508,6 +515,7 @@ export class Conductor {
       issueUrl: "",
       phase: role,
       promptTemplate: prompt,
+      model: roleModel,
     });
 
     if (typeof result === "string") {

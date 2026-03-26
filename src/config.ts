@@ -137,6 +137,22 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
       sound: z.boolean().default(false),
     })
     .optional(),
+  models: z
+    .object({
+      brainstorm: z.string().optional(),
+      stories: z.string().optional(),
+      test: z.string().optional(),
+      impl: z.string().optional(),
+      redteam: z.string().optional(),
+      merge: z.string().optional(),
+    })
+    .optional(),
+  budget: z
+    .object({
+      perPipeline: z.number().optional(),
+      perPhase: z.number().optional(),
+    })
+    .optional(),
 });
 
 const PROFILE_SCHEMA = z.object({
