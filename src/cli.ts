@@ -2571,6 +2571,28 @@ workflowCommand
     }
   });
 
+// -- Tombstoned commands (removed in v2, print migration messages) --
+
+program
+  .command("sync")
+  .description("(Removed in v2.0)")
+  .allowUnknownOption()
+  .action(() => {
+    console.log("hog sync was removed in v2.0.");
+    console.log("Sync functionality (TickTick) was dropped. GitHub integration is now via pipeline phase sync.");
+    console.log("See: hog init --help");
+  });
+
+program
+  .command("task")
+  .description("(Removed in v2.0)")
+  .allowUnknownOption()
+  .action(() => {
+    console.log("hog task was removed in v2.0.");
+    console.log("Task management (TickTick) was dropped. Use pipelines instead.");
+    console.log("See: hog pipeline create --help");
+  });
+
 // -- Run --
 
 program.parseAsync().catch((err: unknown) => {
