@@ -16,7 +16,12 @@ import type { Question } from "../engine/question-queue.js";
 export interface RpcMethods {
   "pipeline.list": { params: Record<string, never>; result: Pipeline[] };
   "pipeline.create": {
-    params: { repo: string; title: string; description?: string; brainstormDone?: boolean };
+    params: {
+      repo: string;
+      title: string;
+      description?: string | undefined;
+      brainstormDone?: boolean | undefined;
+    };
     result: Pipeline | { error: string };
   };
   "pipeline.pause": { params: { featureId: string }; result: { ok: boolean } };
