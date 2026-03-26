@@ -436,7 +436,7 @@ function PipelineDetailPanel({
         </Box>
       ) : pipeline.status === "running" ? (
         <Box marginTop={1}>
-          <Text dimColor>No active agents — waiting for watcher to advance pipeline</Text>
+          <Text dimColor>No active agents — daemon will advance to next phase</Text>
         </Box>
       ) : null}
 
