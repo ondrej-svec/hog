@@ -189,15 +189,17 @@ export class AgentManager {
       this.agents = this.agents.filter((a) => a.sessionId !== session.id);
 
       if (exitCode === 0) {
+        const summary = monitor.lastText?.slice(0, 500);
         this.eventBus.emit("agent:completed", {
           sessionId: session.id,
           repo: opts.repoFullName,
           issueNumber: opts.issueNumber,
           phase: opts.phase,
+          summary,
         });
         notify(this.config.pipeline.notifications, {
           title: "Agent completed",
-          body: `${opts.phase} for #${opts.issueNumber} completed successfully`,
+          body: summary ? `${opts.phase}: ${summary.slice(0, 100)}` : `${opts.phase} completed`,
         });
       } else {
         const errorMessage = monitor.lastText ?? `Process exited with code ${exitCode}`;

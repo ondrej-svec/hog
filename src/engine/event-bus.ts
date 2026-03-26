@@ -6,14 +6,20 @@ import type { AgentSession } from "../enrichment.js";
 export interface EngineEvents {
   "agent:spawned": { sessionId: string; repo: string; issueNumber: number; phase: string };
   "agent:progress": { sessionId: string; toolName?: string; text?: string };
-  "agent:completed": { sessionId: string; repo: string; issueNumber: number; phase: string };
+  "agent:completed": {
+    sessionId: string;
+    repo: string;
+    issueNumber: number;
+    phase: string;
+    summary?: string | undefined;
+  };
   "agent:failed": {
     sessionId: string;
     repo: string;
     issueNumber: number;
     phase: string;
     exitCode: number;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
   };
   "data:refreshed": { data: unknown };
   "mutation:started": { description: string };

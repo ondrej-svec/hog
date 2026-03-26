@@ -133,7 +133,13 @@ export class Conductor {
 
     // Listen for agent completion/failure to advance pipelines
     this.eventBus.on("agent:completed", (event) => {
-      this.onAgentCompleted(event.sessionId, event.repo, event.issueNumber, event.phase);
+      this.onAgentCompleted(
+        event.sessionId,
+        event.repo,
+        event.issueNumber,
+        event.phase,
+        event.summary,
+      );
     });
     this.eventBus.on("agent:failed", (event) => {
       this.onAgentFailed(
@@ -665,6 +671,7 @@ export class Conductor {
     _repo: string,
     _issueNumber: number,
     phase: string,
+    summary?: string,
   ): void {
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
@@ -699,10 +706,14 @@ export class Conductor {
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
       .then(async () => {
         pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
+        const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
+        const summaryLine = summary
+          ? ` — ${summary.split("\n")[0]?.slice(0, 150)}`
+          : "";
         this.log(
           pipeline.featureId,
-          `bead:closed:${phase}`,
-          `Bead ${beadId} completed (${pipeline.completedBeads}/6)`,
+          `phase:completed:${phase}`,
+          `${phaseLabel} done (${pipeline.completedBeads}/6)${summaryLine}`,
         );
 
         // GREEN verification after impl completes (Farley)
