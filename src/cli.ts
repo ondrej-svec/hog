@@ -209,6 +209,8 @@ pipelineCommand
   .option("--stories <path>", "Path to stories file")
   .option("--brainstorm-done", "Skip brainstorm phase (mark as already completed)")
   .option("--repo <name>", "Target repo (short name or full)")
+  .option("--issue <ref>", "Link to existing GitHub issue (owner/repo#123)")
+  .option("--create-issue", "Create a new GitHub issue and link it to the pipeline")
   .action(
     async (
       title: string,
@@ -217,6 +219,8 @@ pipelineCommand
         stories?: string;
         brainstormDone?: true;
         repo?: string;
+        issue?: string;
+        createIssue?: true;
       },
     ) => {
       const rawCfg = loadFullConfig();
@@ -309,6 +313,59 @@ pipelineCommand
         }
       }
 
+      // Link to GitHub issue if --issue or --create-issue
+      let linkedIssueNumber = 0;
+      let linkedRepo = "";
+      if (opts.issue) {
+        // Parse owner/repo#123 format
+        const issueMatch = opts.issue.match(/^(.+)#(\d+)$/);
+        if (issueMatch?.[1] && issueMatch[2]) {
+          linkedRepo = issueMatch[1];
+          linkedIssueNumber = Number.parseInt(issueMatch[2], 10);
+          const { linkIssueToBead, loadBeadsSyncState, saveBeadsSyncState } = await import(
+            "./engine/beads-sync.js"
+          );
+          const syncState = loadBeadsSyncState();
+          const updated = linkIssueToBead(syncState, linkedRepo, linkedIssueNumber, result.featureId);
+          saveBeadsSyncState(updated);
+          if (!useJson()) {
+            console.log(`  Linked:  ${linkedRepo}#${linkedIssueNumber}`);
+          }
+        } else {
+          console.error(
+            "Warning: invalid --issue format. Expected: owner/repo#123",
+          );
+        }
+      } else if (opts.createIssue) {
+        try {
+          const { createIssueAsync } = await import("./github.js");
+          const issueUrl = await createIssueAsync(
+            repoName,
+            title,
+            opts.description ?? title,
+          );
+          // Parse issue number from URL (gh returns the URL)
+          const numMatch = issueUrl.match(/\/(\d+)$/);
+          if (numMatch?.[1]) {
+            linkedIssueNumber = Number.parseInt(numMatch[1], 10);
+            linkedRepo = repoName;
+            const { linkIssueToBead, loadBeadsSyncState, saveBeadsSyncState } = await import(
+              "./engine/beads-sync.js"
+            );
+            const syncState = loadBeadsSyncState();
+            const updated = linkIssueToBead(syncState, linkedRepo, linkedIssueNumber, result.featureId);
+            saveBeadsSyncState(updated);
+            if (!useJson()) {
+              console.log(`  Issue:   ${linkedRepo}#${linkedIssueNumber} (created)`);
+            }
+          }
+        } catch (err) {
+          console.error(
+            `Warning: failed to create GitHub issue: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
       if (useJson()) {
         jsonOut({
           ok: true,
@@ -318,6 +375,7 @@ pipelineCommand
             repo: result.repo,
             beadIds: result.beadIds,
             brainstormDone: opts.brainstormDone ?? false,
+            linkedIssue: linkedIssueNumber > 0 ? { repo: linkedRepo, number: linkedIssueNumber } : null,
           },
         });
       } else {
@@ -334,7 +392,7 @@ pipelineCommand
         console.log("");
         console.log("You'll get system notifications as phases complete.");
         console.log(
-          "Run `hog board --live` for visual progress, or `hog pipeline list` to check status.",
+          "Run `hog cockpit` for visual progress, or `hog pipeline list` to check status.",
         );
       }
 
