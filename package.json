@@ -1,6 +1,6 @@
 {
   "name": "@ondrej-svec/hog",
-  "version": "1.25.1",
+  "version": "2.0.0",
   "description": "TDD-enforced AI development pipelines with structural role separation",
   "author": "Ondrej Svec",
   "repository": {

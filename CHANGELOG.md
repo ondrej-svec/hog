@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.0.0](https://github.com/ondrej-svec/hog/compare/hog-v1.25.1...hog-v2.0.0) (2026-03-26)
+
+### BREAKING CHANGES
+
+* **pivot:** hog is now a pipeline orchestrator, not a GitHub Issues dashboard
+* **board removed:** `hog board --live` replaced by `hog cockpit`
+* **commands removed:** `pick`, `issue *`, `task *`, `sync *` — all print migration messages
+* **config v5:** new `pipeline` section; auto-migrates from v4
+
+### Features
+
+* **cockpit:** pipeline-focused TUI with real-time progress, decision answering, agent monitoring
+* **pipeline:** 6-phase TDD-enforced development pipeline (brainstorm → stories → tests → impl → redteam → merge)
+* **github-sync:** optional push-only sync — pipeline phases update GitHub issue labels/status
+* **pipeline create --issue:** link pipeline to existing GitHub issue
+* **pipeline create --create-issue:** create GitHub issue and link it
+* **init --no-github:** pipeline-only setup, no GitHub required
+* **config v5:** `pipeline` section with owner, maxConcurrentAgents, tddEnforcement, phases, qualityGates
+
+### Migration
+
+See [MIGRATION.md](./MIGRATION.md) for a complete guide.
+
 ## [1.25.1](https://github.com/ondrej-svec/hog/compare/hog-v1.25.0...hog-v1.25.1) (2026-03-15)
 
 

@@ -70,7 +70,7 @@ const program = new Command();
 program
   .name("hog")
   .description("TDD-enforced AI development pipelines with structural role separation")
-  .version("1.25.1") // x-release-please-version
+  .version("2.0.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
   .hook("preAction", (thisCommand) => {
