@@ -9,8 +9,9 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { TextInput } from "@inkjs/ui";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import { PIPELINE_ROLES } from "../../engine/roles.js";
 import { usePipelineData } from "../hooks/use-pipeline-data.js";
@@ -26,7 +27,7 @@ interface CockpitProps {
   readonly config: HogConfig;
 }
 
-type CockpitMode = "normal" | "overlay:startPipeline" | "help";
+type CockpitMode = "normal" | "overlay:startPipeline" | "help" | "decisionText";
 
 // ── Help Overlay ──
 
@@ -132,6 +133,9 @@ export function Cockpit({ config }: CockpitProps) {
       stdout.off("resize", onResize);
     };
   }, [stdout]);
+
+  // Free-text decision input
+  const decisionTextRef = useRef("");
 
   // Pipeline log entries for the selected pipeline
   const [logEntries, setLogEntries] = useState<string[]>([]);
@@ -294,7 +298,13 @@ export function Cockpit({ config }: CockpitProps) {
         return;
       }
 
-      // 1-9 — answer pending decision
+      // D — enter free-text decision mode (Newport: beyond numbered options)
+      if (input === "D" && pipelineData.pendingDecisions.length > 0) {
+        setMode("decisionText");
+        return;
+      }
+
+      // 1-9 — answer pending decision with preset option
       if (/^[1-9]$/.test(input) && pipelineData.pendingDecisions.length > 0) {
         const decision = pipelineData.pendingDecisions[0];
         if (decision?.options) {
@@ -312,6 +322,53 @@ export function Cockpit({ config }: CockpitProps) {
   );
 
   // ── Render ──
+
+  // Free-text decision input mode
+  if (mode === "decisionText") {
+    const decision = pipelineData.pendingDecisions[0];
+    if (!decision) {
+      setMode("normal");
+      return null;
+    }
+    return (
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
+        <Text bold>Answer Decision</Text>
+        <Box marginTop={1}>
+          <Text>{decision.question}</Text>
+        </Box>
+        {decision.options ? (
+          <Box marginTop={1} flexDirection="column">
+            {decision.options.map((opt, i) => (
+              <Text key={opt} dimColor>
+                [{i + 1}] {opt}
+              </Text>
+            ))}
+          </Box>
+        ) : null}
+        <Box marginTop={1}>
+          <Text color="cyan">Answer: </Text>
+          <TextInput
+            placeholder="Type your answer..."
+            onChange={(val) => {
+              decisionTextRef.current = val;
+            }}
+            onSubmit={() => {
+              const answer = decisionTextRef.current.trim();
+              if (answer) {
+                pipelineData.resolveDecision(decision.id, answer);
+                toast.info(`Decision resolved: ${answer}`);
+                decisionTextRef.current = "";
+              }
+              setMode("normal");
+            }}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>Press Enter to submit, Esc to cancel</Text>
+        </Box>
+      </Box>
+    );
+  }
 
   // Start pipeline overlay
   if (mode === "overlay:startPipeline") {
