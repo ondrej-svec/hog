@@ -558,11 +558,20 @@ export class Conductor {
     if (role === "impl") {
       const redResult = await verifyRedState(pipeline.localPath);
       if (!redResult.passed) {
-        this.log(
-          pipeline.featureId,
-          "tdd:red-failed",
-          `RED verification failed: ${redResult.detail}`,
+        // Only log RED failure once per attempt (not every tick)
+        const alreadyLogged = this.decisionLog.some(
+          (e) =>
+            e.featureId === pipeline.featureId &&
+            e.action === "tdd:red-failed" &&
+            Date.now() - new Date(e.timestamp).getTime() < this.pollIntervalMs * 2,
         );
+        if (!alreadyLogged) {
+          this.log(
+            pipeline.featureId,
+            "tdd:red-failed",
+            `RED verification failed: ${redResult.detail}`,
+          );
+        }
         // Re-open the test bead so tests get rewritten
         try {
           await this.beads.updateStatus(pipeline.localPath, pipeline.beadIds.tests, "open");
@@ -571,29 +580,39 @@ export class Conductor {
         }
         return;
       }
-      this.log(pipeline.featureId, "tdd:red-verified", redResult.detail);
 
-      // Traceability check: verify stories map to tests (Farley)
-      try {
-        const { checkTraceability } = await import("./tdd-enforcement.js");
-        const storiesPath = join(pipeline.localPath, "tests", "stories");
-        const traceability = await checkTraceability(pipeline.localPath, storiesPath);
-        if (traceability.uncoveredStories.length > 0) {
-          this.log(
-            pipeline.featureId,
-            "tdd:traceability-warning",
-            `${traceability.uncoveredStories.length} stories without tests: ${traceability.uncoveredStories.join(", ")}`,
-          );
+      // Only log RED verified once (not every tick while waiting to spawn)
+      const alreadyVerified = this.decisionLog.some(
+        (e) =>
+          e.featureId === pipeline.featureId &&
+          e.action === "tdd:red-verified" &&
+          Date.now() - new Date(e.timestamp).getTime() < 60_000,
+      );
+      if (!alreadyVerified) {
+        this.log(pipeline.featureId, "tdd:red-verified", redResult.detail);
+
+        // Traceability check (only once with RED verification)
+        try {
+          const { checkTraceability } = await import("./tdd-enforcement.js");
+          const storiesPath = join(pipeline.localPath, "tests", "stories");
+          const traceability = await checkTraceability(pipeline.localPath, storiesPath);
+          if (traceability.uncoveredStories.length > 0) {
+            this.log(
+              pipeline.featureId,
+              "tdd:traceability-warning",
+              `${traceability.uncoveredStories.length} stories without tests: ${traceability.uncoveredStories.join(", ")}`,
+            );
+          }
+          if (traceability.orphanTests.length > 0) {
+            this.log(
+              pipeline.featureId,
+              "tdd:orphan-tests",
+              `${traceability.orphanTests.length} tests without stories: ${traceability.orphanTests.join(", ")}`,
+            );
+          }
+        } catch {
+          // Traceability is advisory — don't block on failures
         }
-        if (traceability.orphanTests.length > 0) {
-          this.log(
-            pipeline.featureId,
-            "tdd:orphan-tests",
-            `${traceability.orphanTests.length} tests without stories: ${traceability.orphanTests.join(", ")}`,
-          );
-        }
-      } catch {
-        // Traceability is advisory — don't block on failures
       }
     }
 
