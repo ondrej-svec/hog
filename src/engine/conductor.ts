@@ -103,6 +103,7 @@ export class Conductor {
   private readonly sessionToPipeline: Map<string, string> = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private stopped = false;
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentPipelines: number;
   private readonly onPhaseCompleted?: ConductorOptions["onPhaseCompleted"];
@@ -163,8 +164,9 @@ export class Conductor {
     }, this.pollIntervalMs);
   }
 
-  /** Stop the conductor. */
+  /** Stop the conductor. In-flight ticks will not persist after stop. */
   stop(): void {
+    this.stopped = true;
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
@@ -335,6 +337,8 @@ export class Conductor {
 
   /** One tick of the conductor — check all running pipelines for ready work. */
   private async tick(): Promise<void> {
+    if (this.stopped) return;
+
     // Pick up pipelines created by other processes (CLI, watcher)
     this.store.syncFromDisk();
 
@@ -364,8 +368,10 @@ export class Conductor {
       await this.tickPipeline(pipeline);
     }
 
-    // Persist any state changes from this tick cycle
-    this.store.save();
+    // Persist any state changes from this tick cycle (but not if stopped)
+    if (!this.stopped) {
+      this.store.save();
+    }
   }
 
   /** Check a single pipeline for ready beads and spawn agents. */

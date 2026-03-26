@@ -2682,6 +2682,28 @@ daemonCommand
     const pid = readDaemonPid();
     if (pid) {
       process.kill(pid, "SIGTERM");
+
+      // Wait for the process to actually die (up to 5 seconds)
+      const { SOCKET_PATH, PID_FILE } = await import("./daemon/hogd.js");
+      const { existsSync, rmSync } = await import("node:fs");
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        try {
+          process.kill(pid, 0);
+        } catch {
+          // Process is dead
+          break;
+        }
+      }
+
+      // Force-clean PID file and socket in case shutdown handler didn't run
+      try {
+        if (existsSync(PID_FILE)) rmSync(PID_FILE);
+      } catch { /* best-effort */ }
+      try {
+        if (existsSync(SOCKET_PATH)) rmSync(SOCKET_PATH);
+      } catch { /* best-effort */ }
+
       console.log(`Daemon stopped (pid: ${pid}).`);
     } else {
       console.error("Could not read daemon PID.");
