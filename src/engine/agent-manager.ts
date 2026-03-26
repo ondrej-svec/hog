@@ -100,27 +100,22 @@ export class AgentManager {
 
   /** Poll for PID liveness of background sessions without tracked child. */
   pollLiveness(): void {
-    const enrichment = this.workflow.getEnrichment();
-    const activeBgSessions = enrichment.sessions.filter(
-      (s) => s.mode === "background" && !s.exitedAt && s.pid,
-    );
-
-    for (const session of activeBgSessions) {
-      const isTracked = this.agents.some((a) => a.sessionId === session.id);
-      if (isTracked) continue;
-
-      if (!isProcessAlive(session.pid as number)) {
-        this.workflow.markSessionExited(session.id, 1);
+    // Only check agents that THIS daemon instance launched (tracked and then lost)
+    // Skip sessions from enrichment store — those are stale history from previous runs
+    // and would cause false agent:failed events for already-completed phases
+    const trackedPids = new Set(this.agents.map((a) => a.pid));
+    for (const agent of this.agents) {
+      if (!agent.monitor.isRunning) continue;
+      if (!isProcessAlive(agent.pid)) {
+        // Agent process died without going through normal exit handler
+        this.workflow.markSessionExited(agent.sessionId, 1);
         this.eventBus.emit("agent:failed", {
-          sessionId: session.id,
-          repo: session.repo,
-          issueNumber: session.issueNumber,
-          phase: session.phase,
+          sessionId: agent.sessionId,
+          repo: agent.repo,
+          issueNumber: agent.issueNumber,
+          phase: agent.phase,
           exitCode: 1,
-        });
-        notify(this.config.pipeline.notifications, {
-          title: "Agent exited",
-          body: `${session.phase} for #${session.issueNumber} exited`,
+          errorMessage: "Agent process died unexpectedly",
         });
       }
     }
