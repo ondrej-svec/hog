@@ -69,7 +69,7 @@ const program = new Command();
 
 program
   .name("hog")
-  .description("Personal command deck — GitHub Projects dashboard with workflow orchestration")
+  .description("TDD-enforced AI development pipelines with structural role separation")
   .version("1.25.1") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")

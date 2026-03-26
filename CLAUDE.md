@@ -20,72 +20,86 @@ npm run ci             # typecheck + check + test (what CI runs)
 
 Run a single test file:
 ```sh
-npx vitest run src/board/hooks/use-navigation.test.tsx
+npx vitest run src/engine/conductor.test.ts
 ```
 
 Run hog locally (without building):
 ```sh
-npm run dev -- board --live
+npm run dev -- cockpit
+npm run dev -- pipeline create "test feature"
 npm run dev -- init
 ```
 
 ## Architecture
 
-`hog` is a Node.js CLI tool (ESM, TypeScript, Node 22+) that combines GitHub Issues from GitHub Projects with TickTick tasks into a unified terminal dashboard.
+`hog` is a Node.js CLI tool (ESM, TypeScript, Node 22+) that orchestrates AI agents through TDD-enforced development pipelines using Beads for DAG-based task management.
 
 ### Entry Points
 
-- **`src/cli.ts`** — Commander.js program; defines all subcommands (`board`, `task`, `sync`, `pick`, `config`, `init`). All commands are wired here and call into the modules below.
+- **`src/cli.ts`** — Commander.js program; defines subcommands (`cockpit`, `pipeline`, `decisions`, `beads`, `config`, `init`, `launch`).
 - **`bin/`** — thin shebang wrapper pointing to `dist/cli.js`.
+
+### Engine (`src/engine/`)
+
+The pipeline orchestration layer. All pipeline logic lives here.
+
+| File | Responsibility |
+|------|---------------|
+| `engine.ts` | Top-level wiring: EventBus, WorkflowEngine, AgentManager, ActionExecutor, Orchestrator, BeadsClient |
+| `conductor.ts` | Pipeline state machine: polls `bd ready`, spawns role-separated agents, manages lifecycle |
+| `beads.ts` | Beads CLI wrapper: createFeatureDAG, ready, claim, close, ensureDoltRunning |
+| `roles.ts` | 6 pipeline roles with prompt templates: brainstorm, stories, test, impl, redteam, merge |
+| `role-context.ts` | Writes role-specific CLAUDE.md to worktrees, builds agent launch args |
+| `agent-manager.ts` | Spawns Claude processes, polls PID liveness, reconciles results |
+| `tdd-enforcement.ts` | RED state verification, story traceability, mutation testing |
+| `quality-gates.ts` | Linting, security (semgrep), abuse pattern detection |
+| `refinery.ts` | Serial merge queue: rebase → test → quality gates → fast-forward merge |
+| `worktree.ts` | Git worktree management for agent isolation |
+| `question-queue.ts` | Human-in-the-loop: persistent question queue, blocking, resolution |
+| `event-bus.ts` | Typed EventEmitter for engine events |
+| `workflow.ts` | Phase resolution and status derivation |
+| `beads-sync.ts` | GitHub issue ↔ Bead ID mapping |
+
+### Cockpit TUI (`src/board/`)
+
+The pipeline monitoring TUI. Minimal Ink (React-for-CLIs) components.
+
+| File | Responsibility |
+|------|---------------|
+| `live.tsx` | Entry point: `runCockpit()` renders `<Cockpit>` via Ink |
+| `components/cockpit.tsx` | Main component: pipeline view, keyboard handling, overlays |
+| `components/pipeline-view.tsx` | Pipeline list, agent status, decision panel, DAG visualization |
+| `components/start-pipeline-overlay.tsx` | "What do you want to build?" overlay |
+| `components/toast-container.tsx` | Toast notifications |
+| `hooks/use-pipeline-data.ts` | Pipeline data polling from pipelines.json |
+| `hooks/use-toast.ts` | Toast notification queue |
+| `spawn-agent.ts` | Low-level Claude process spawning with stream-json parsing |
+| `launch-claude.ts` | Interactive Claude session launcher (tmux/terminal) |
 
 ### Core Modules
 
 | File | Responsibility |
 |------|---------------|
-| `src/types.ts` | Shared types: `Task`, `BoardIssue`, `BoardData`, `Priority`, `PickResult` |
-| `src/config.ts` | Zod schemas + read/write for `~/.config/hog/config.json` and `~/.config/hog/auth.json`. Config v3 schema; includes migration from v1/v2. |
-| `src/github.ts` | Thin wrapper around `gh` CLI via `execFileSync`. Synchronous. All GitHub data comes through here. |
-| `src/api.ts` | TickTick HTTP API client (async, uses `fetch`). Handles OAuth token in `Authorization` header. |
-| `src/auth.ts` | TickTick OAuth flow helpers |
-| `src/init.ts` | Interactive setup wizard (`hog init`) using `@inquirer/prompts` |
-| `src/pick.ts` | "Pick an issue": assign on GitHub + create TickTick task + update sync state |
-| `src/sync.ts` | GitHub ↔ TickTick sync logic |
-| `src/sync-state.ts` | Persistent mapping of GitHub issue numbers ↔ TickTick task IDs (`~/.config/hog/sync-state.json`) |
-| `src/output.ts` | `setFormat`/`useJson` + all print helpers; commands always call these instead of `console.log` directly |
-
-### Board TUI (`src/board/`)
-
-The live board (`hog board --live`) renders an [Ink](https://github.com/vadimdemedes/ink) (React-for-CLIs) TUI. The data pipeline:
-
-1. **`fetch.ts`** — `fetchDashboard()`: fetches GitHub issues synchronously via `gh` CLI, TickTick tasks async via HTTP, and recent GitHub activity events. Returns `DashboardData`.
-2. **`live.tsx`** — calls `render(<Dashboard />)` from Ink, awaits exit.
-3. **`components/dashboard.tsx`** — the main orchestrator component (~1250 lines). Owns:
-   - `buildNavItems()` / `buildFlatRows()`: flatten hierarchical repo→status-group→issue structure into a linear navigable list.
-   - All keyboard input handling via Ink's `useInput`.
-   - Overlay lifecycle (search, status picker, comment input, focus mode, bulk actions, create issue form).
-4. **`hooks/`** — extracted React hooks:
-   - `use-data.ts` — fetch + auto-refresh with `setInterval`
-   - `use-navigation.ts` — cursor position, section collapsing, tab-jump
-   - `use-ui-state.ts` — finite state machine for overlay modes (`normal` | `search` | `multiSelect` | `overlay:*` | `focus`)
-   - `use-toast.ts` — toast notification queue
-   - `use-multi-select.ts` — multi-selection with same-repo constraint
-   - `use-actions.ts` — GitHub/TickTick mutations (assign, comment, status change, create, pick)
-5. **`components/`** — individual Ink components: `IssueRow`, `TaskRow`, `FocusMode`, `SearchBar`, `StatusPicker`, `CreateIssueForm`, `BulkActionMenu`, `DetailPanel`, `ToastContainer`, etc.
-6. **`format-static.ts`** — renders board as plain text or JSON for non-live mode.
-
-### Data Flow
-
-- **GitHub data**: always synchronous via `execFileSync("gh", ...)`. Never use the GitHub REST/GraphQL API directly — always go through the `gh` CLI.
-- **TickTick data**: always async HTTP via `TickTickClient` in `api.ts`. Auth token from `~/.config/hog/auth.json`.
-- **Output format**: commands check `useJson()` from `output.ts` and call either `jsonOut()` or print helpers. Global `--json` / `--human` flags set this.
+| `src/config.ts` | Zod schemas + read/write for config v5. Migration from v1→v5. |
+| `src/github.ts` | Thin wrapper around `gh` CLI. Used for optional GitHub sync. |
+| `src/init.ts` | Interactive setup wizard (`hog init`) |
+| `src/output.ts` | `setFormat`/`useJson` + print helpers |
 
 ### Configuration
 
-Config file: `~/.config/hog/config.json` (version 3). Zod-validated on load. Contains:
-- `repos[]` — tracked GitHub repos with `statusFieldId`, `projectNumber`, `completionAction`, optional `statusGroups`
-- `board` — `assignee`, `refreshInterval`, `backlogLimit`, `focusDuration`
-- `ticktick.enabled` — boolean, gates all TickTick calls
-- `profiles` — named snapshots of `{repos, board, ticktick}`
+Config file: `~/.config/hog/config.json` (version 5). Zod-validated on load.
+
+Key sections:
+- `pipeline` — owner, maxConcurrentAgents, launchMode, tddEnforcement, phases, qualityGates
+- `repos[]` — tracked projects with localPath, optional GitHub integration
+- `board` — legacy board settings (kept for backward compatibility)
+
+### Data Flow
+
+- **Pipeline state**: Beads DAG (`bd ready`) + `pipelines.json` (conductor persistence)
+- **GitHub data**: optional, via `gh` CLI. Push-only — hog doesn't poll GitHub for pipeline state.
+- **Agent spawning**: `spawn-agent.ts` → Claude with `--output-format stream-json`
+- **Output format**: commands check `useJson()` from `output.ts`. Global `--json` / `--human` flags.
 
 ### Toolchain
 

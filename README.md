@@ -5,17 +5,21 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
-**A lazygit-style terminal dashboard for GitHub Issues.** Keyboard-driven, single-line rows, no context switching.
-
-![hog board](./docs/screenshot.png)
+**TDD-enforced AI development pipelines.** Structure enables autonomy.
 
 ---
 
 ## What it does
 
-`hog board --live` opens a five-panel TUI that shows all your GitHub Project issues across repos. Navigate with `j`/`k`, pick up issues, change statuses, comment, search, and open details — without ever touching a browser.
+hog orchestrates AI agents through a 6-phase development pipeline with structural role separation, TDD enforcement, and quality gates. Describe a feature, walk away, come back to tested and reviewed code.
 
-The layout is inspired by [lazygit](https://github.com/jesseduffield/lazygit): a narrow left column for repos and statuses, a wide issues list in the middle, a detail panel on the right, and an activity feed at the bottom.
+```
+brainstorm → stories → tests (RED) → implementation (GREEN) → red team → merge
+```
+
+Each phase runs in an isolated git worktree with a role-specific prompt. The test writer can't see the spec. The implementer can only see failing tests. The red team tries to break what was built. No agent marks its own homework.
+
+The pipeline is powered by [Beads](https://github.com/steveyegge/beads) — a local-first, git-backed dependency DAG that gates phase transitions via `bd ready`.
 
 ---
 
@@ -23,305 +27,178 @@ The layout is inspired by [lazygit](https://github.com/jesseduffield/lazygit): a
 
 ```sh
 npm install -g @ondrej-svec/hog
-hog init        # interactive setup (picks up gh auth automatically)
-hog board --live
+hog init                              # interactive setup
+hog pipeline create "Add user auth"   # start your first pipeline
+hog cockpit                           # watch it run
 ```
 
-**Requirements:** [Node.js 22+](https://nodejs.org) and the [GitHub CLI](https://cli.github.com/) authenticated via `gh auth login`.
+**Requirements:** [Node.js 22+](https://nodejs.org) and [Beads](https://github.com/steveyegge/beads) (`bd` CLI). Optionally: [GitHub CLI](https://cli.github.com/) for GitHub integration.
 
 ---
 
-## Panel Layout
+## The 6 Phases
+
+| Phase | Role | What it does | Constraint |
+|-------|------|-------------|------------|
+| **Brainstorm** | Human + AI | Interactive exploration of the problem space | Only phase with human involvement |
+| **Stories** | Autonomous | Writes testable user stories with acceptance criteria | Cannot write code |
+| **Tests** | Autonomous | Writes tests that FAIL (RED state) | Cannot read the spec — only stories |
+| **Implementation** | Autonomous | Writes minimum code to make tests pass (GREEN) | Cannot read stories — only failing tests |
+| **Red Team** | Adversarial | Writes new failing tests for edge cases and security | Cannot modify implementation |
+| **Merge** | Autonomous | Rebases, runs full suite, lints, security scan | Cannot fix — only reports |
+
+**Key insight:** The test writer and implementer have different context windows. The implementer can only see failing tests, not the original spec. This prevents the most common AI coding failure mode — writing tests that pass by construction.
+
+### RED verification
+
+Before the implementation agent spawns, hog verifies tests are actually failing:
 
 ```
-┌──────────────┬─────────────────────────────────┬──────────────────┐
-│ [1] Repos    │ [3] Issues                      │ [0] Detail       │
-│ [2] Statuses │  (main panel, full issue list)  │  (selected item) │
-└──────────────┴─────────────────────────────────┴──────────────────┘
-│ [4] Activity                                                       │
-└────────────────────────────────────────────────────────────────────┘
+verifyRedState(projectDir)
+  → runs test suite
+  → if tests PASS → reopens test phase (tests were testing existing code, not new behavior)
+  → if tests FAIL → proceed to implementation
 ```
-
-Switch between panels with `0`–`4`. The detail panel and activity feed only appear on wider terminals (≥120 cols and ≥140 cols respectively).
 
 ---
 
-## Features
+## Cockpit TUI
 
-### Issue list
-
-Each issue fits on a single line with fixed-width columns:
+`hog cockpit` opens a terminal dashboard showing pipeline status:
 
 ```
-▶ #199   Frontend ↔ Backend integration spec…  [M] [p:H]  unassigned      3d
-  #205   UI elements displaying in Cz…         [M] [p:H]  unassigned      1d
+▶ ◐ Add user auth    ████░░░░ 50%    ┌─────────────────────────────┐
+  ✓ Search feature    ████████ 100%   │ brainstorm ✓ → stories ✓   │
+  ⚠ Rate limiting     ██░░░░░░ 17%   │ → tests ✓ → impl ● →       │
+                                       │ redteam ○ → merge ○        │
+  Agents (1)                           │                             │
+  impl · Read · 3m                     │ ⚠ DECISION NEEDED          │
+                                       │ Should auth use OAuth?      │
+1 pipeline · 1 agent                   │ [1] OAuth  [2] API keys    │
 ```
 
-| Column | Width | Content |
-|--------|-------|---------|
-| Cursor | 2 | `▶` when selected |
-| Number | 7 | `#1234` |
-| Title | dynamic | truncated to fit panel width |
-| Labels | 13 | up to 2 compact abbreviations: `[bug]`, `[p:H]`, `[M]`, `[WIP]` |
-| Assignee | 10 | login or `unassigned` |
-| Date | 10 | target date (`today`, `in 4d`, `3d overdue`) or age (`2h`, `5m`) |
-
-Labels are abbreviated automatically: `size:M` → `[M]`, `priority:high` → `[p:H]`, `work:*` → `[WIP]`, `enhancement` → `[enh]`.
-
-### Navigation
+### Keyboard shortcuts
 
 | Key | Action |
 |-----|--------|
-| `j` / `k` | Down / up |
-| `↓` / `↑` | Down / up |
-| `Tab` / `Shift+Tab` | Next / previous section |
-| `0`–`4` | Jump to panel |
-| `Space` | Toggle section collapse (on header) or enter multi-select (on issue) |
-| `Enter` | Open in browser (issue) or toggle collapse (section) |
-| `0` | Detail panel — full-screen overlay on narrow terminals, focus side panel on wide |
-| `C` | Collapse all sections |
-| `?` | Toggle help overlay |
+| `P` | Start new pipeline |
+| `j` / `k` | Navigate pipelines |
+| `1-9` | Answer pending decision |
+| `x` | Pause / resume |
+| `d` | Cancel pipeline |
+| `Z` | Open brainstorm session (tmux) |
+| `l` | Open pipeline log (tmux) |
+| `?` | Help |
 | `q` | Quit |
 
-### Issue actions
-
-| Key | Action |
-|-----|--------|
-| `p` | Pick up issue — assign to yourself + optional TickTick task |
-| `a` | Assign issue to yourself (no-op if already assigned to anyone) |
-| `u` | Undo last reversible action |
-| `e` | Edit issue in `$EDITOR` — change assignee, title, status, labels, body |
-| `m` | Change project status |
-| `l` | Add / remove labels |
-| `c` | Add comment |
-| `ctrl+e` | Open `$EDITOR` for a multi-line comment |
-| `y` | Copy issue URL to clipboard |
-| `n` | Create issue (form wizard) |
-| `I` | Create issue from natural language |
-| `f` | Focus mode (Pomodoro timer) |
-
-### Board controls
-
-| Key | Action |
-|-----|--------|
-| `/` | Search issues by title |
-| `r` / `R` | Refresh now |
-
-### Multi-select
-
-Press `Space` on any issue to enter multi-select, then:
-
-| Key | Action |
-|-----|--------|
-| `Space` | Toggle item |
-| `Enter` / `m` | Bulk action menu (status, assign, label) |
-| `Escape` | Exit multi-select |
-
-Multi-select is constrained to a single repo (GitHub API requirement).
-
 ---
 
-## Natural Language Issue Creation
-
-Press `I` to open the natural language input. Type a plain-English description:
-
-```
-fix auth timeout on mobile #backend #bug @alice due friday
-```
-
-hog extracts:
-
-| Field | Token | Example |
-|-------|-------|---------|
-| Labels | `#word` | `#backend`, `#bug` |
-| Assignee | `@user` | `@alice`, `@me` |
-| Due date | `due <expr>` | `due friday`, `due end of month`, `due 2026-03-01` |
-| Title | everything else | `fix auth timeout on mobile` |
-
-A live preview shows the parsed fields before you confirm with `Enter`. Labels are validated against the repo's actual label list.
-
-### LLM enhancement (optional)
-
-With an [OpenRouter](https://openrouter.ai) API key, hog sends ambiguous input to an LLM for richer title cleanup. Heuristic tokens always take priority — LLM only fills gaps.
+## Pipeline Commands
 
 ```sh
-hog config ai:set-key sk-or-...   # store key
-hog config ai:clear-key            # remove
-hog config ai:status               # show active provider
-```
+# Create and manage pipelines
+hog pipeline create "Add OAuth login"        # start a pipeline
+hog pipeline create --brainstorm-done "..."  # skip brainstorm phase
+hog pipeline list                            # show all pipelines
+hog pipeline status <featureId>              # detailed status
+hog pipeline pause <featureId>               # pause
+hog pipeline resume <featureId>              # resume
+hog pipeline cancel <featureId>              # cancel and clean up
+hog pipeline done <featureId>                # mark phase complete
 
-Or use environment variables (take priority over stored key):
+# Human decisions
+hog decisions                                # list pending decisions
+hog decisions --resolve <id> --answer "..."  # answer a question
 
-```sh
-export OPENROUTER_API_KEY=sk-or-...
-# or
-export ANTHROPIC_API_KEY=sk-ant-...
+# Beads server
+hog beads status                             # Dolt server status
+hog beads start                              # start Dolt server
+hog beads stop                               # stop Dolt server
 ```
 
 ---
 
-## Commands
+## GitHub Integration (optional)
 
-### `hog board`
+hog can optionally sync pipeline phase transitions to GitHub Issues:
 
-```sh
-hog board --live                    # interactive TUI
-hog board --json                    # full board as JSON
-hog board --mine --json             # only my assigned issues
-hog board --backlog --json          # only unassigned issues
-hog board --repo owner/repo --json  # filter by repo
-hog board --profile work --live     # use a named profile
-```
-
-### `hog issue`
+- **Labels:** Each phase adds a label (e.g., `phase:red`, `phase:green`)
+- **Status:** Pipeline phases map to GitHub Projects status columns
+- **Comments:** Phase completion posted as issue comments
 
 ```sh
-hog issue create "fix login bug #backend due friday" --repo owner/repo
-hog issue create "add dark mode" --repo owner/repo --dry-run   # preview
-hog issue create "add dark mode" --repo owner/repo --json      # structured output
+hog pipeline create --issue owner/repo#42 "Implement OAuth"  # link to existing issue
+hog pipeline create --create-issue "Add search"              # create issue + pipeline
 ```
 
-### `hog pick`
-
-Assign an issue to yourself and optionally create a linked TickTick task.
-
-```sh
-hog pick owner/repo/145
-```
-
-### `hog task`
-
-Manage TickTick tasks (requires TickTick to be enabled).
-
-```sh
-hog task list
-hog task add "Ship the feature"
-hog task add "Bug fix" -p high -t "urgent"
-hog task complete <taskId>
-hog task update <taskId> --title "New title" -p medium
-hog task delete <taskId>
-hog task projects                   # list TickTick projects
-hog task use-project <projectId>    # set default project
-```
-
-### `hog config`
-
-```sh
-hog config show
-
-# Repos
-hog config repos
-hog config repos:add owner/repo --project-number 1 --status-field-id PVTSSF_xxx --completion-type closeIssue
-hog config repos:rm reponame
-
-# TickTick
-hog config ticktick:enable
-hog config ticktick:disable
-
-# AI
-hog config ai:set-key sk-or-...
-hog config ai:clear-key
-hog config ai:status
-
-# Profiles
-hog config profile:create work
-hog config profile:delete work
-hog config profile:default work
-```
-
-### `hog init`
-
-Interactive setup. Detects your GitHub user, discovers your repos and project IDs, and optionally configures TickTick and an AI key.
-
-```sh
-hog init            # first-time setup
-hog init --force    # overwrite existing config
-```
-
-### `hog sync`
-
-Sync GitHub issue status with TickTick task completion.
-
-```sh
-hog sync run            # run sync
-hog sync run --dry-run  # preview
-hog sync status         # show current mappings
-```
+Configure in `~/.config/hog/config.json` under each repo's `github` section. GitHub integration requires the [GitHub CLI](https://cli.github.com/) (`gh`).
 
 ---
 
 ## Configuration
 
-Config: `~/.config/hog/config.json` (created by `hog init`, schema version 3).
+Config: `~/.config/hog/config.json` (schema version 5).
 
 ```jsonc
 {
-  "version": 3,
+  "version": 5,
+  "pipeline": {
+    "owner": "your-username",
+    "maxConcurrentAgents": 3,
+    "launchMode": "tmux",           // "auto" | "tmux" | "terminal"
+    "tddEnforcement": true,
+    "phases": ["brainstorm", "plan", "implement", "review"]
+  },
   "repos": [
     {
       "name": "owner/repo",
       "shortName": "repo",
+      "localPath": "/path/to/repo",
       "projectNumber": 1,
       "statusFieldId": "PVTSSF_xxx",
-      "completionAction": { "type": "closeIssue" },
-      "statusGroups": ["In Progress", "In Review", "Todo,Backlog"]  // optional
+      "completionAction": { "type": "closeIssue" }
     }
   ],
   "board": {
-    "refreshInterval": 60,   // seconds (min 10)
-    "backlogLimit": 20,
-    "assignee": "your-github-login",
-    "focusDuration": 1500    // seconds (25 min default)
-  },
-  "ticktick": {
-    "enabled": false         // set true to enable TickTick sync
-  },
-  "profiles": {},
-  "defaultProfile": ""
+    "assignee": "your-username",
+    "refreshInterval": 60,
+    "backlogLimit": 20
+  }
 }
 ```
 
-Credentials (TickTick OAuth token, OpenRouter key) live in `~/.config/hog/auth.json` with `0600` permissions.
+### Key config sections
 
-### Status groups
-
-hog auto-detects status columns from your GitHub Project. Override per-repo with `statusGroups`:
-
-```json
-"statusGroups": ["In Progress", "In Review", "Todo,Backlog"]
-```
-
-Each entry becomes a board section. Comma-separated values merge into one section (header = first value). Terminal statuses (Done, Shipped, Closed, etc.) are always hidden.
-
-### Profiles
-
-Switch board configs for different contexts:
-
-```sh
-hog config profile:create work
-hog config profile:default work
-hog board --profile personal --live
-```
-
----
-
-## Agent-friendly
-
-Every command supports `--json` for structured output. This makes hog scriptable and usable by AI agents:
-
-```sh
-hog board --mine --json | jq '.issues[] | select(.labels[] | .name == "bug")'
-hog issue create "fix login bug #backend @alice due friday" --repo owner/repo --json
-```
+| Section | Purpose |
+|---------|---------|
+| `pipeline` | Agent orchestration: owner, concurrency, TDD, phases, quality gates |
+| `repos` | Project directories with optional GitHub integration |
+| `board` | Legacy board settings (kept for backward compatibility) |
 
 ---
 
 ## How it works
 
-- **GitHub data** — always synchronous via `execFileSync("gh", ...)`. No GitHub tokens or REST API calls; `gh` CLI handles auth.
-- **TickTick data** — async HTTP via the TickTick Open API. OAuth token stored in `auth.json`.
-- **Rendering** — [Ink](https://github.com/vadimdemedes/ink) (React for CLIs). Each panel is an Ink component; rows are pre-truncated in JS so Ink never wraps text.
-- **Auto-refresh** — `setInterval` re-fetches in the background; age indicator turns yellow (>2 min) then red (>5 min).
+1. `hog pipeline create` creates a Beads dependency DAG with 6 phases
+2. A background watcher process polls `bd ready` every 10 seconds
+3. When a phase's dependencies are satisfied, the Conductor spawns a Claude agent with a role-specific prompt
+4. Each agent runs in an isolated git worktree (`--dangerously-skip-permissions`)
+5. On completion, the bead is closed and the next phase's dependencies may become satisfied
+6. The Refinery merges completed work: rebase → test → quality gates → fast-forward merge
+
+**No GitHub required.** The pipeline runs entirely locally via Beads. GitHub is an optional sync target.
+
+---
+
+## Agent-friendly
+
+Every command supports `--json` for structured output:
+
+```sh
+hog pipeline list --json
+hog pipeline status feat-123 --json
+hog decisions --json
+```
 
 ---
 
@@ -331,29 +208,36 @@ hog issue create "fix login bug #backend @alice due friday" --repo owner/repo --
 git clone https://github.com/ondrej-svec/hog
 cd hog
 npm install
-npm run dev -- board --live    # run from source
-npm run test                   # vitest
-npm run ci                     # typecheck + lint + tests (what CI runs)
+npm run dev -- cockpit              # run from source
+npm run test                        # vitest
+npm run ci                          # typecheck + lint + tests
 ```
 
-**Toolchain:** TypeScript (strict), [Biome](https://biomejs.dev/) for lint/format, [tsup](https://tsup.egoist.dev/) for bundling, [Vitest](https://vitest.dev/) for tests. 80% coverage threshold enforced.
+**Toolchain:** TypeScript (strict), [Biome](https://biomejs.dev/) for lint/format, [tsup](https://tsup.egoist.dev/) for bundling, [Vitest](https://vitest.dev/) for tests. 80% coverage threshold.
 
-Filenames must be `kebab-case`. `noExplicitAny` is an error. Use `import type` for type-only imports.
+---
 
-Run a single test file:
+## Comparison
 
-```sh
-npx vitest run src/board/components/issue-row.test.tsx
-```
+| | hog | Claude Code | Aider | Devin | Gastown |
+|---|---|---|---|---|---|
+| Structured pipeline | Yes (6-phase DAG) | No | No | No | Partial |
+| TDD enforcement | Yes (RED verification) | No | No | No | No |
+| Role separation | Yes (test ≠ impl) | No | No | No | No |
+| Adversarial review | Yes (red team phase) | No | No | No | Partial |
+| Terminal-first | Yes | Yes | Yes | No | No |
+| Zero-config | Yes (`hog init`) | Yes | Yes | Yes | No |
+| Beads DAG | Yes | No | No | No | Yes |
 
 ---
 
 ## Requirements
 
 - **Node.js 22+**
-- **GitHub CLI** (`gh`) — authenticated via `gh auth login`
-- **TickTick account** — optional
-- **OpenRouter API key** — optional, for AI-enhanced issue creation
+- **Beads** (`bd` CLI) — for pipeline DAG management
+- **GitHub CLI** (`gh`) — optional, for GitHub integration
+- **tmux** — optional, for agent session attachment
+- **OpenRouter API key** — optional, for AI-enhanced features
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "@ondrej-svec/hog",
   "version": "1.25.1",
-  "description": "Personal command deck — unified task dashboard for GitHub Projects + TickTick",
+  "description": "TDD-enforced AI development pipelines with structural role separation",
   "author": "Ondrej Svec",
   "repository": {
     "type": "git",
