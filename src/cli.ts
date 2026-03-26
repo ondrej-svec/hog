@@ -101,6 +101,17 @@ program
     await runCockpit(config);
   });
 
+// -- Demo command --
+
+program
+  .command("demo")
+  .description("Run a simulated pipeline to see hog in action (no external deps)")
+  .option("--speed <multiplier>", "Speed multiplier (default: 2)", "2")
+  .action(async (opts: { speed: string }) => {
+    const { runDemo } = await import("./demo/demo.js");
+    await runDemo(Number.parseFloat(opts.speed));
+  });
+
 // -- Board command (tombstone — removed in v2) --
 
 program

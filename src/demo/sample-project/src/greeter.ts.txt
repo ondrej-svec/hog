@@ -1,0 +1,4 @@
+/** Simple greeter module for hog demo pipeline. */
+export function greet(name: string): string {
+  return `Hello, ${name}!`;
+}
