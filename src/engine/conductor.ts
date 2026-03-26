@@ -853,6 +853,71 @@ export class Conductor {
           `Bead ${beadId} completed (${pipeline.completedBeads}/6)`,
         );
 
+        // GREEN verification after impl completes (Farley)
+        if (phase === "impl") {
+          const { verifyGreenState } = await import("./tdd-enforcement.js");
+          const green = await verifyGreenState(pipeline.localPath).catch(() => ({
+            passed: true,
+            detail: "GREEN check failed to run — skipping",
+          }));
+          if (!green.passed) {
+            this.log(pipeline.featureId, "tdd:green-failed", green.detail);
+            // Re-open impl bead for retry
+            await this.beads
+              .updateStatus(pipeline.localPath, beadId, "open")
+              .catch(() => {});
+            pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
+            return; // Don't proceed to GitHub sync — impl needs retry
+          }
+          this.log(pipeline.featureId, "tdd:green-verified", green.detail);
+        }
+
+        // Redteam→impl feedback loop (Farley)
+        // After redteam, check if new tests are failing. If so, re-open impl.
+        if (phase === "redteam") {
+          const { verifyGreenState } = await import("./tdd-enforcement.js");
+          const green = await verifyGreenState(pipeline.localPath).catch(() => ({
+            passed: true,
+            detail: "GREEN check failed to run — skipping",
+          }));
+          if (!green.passed) {
+            // Track redteam→impl iterations to prevent infinite loops
+            const implRetries = this.decisionLog.filter(
+              (e) => e.featureId === pipeline.featureId && e.action === "redteam:impl-loop",
+            ).length;
+            if (implRetries < 2) {
+              this.log(
+                pipeline.featureId,
+                "redteam:impl-loop",
+                `Redteam wrote failing tests — re-opening impl (attempt ${implRetries + 1}/2)`,
+              );
+              // Re-open the impl bead so the next tick spawns a new impl agent
+              const implBeadId = pipeline.beadIds.impl;
+              await this.beads
+                .updateStatus(pipeline.localPath, implBeadId, "open")
+                .catch(() => {});
+              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
+              return; // Don't proceed — impl needs to fix the new failures
+            }
+            // Max iterations reached — escalate to human
+            this.log(
+              pipeline.featureId,
+              "redteam:impl-loop-exhausted",
+              "Max redteam→impl iterations reached. Escalating to human.",
+            );
+            const result = enqueueQuestion(this.questionQueue, {
+              featureId: pipeline.featureId,
+              question: `Red team found issues that impl couldn't fix after 2 attempts. Manual intervention needed.`,
+              options: ["Retry impl", "Skip redteam issues", "Cancel pipeline"],
+              source: "conductor",
+            });
+            this.questionQueue = result.queue;
+            saveQuestionQueue(this.questionQueue);
+            pipeline.status = "blocked";
+            this.savePipelines();
+          }
+        }
+
         // Notify GitHub sync (if configured)
         if (this.onPhaseCompleted) {
           const { findGitHubIssue, loadBeadsSyncState } = await import("./beads-sync.js");

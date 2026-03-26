@@ -52,12 +52,23 @@ const DEFAULT_CONFIG: TddConfig = {
  * This is the most important TDD enforcement — it proves tests are genuine,
  * not reverse-engineered from implementation.
  */
+export interface VerifyRedOptions {
+  /** Specific test files to check (scoped RED). If omitted, runs full suite. */
+  readonly testFiles?: string[];
+  /** Override the auto-detected test command. */
+  readonly testCommand?: string;
+}
+
 export async function verifyRedState(
   cwd: string,
-  testCommand?: string,
+  options?: string | VerifyRedOptions,
 ): Promise<RedVerificationResult> {
-  const cmd = testCommand ?? detectTestCommand(cwd);
-  if (!cmd) {
+  // Backward compat: string arg is a testCommand
+  const opts: VerifyRedOptions =
+    typeof options === "string" ? { testCommand: options } : (options ?? {});
+
+  const baseCmd = opts.testCommand ?? detectTestCommand(cwd);
+  if (!baseCmd) {
     return {
       passed: false,
       failingTests: 0,
@@ -65,6 +76,9 @@ export async function verifyRedState(
       detail: "No test command detected. Configure testCommand in quality settings.",
     };
   }
+
+  // Scope to specific test files if provided (Farley: RED should check new tests only)
+  const cmd = opts.testFiles?.length ? scopeTestCommand(baseCmd, opts.testFiles) : baseCmd;
 
   const [bin, ...args] = cmd.split(" ");
   if (!bin) {
@@ -78,7 +92,6 @@ export async function verifyRedState(
       timeout: 120_000,
     });
     // Tests passed — this means RED state is NOT verified
-    // (tests should FAIL before implementation)
     const output = stdout + stderr;
     return {
       passed: false,
@@ -101,6 +114,49 @@ export async function verifyRedState(
           : "Test command failed but couldn't parse failure count.",
     };
   }
+}
+
+/**
+ * Verify that tests are in GREEN state (all passing) after implementation.
+ * This catches impl agents that exit 0 without actually making tests pass.
+ */
+export async function verifyGreenState(
+  cwd: string,
+  testCommand?: string,
+): Promise<{ passed: boolean; detail: string }> {
+  const cmd = testCommand ?? detectTestCommand(cwd);
+  if (!cmd) {
+    return { passed: true, detail: "No test command detected — skipping GREEN verification." };
+  }
+
+  const [bin, ...args] = cmd.split(" ");
+  if (!bin) {
+    return { passed: true, detail: "Empty test command — skipping GREEN verification." };
+  }
+
+  try {
+    await execFileAsync(bin, args, { cwd, encoding: "utf-8", timeout: 120_000 });
+    return { passed: true, detail: "GREEN state verified: all tests pass." };
+  } catch (err: unknown) {
+    const output = getErrorOutput(err);
+    const failing = countFailingTests(output);
+    return {
+      passed: false,
+      detail: `GREEN state NOT verified: ${failing} test(s) still failing after implementation.`,
+    };
+  }
+}
+
+/** Scope a test command to specific files (runner-dependent). */
+function scopeTestCommand(baseCmd: string, testFiles: string[]): string {
+  const files = testFiles.join(" ");
+  if (baseCmd.includes("vitest")) return `${baseCmd} ${files}`;
+  if (baseCmd.includes("jest")) return `${baseCmd} --testPathPattern="${testFiles.join("|")}"`;
+  if (baseCmd.includes("pytest")) return `${baseCmd} ${files}`;
+  if (baseCmd.includes("cargo test")) return `${baseCmd} ${files}`;
+  if (baseCmd.includes("go test")) return `${baseCmd} -run "${testFiles.join("|")}"`;
+  // Fallback: append files
+  return `${baseCmd} ${files}`;
 }
 
 // ── Spec Traceability ──
