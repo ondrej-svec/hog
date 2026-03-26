@@ -428,7 +428,13 @@ export function Cockpit({ config }: CockpitProps) {
     );
   }
 
-  // Normal: pipeline view
+  // Build context-sensitive hints
+  const hasDecisions = pipelineData.pendingDecisions.length > 0;
+  const hasPipelines = pipelineData.pipelines.length > 0;
+  const selected = pipelineData.pipelines[selectedIndex];
+  const canPauseResume = selected?.status === "running" || selected?.status === "paused";
+
+  // Normal: pipeline view + hint bar
   return (
     <Box flexDirection="column">
       <PipelineView
@@ -441,9 +447,43 @@ export function Cockpit({ config }: CockpitProps) {
           logEntries,
         }}
         cols={termSize.cols}
-        rows={termSize.rows - 2}
+        rows={termSize.rows - 4}
       />
       <ToastContainer toasts={toasts} />
+      {/* Hint bar — always visible, context-sensitive (lazygit pattern) */}
+      <Box>
+        <Text dimColor>
+          <Text color="cyan" bold>P</Text><Text dimColor> new</Text>
+          {hasPipelines ? (
+            <>
+              <Text dimColor>  </Text>
+              <Text color="cyan" bold>j/k</Text><Text dimColor> navigate</Text>
+              {canPauseResume ? (
+                <>
+                  <Text dimColor>  </Text>
+                  <Text color="cyan" bold>x</Text><Text dimColor> {selected?.status === "paused" ? "resume" : "pause"}</Text>
+                </>
+              ) : null}
+              <Text dimColor>  </Text>
+              <Text color="cyan" bold>d</Text><Text dimColor> cancel</Text>
+              <Text dimColor>  </Text>
+              <Text color="cyan" bold>l</Text><Text dimColor> log</Text>
+            </>
+          ) : null}
+          {hasDecisions ? (
+            <>
+              <Text dimColor>  </Text>
+              <Text color="red" bold>D</Text><Text dimColor> answer decision</Text>
+              <Text dimColor>  </Text>
+              <Text color="red" bold>1-9</Text><Text dimColor> quick answer</Text>
+            </>
+          ) : null}
+          <Text dimColor>  </Text>
+          <Text color="cyan" bold>?</Text><Text dimColor> help</Text>
+          <Text dimColor>  </Text>
+          <Text color="cyan" bold>q</Text><Text dimColor> quit</Text>
+        </Text>
+      </Box>
     </Box>
   );
 }
