@@ -16,13 +16,13 @@ export {
 export type { ConductorOptions, DecisionLogEntry, Pipeline, PipelineStatus } from "./conductor.js";
 export { Conductor } from "./conductor.js";
 export { Engine } from "./engine.js";
-export type { PipelineSnapshot } from "./pipeline-store.js";
-export { PipelineStore } from "./pipeline-store.js";
 export type { EngineEvents } from "./event-bus.js";
 export { EventBus } from "./event-bus.js";
 // FetchLoop removed — pipeline doesn't need GitHub dashboard polling
 export type { LaunchIssueContext } from "./orchestrator.js";
 export { Orchestrator, resolvePhaseConfig } from "./orchestrator.js";
+export type { PipelineSnapshot } from "./pipeline-store.js";
+export { PipelineStore } from "./pipeline-store.js";
 export type {
   GateIssue,
   GateResult,
