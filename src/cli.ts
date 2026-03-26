@@ -619,6 +619,79 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("review <featureId>")
+  .description("Show a structured summary of a completed or in-progress pipeline")
+  .action(async (featureId: string) => {
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const { Engine } = await import("./engine/engine.js");
+    const { Conductor } = await import("./engine/conductor.js");
+
+    const engine = new Engine(cfg);
+    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+    const pipelines = conductor.getPipelines();
+    const pipeline = pipelines.find((p) => p.featureId === featureId);
+
+    if (!pipeline) {
+      if (useJson()) {
+        jsonOut({ ok: false, error: `Pipeline not found: ${featureId}` });
+      } else {
+        console.error(`Pipeline not found: ${featureId}`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
+    const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
+    const phaseStatus = phases.map((p) => {
+      const beadId = pipeline.beadIds[p === "tests" ? "tests" : p];
+      return { phase: p, beadId };
+    });
+
+    const elapsed = pipeline.completedAt
+      ? Math.round((new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime()) / 60_000)
+      : Math.round((Date.now() - new Date(pipeline.startedAt).getTime()) / 60_000);
+
+    const decisionLog = conductor.getDecisionLog().filter((e) => e.featureId === featureId);
+
+    if (useJson()) {
+      jsonOut({
+        ok: true,
+        data: {
+          featureId: pipeline.featureId,
+          title: pipeline.title,
+          status: pipeline.status,
+          completedBeads: pipeline.completedBeads,
+          elapsedMinutes: elapsed,
+          phases: phaseStatus,
+          decisionLog,
+        },
+      });
+    } else {
+      console.log(`\nPipeline: ${pipeline.featureId} — ${pipeline.title}`);
+      console.log(`Status: ${pipeline.status} (${elapsed}m${pipeline.completedAt ? " total" : " elapsed"})`);
+      console.log(`Progress: ${pipeline.completedBeads}/6 phases`);
+      console.log("");
+      console.log("Phases:");
+      for (const ps of phaseStatus) {
+        const icon = pipeline.completedBeads > phases.indexOf(ps.phase) ? "✓" : pipeline.activePhase === ps.phase ? "●" : "○";
+        console.log(`  ${icon} ${ps.phase}`);
+      }
+      if (decisionLog.length > 0) {
+        console.log("");
+        console.log(`Decision log: ${decisionLog.length} entries`);
+        for (const entry of decisionLog.slice(-5)) {
+          console.log(`  [${entry.timestamp.slice(11, 19)}] ${entry.action}: ${entry.detail.slice(0, 80)}`);
+        }
+        if (decisionLog.length > 5) {
+          console.log(`  ... and ${decisionLog.length - 5} more`);
+        }
+      }
+      console.log("");
+    }
+  });
+
+pipelineCommand
   .command("cancel <featureId>")
   .description("Cancel and remove a pipeline")
   .action(async (featureId: string) => {
