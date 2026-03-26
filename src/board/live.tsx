@@ -26,6 +26,15 @@ class InkErrorBoundary extends Component<
 
 /** Launch the pipeline cockpit TUI (v2 primary). */
 export async function runCockpit(config: HogConfig): Promise<void> {
+  // Auto-start daemon if not running
+  const { ensureDaemonRunning } = await import("../daemon/ensure-daemon.js");
+  const daemonReady = await ensureDaemonRunning();
+  if (!daemonReady) {
+    process.stderr.write(
+      "Warning: could not start hogd daemon. Cockpit will have limited functionality.\n",
+    );
+  }
+
   const instance = render(
     <InkErrorBoundary>
       <Cockpit config={config} />

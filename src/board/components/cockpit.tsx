@@ -137,7 +137,7 @@ export function Cockpit({ config }: CockpitProps) {
   // Free-text decision input
   const decisionTextRef = useRef("");
 
-  // Pipeline log entries for the selected pipeline
+  // Pipeline log entries from daemon decision log
   const [logEntries, setLogEntries] = useState<string[]>([]);
   useEffect(() => {
     const selected = pipelineData.pipelines[selectedIndex];
@@ -145,24 +145,39 @@ export function Cockpit({ config }: CockpitProps) {
       setLogEntries([]);
       return;
     }
-    const logFile = join(
-      process.env["HOME"] ?? "",
-      ".config",
-      "hog",
-      "pipelines",
-      `${selected.featureId}.log`,
-    );
-    try {
-      if (existsSync(logFile)) {
-        const { readFileSync } = require("node:fs") as typeof import("node:fs");
-        const content = readFileSync(logFile, "utf-8");
-        setLogEntries(content.trim().split("\n").slice(-20));
-      } else {
+
+    let cancelled = false;
+    const fetchLog = async () => {
+      try {
+        const { tryConnectDaemon } = await import("../../daemon/client.js");
+        const client = await tryConnectDaemon();
+        if (!client || cancelled) return;
+        const review = await client.call("pipeline.review", {
+          featureId: selected.featureId,
+        });
+        client.close();
+        if (cancelled) return;
+        if (review) {
+          setLogEntries(
+            review.decisionLog
+              .slice(-20)
+              .map(
+                (e) =>
+                  `[${e.timestamp.slice(11, 19)}] ${e.action}: ${e.detail.slice(0, 80)}`,
+              ),
+          );
+        } else {
+          setLogEntries([]);
+        }
+      } catch {
         setLogEntries([]);
       }
-    } catch {
-      setLogEntries([]);
-    }
+    };
+
+    fetchLog();
+    return () => {
+      cancelled = true;
+    };
   }, [pipelineData.pipelines, selectedIndex]);
 
   // ── Keyboard Handling ──
