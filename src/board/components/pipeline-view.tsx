@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Pipeline, PipelineStatus } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
@@ -17,7 +17,7 @@ function timeAgo(isoString: string): string {
 
 export interface PipelineViewData {
   readonly pipelines: Pipeline[];
-  readonly agents: readonly TrackedAgent[];
+  readonly agents: readonly DaemonAgentInfo[];
   readonly pendingDecisions: Question[];
   readonly mergeQueue: readonly MergeQueueEntry[];
   readonly selectedIndex: number;
@@ -130,18 +130,18 @@ function PipelineListItem({
 
 // ── Agent List Item ──
 
-function AgentListItem({ agent }: { agent: TrackedAgent }) {
+function AgentListItem({ agent }: { agent: DaemonAgentInfo }) {
   const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-  const activity = agent.monitor.lastToolUse
-    ? `using ${agent.monitor.lastToolUse}`
-    : agent.monitor.isRunning
+  const activity = agent.lastToolUse
+    ? `using ${agent.lastToolUse}`
+    : agent.isRunning
       ? "running"
       : "done";
 
   return (
     <Box>
-      <Text color={agent.monitor.isRunning ? "yellow" : "green"}>
-        {agent.monitor.isRunning ? "  ◐ " : "  ✓ "}
+      <Text color={agent.isRunning ? "yellow" : "green"}>
+        {agent.isRunning ? "  ◐ " : "  ✓ "}
       </Text>
       <Text>{agent.phase.padEnd(8)}</Text>
       <Text dimColor> {activity}</Text>
@@ -258,7 +258,7 @@ function PipelineStatusBar({
   mergeQueue,
 }: {
   pipelines: Pipeline[];
-  agents: readonly TrackedAgent[];
+  agents: readonly DaemonAgentInfo[];
   pendingDecisions: Question[];
   mergeQueue: readonly MergeQueueEntry[];
 }) {
@@ -268,7 +268,7 @@ function PipelineStatusBar({
   ).length;
   const autonomous = running - brainstorming;
   const blocked = pipelines.filter((p) => p.status === "blocked").length;
-  const agentCount = agents.filter((a) => a.monitor.isRunning).length;
+  const agentCount = agents.filter((a) => a.isRunning).length;
   const decisions = pendingDecisions.length;
   const queueDepth = mergeQueue.filter((e) => e.status === "pending").length;
 
@@ -339,7 +339,7 @@ function PipelineDetailPanel({
   logEntries,
 }: {
   pipeline: Pipeline;
-  agents: readonly TrackedAgent[];
+  agents: readonly DaemonAgentInfo[];
   logEntries?: readonly string[] | undefined;
 }) {
   const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
@@ -415,15 +415,15 @@ function PipelineDetailPanel({
           <Text dimColor>── Agents ──</Text>
           {pipelineAgents.map((agent) => {
             const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-            const activity = agent.monitor.lastToolUse
-              ? `using ${agent.monitor.lastToolUse}`
-              : agent.monitor.isRunning
+            const activity = agent.lastToolUse
+              ? `using ${agent.lastToolUse}`
+              : agent.isRunning
                 ? "working..."
                 : "done";
             return (
               <Box key={agent.sessionId}>
-                <Text color={agent.monitor.isRunning ? "yellow" : "green"}>
-                  {agent.monitor.isRunning ? "◐ " : "✓ "}
+                <Text color={agent.isRunning ? "yellow" : "green"}>
+                  {agent.isRunning ? "◐ " : "✓ "}
                 </Text>
                 <Text bold>{agent.phase}</Text>
                 <Text dimColor>

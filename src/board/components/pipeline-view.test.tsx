@@ -2,8 +2,8 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
 import type { Pipeline } from "../../engine/conductor.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "./pipeline-view.js";
@@ -42,21 +42,15 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
   };
 }
 
-function makeAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+function makeAgent(overrides: Partial<DaemonAgentInfo> = {}): DaemonAgentInfo {
   return {
     sessionId: "session-1",
     repo: "owner/repo",
-    issueNumber: 0,
     phase: "stories",
     pid: 12345,
     startedAt: new Date(Date.now() - 180_000).toISOString(), // 3 min ago
-    monitor: {
-      sessionId: "session-1",
-      lastToolUse: "Write",
-      lastText: "Writing user stories...",
-      isRunning: true,
-    },
-    child: {} as never,
+    lastToolUse: "Write",
+    isRunning: true,
     ...overrides,
   };
 }
@@ -320,7 +314,8 @@ describe("PipelineView", () => {
 
     it("shows completed icon for finished agent", () => {
       const doneAgent = makeAgent({
-        monitor: { sessionId: "s1", lastToolUse: undefined, lastText: "Done", isRunning: false },
+        lastToolUse: undefined,
+        isRunning: false,
       });
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],

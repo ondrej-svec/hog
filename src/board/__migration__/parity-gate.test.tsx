@@ -11,8 +11,8 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
 import type { Pipeline } from "../../engine/conductor.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "../components/pipeline-view.js";
@@ -51,21 +51,15 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
   };
 }
 
-function makeAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+function makeAgent(overrides: Partial<DaemonAgentInfo> = {}): DaemonAgentInfo {
   return {
     sessionId: "session-1",
     repo: "owner/repo",
-    issueNumber: 0,
     phase: "stories",
     pid: 12345,
     startedAt: new Date(Date.now() - 180_000).toISOString(),
-    monitor: {
-      sessionId: "session-1",
-      lastToolUse: "Read",
-      lastText: undefined,
-      isRunning: true,
-    },
-    child: {} as never,
+    lastToolUse: "Read",
+    isRunning: true,
     ...overrides,
   };
 }
