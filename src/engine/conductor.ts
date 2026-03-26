@@ -379,11 +379,20 @@ export class Conductor {
     // Sync completedBeads from actual bead state (handles externally-closed beads like brainstorm)
     await this.syncCompletedBeads(pipeline);
 
+    // Build reverse lookup: bead ID → role (Cherny: avoid title-parsing)
+    const beadIdToRole: Record<string, PipelineRole> = {};
+    for (const [role, id] of Object.entries(pipeline.beadIds)) {
+      // Map: brainstorm→brainstorm, stories→stories, tests→test, impl→impl, redteam→redteam, merge→merge
+      const pipelineRole = role === "tests" ? "test" : (role as PipelineRole);
+      beadIdToRole[id] = pipelineRole;
+    }
+
     for (const bead of pipelineReady) {
       // Skip beads already being worked on
       if (bead.status === "in_progress") continue;
 
-      const role = beadToRole(bead);
+      // Use pipeline.beadIds reverse lookup instead of title parsing (Cherny)
+      const role = beadIdToRole[bead.id] ?? beadToRole(bead);
       if (!role) continue;
 
       await this.spawnForRole(pipeline, bead, role);
