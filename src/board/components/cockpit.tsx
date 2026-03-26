@@ -163,7 +163,7 @@ export function Cockpit({ config }: CockpitProps) {
               .slice(-20)
               .map(
                 (e) =>
-                  `[${e.timestamp.slice(11, 19)}] ${e.action}: ${e.detail.slice(0, 80)}`,
+                  `[${e.timestamp}] ${e.action}: ${e.detail.slice(0, 80)}`,
               ),
           );
         } else {
