@@ -101,6 +101,8 @@ export class Conductor {
   > = new Map();
   /** Maps session IDs to pipeline feature IDs for correct completion routing. */
   private readonly sessionToPipeline: Map<string, string> = new Map();
+  /** Test baselines captured before impl agent runs — for diff-based GREEN verification. */
+  private readonly testBaselines: Map<string, import("./tdd-enforcement.js").TestBaseline> = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -660,6 +662,22 @@ export class Conductor {
       }
     }
 
+    // Capture test baseline before impl runs (for diff-based GREEN verification)
+    if (role === "impl" && !this.testBaselines.has(pipeline.featureId)) {
+      try {
+        const { captureTestBaseline } = await import("./tdd-enforcement.js");
+        const baseline = await captureTestBaseline(pipeline.localPath);
+        this.testBaselines.set(pipeline.featureId, baseline);
+        this.log(
+          pipeline.featureId,
+          "tdd:baseline-captured",
+          `Test baseline: ${baseline.totalFailing} pre-existing failures in ${baseline.failingFiles.size} files`,
+        );
+      } catch {
+        // best-effort — GREEN will still work without baseline
+      }
+    }
+
     // Resolve model from config for this role
     const roleModel = this.config.pipeline?.models?.[role];
 
@@ -842,9 +860,11 @@ export class Conductor {
         );
 
         // GREEN verification after impl completes (Farley)
+        // Uses baseline comparison — only NEW failures count, pre-existing ones are ignored
         if (phase === "impl") {
           const { verifyGreenState } = await import("./tdd-enforcement.js");
-          const green = await verifyGreenState(pipeline.localPath).catch(() => ({
+          const baseline = this.testBaselines.get(pipeline.featureId);
+          const green = await verifyGreenState(pipeline.localPath, { baseline }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));
@@ -862,7 +882,8 @@ export class Conductor {
         // After redteam, check if new tests are failing. If so, re-open impl.
         if (phase === "redteam") {
           const { verifyGreenState } = await import("./tdd-enforcement.js");
-          const green = await verifyGreenState(pipeline.localPath).catch(() => ({
+          const baseline = this.testBaselines.get(pipeline.featureId);
+          const green = await verifyGreenState(pipeline.localPath, { baseline }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));
