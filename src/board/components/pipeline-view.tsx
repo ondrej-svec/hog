@@ -132,11 +132,14 @@ function PipelineListItem({
 
 function AgentListItem({ agent }: { agent: DaemonAgentInfo }) {
   const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-  const activity = agent.lastToolUse
-    ? `using ${agent.lastToolUse}`
-    : agent.isRunning
-      ? "running"
-      : "done";
+  let activity: string;
+  if (!agent.isRunning) {
+    activity = `done (${elapsed}m)`;
+  } else if (agent.lastToolUse) {
+    activity = agent.lastToolUse;
+  } else {
+    activity = "starting...";
+  }
 
   return (
     <Box>
@@ -145,7 +148,7 @@ function AgentListItem({ agent }: { agent: DaemonAgentInfo }) {
       </Text>
       <Text>{agent.phase.padEnd(8)}</Text>
       <Text dimColor> {activity}</Text>
-      <Text dimColor> {elapsed}m</Text>
+      {agent.isRunning ? <Text dimColor> {elapsed}m</Text> : null}
     </Box>
   );
 }
@@ -418,21 +421,21 @@ function PipelineDetailPanel({
           <Text dimColor>── Agents ──</Text>
           {pipelineAgents.map((agent) => {
             const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-            const activity = agent.lastToolUse
-              ? `using ${agent.lastToolUse}`
-              : agent.isRunning
-                ? "working..."
-                : "done";
+            let activity: string;
+            if (!agent.isRunning) {
+              activity = `done (${elapsed}m)`;
+            } else if (agent.lastToolUse) {
+              activity = `${agent.lastToolUse} · ${elapsed}m`;
+            } else {
+              activity = `starting... · ${elapsed}m`;
+            }
             return (
               <Box key={agent.sessionId}>
                 <Text color={agent.isRunning ? "yellow" : "green"}>
                   {agent.isRunning ? "◐ " : "✓ "}
                 </Text>
                 <Text bold>{agent.phase}</Text>
-                <Text dimColor>
-                  {" "}
-                  {activity} · {elapsed}m
-                </Text>
+                <Text dimColor> {activity}</Text>
               </Box>
             );
           })}
