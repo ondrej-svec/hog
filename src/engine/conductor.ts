@@ -823,67 +823,74 @@ export class Conductor {
       const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
       if (!beadId) continue;
 
+      const errorDetail = errorMessage || `Process exited with code ${exitCode}`;
+
+      const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
+      const failureCount = this.decisionLog.filter(
+        (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
+      ).length + 1; // +1 for current failure
+
       this.log(
         pipeline.featureId,
         `agent:failed:${phase}`,
-        errorMessage
-          ? `Agent failed: ${errorMessage.slice(0, 200)}`
-          : `Agent failed with exit code ${exitCode}`,
+        `${phaseLabel} failed (attempt ${failureCount}/3): ${errorDetail.slice(0, 200)}`,
       );
 
       // Detect rate limit errors — pause pipeline instead of burning retries
       const isRateLimit =
-        errorMessage?.includes("out of extra usage") ||
-        errorMessage?.includes("rate limit") ||
-        errorMessage?.includes("resets ") ||
-        errorMessage?.includes("429");
+        errorDetail.includes("out of extra usage") ||
+        errorDetail.includes("rate limit") ||
+        errorDetail.includes("resets ") ||
+        errorDetail.includes("429");
       if (isRateLimit) {
         pipeline.status = "paused";
         this.store.save();
         this.log(
           pipeline.featureId,
           "pipeline:rate-limited",
-          `Paused — API rate limit hit. Resume when usage resets: ${errorMessage?.match(/resets\s+\S+/)?.[0] ?? "check your plan"}`,
+          `Paused — API rate limit hit. Resume when usage resets: ${errorDetail.match(/resets\s+\S+/)?.[0] ?? "check your plan"}`,
         );
         return;
       }
 
-      // Mark bead as blocked so it can be retried
+      // Mark bead as open so it can be retried on next tick
       this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
         // best-effort
       });
 
-      // Queue a question for the human if this is a repeated failure
-      // But only once per phase — don't spam questions
       if (pipeline.status === "blocked") return; // already blocked, don't add more questions
 
-      const failures = this.decisionLog.filter(
-        (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
-      );
-
-      if (failures.length >= 2) {
-        // Check if we already have an unresolved question for this phase
-        const existingQuestion = this.questionQueue.questions.find(
-          (q) => q.featureId === pipeline.featureId && !q.resolvedAt && q.question.includes(phase),
-        );
-        if (existingQuestion) return; // already asked, don't spam
-
-        const result = enqueueQuestion(this.questionQueue, {
-          featureId: pipeline.featureId,
-          question: `The ${phase} agent has failed ${failures.length} times for "${pipeline.title}". Should I retry, skip this phase, or stop the pipeline?`,
-          options: ["Retry", "Skip phase", "Stop pipeline"],
-          source: "conductor",
-        });
-        this.questionQueue = result.queue;
-        saveQuestionQueue(this.questionQueue);
-        pipeline.status = "blocked";
-        this.store.save();
+      if (failureCount < 3) {
+        // Auto-retry with message — next tick will pick up the open bead
         this.log(
           pipeline.featureId,
-          "pipeline:blocked",
-          `Repeated ${phase} failures — queued for human decision`,
+          `agent:retry:${phase}`,
+          `${phaseLabel} will retry automatically on next tick (~10s)`,
         );
+        return;
       }
+
+      // 3+ failures — escalate to human
+      const existingQuestion = this.questionQueue.questions.find(
+        (q) => q.featureId === pipeline.featureId && !q.resolvedAt && q.question.includes(phase),
+      );
+      if (existingQuestion) return;
+
+      const result = enqueueQuestion(this.questionQueue, {
+        featureId: pipeline.featureId,
+        question: `${phaseLabel} has failed ${failureCount} times for "${pipeline.title}". What should I do?`,
+        options: ["Retry", "Skip phase", "Stop pipeline"],
+        source: "conductor",
+      });
+      this.questionQueue = result.queue;
+      saveQuestionQueue(this.questionQueue);
+      pipeline.status = "blocked";
+      this.store.save();
+      this.log(
+        pipeline.featureId,
+        "pipeline:blocked",
+        `${phaseLabel} failed ${failureCount} times — waiting for your decision`,
+      );
     }
   }
 
