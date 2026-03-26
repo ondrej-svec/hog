@@ -404,7 +404,7 @@ describe("Conductor Pipeline", () => {
         completedBeads: 0,
         startedAt: new Date().toISOString(),
       };
-      (conductor as unknown as { pipelines: Map<string, typeof pipeline> }).pipelines.set(
+      (conductor as unknown as { store: { set(k: string, v: typeof pipeline): void } }).store.set(
         "feat-test",
         pipeline,
       );

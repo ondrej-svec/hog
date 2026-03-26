@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
-import { CONFIG_DIR } from "../config.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
 import type { EventBus } from "./event-bus.js";
+import { PipelineStore } from "./pipeline-store.js";
 import type { QuestionQueue } from "./question-queue.js";
 import {
   enqueueQuestion,
@@ -89,7 +88,7 @@ export class Conductor {
   private readonly beads: BeadsClient;
   private readonly worktrees: WorktreeManager | undefined;
   private readonly refinery: Refinery | undefined;
-  private readonly pipelines: Map<string, Pipeline> = new Map();
+  private readonly store: PipelineStore;
   private readonly decisionLog: DecisionLogEntry[] = [];
   /** Maps session IDs to worktree paths for cleanup. */
   private readonly sessionWorktrees: Map<
@@ -103,110 +102,7 @@ export class Conductor {
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentPipelines: number;
   private readonly onPhaseCompleted?: ConductorOptions["onPhaseCompleted"];
-  private static readonly PIPELINES_FILE = join(CONFIG_DIR, "pipelines.json");
-
-  /**
-   * Persist pipelines to disk so they survive process restarts.
-   *
-   * Uses read-merge-write to avoid lost updates from concurrent processes:
-   * reads current file, merges with in-memory state, writes back.
-   * The atomic rename prevents partial reads but does NOT prevent lost updates
-   * from truly simultaneous writes — acceptable for this use case.
-   */
-  private savePipelines(): void {
-    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
-    try {
-      // Write current in-memory state to disk
-      const data = [...this.pipelines.values()].map((p) => ({
-        featureId: p.featureId,
-        title: p.title,
-        repo: p.repo,
-        localPath: p.localPath,
-        beadIds: p.beadIds,
-        status: p.status,
-        completedBeads: p.completedBeads,
-        activePhase: p.activePhase,
-        startedAt: p.startedAt,
-        completedAt: p.completedAt,
-      }));
-      mkdirSync(CONFIG_DIR, { recursive: true });
-      const tmp = `${Conductor.PIPELINES_FILE}.tmp`;
-      writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
-      renameSync(tmp, Conductor.PIPELINES_FILE);
-    } catch {
-      // best-effort — tests and environments without writable config dir
-    }
-  }
-
-  /** Load persisted pipelines from disk and re-resolve repoConfig from current config. */
-  private loadPipelines(): void {
-    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
-    if (!existsSync(Conductor.PIPELINES_FILE)) return;
-    try {
-      const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
-      if (!Array.isArray(raw)) return;
-      for (const entry of raw) {
-        if (typeof entry !== "object" || entry === null) continue;
-        const e = entry as Record<string, unknown>;
-        if (typeof e["featureId"] !== "string" || typeof e["repo"] !== "string") continue;
-
-        // Skip completed/failed pipelines
-        if (e["status"] === "completed" || e["status"] === "failed") continue;
-
-        // Auto-expire stale pipelines (>7 days old with no progress)
-        const startedAt =
-          typeof e["startedAt"] === "string" ? new Date(e["startedAt"]).getTime() : 0;
-        const ageDays = (Date.now() - startedAt) / 86_400_000;
-        const completedBeads = typeof e["completedBeads"] === "number" ? e["completedBeads"] : 0;
-        if (ageDays > 7 && completedBeads === 0) continue;
-
-        // Validate beadIds structure (CRIT-2)
-        const beadIds = e["beadIds"];
-        if (
-          typeof beadIds !== "object" ||
-          beadIds === null ||
-          typeof (beadIds as Record<string, unknown>)["brainstorm"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["stories"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["tests"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["impl"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["redteam"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["merge"] !== "string"
-        ) {
-          continue; // Corrupted or old-schema pipeline — skip
-        }
-
-        // Re-resolve repoConfig from current config, fall back to ad-hoc config
-        const localPath = (e["localPath"] as string) ?? "";
-        const repoConfig =
-          this.config.repos.find((r) => r.name === e["repo"]) ??
-          ({
-            name: e["repo"] as string,
-            shortName: e["repo"] as string,
-            projectNumber: 0,
-            statusFieldId: "",
-            localPath,
-            completionAction: { type: "closeIssue" },
-          } as RepoConfig);
-
-        const pipeline: Pipeline = {
-          featureId: e["featureId"] as string,
-          title: (e["title"] as string) ?? "",
-          repo: e["repo"] as string,
-          localPath: localPath || repoConfig.localPath || "",
-          repoConfig,
-          beadIds: beadIds as Pipeline["beadIds"],
-          status: (e["status"] as PipelineStatus) ?? "running",
-          completedBeads: (e["completedBeads"] as number) ?? 0,
-          activePhase: e["activePhase"] as string | undefined,
-          startedAt: (e["startedAt"] as string) ?? new Date().toISOString(),
-          ...(typeof e["completedAt"] === "string" ? { completedAt: e["completedAt"] } : {}),
-        };
-        this.pipelines.set(pipeline.featureId, pipeline);
-      }
-    } catch {
-      // Corrupted file — start fresh
-    }
-  }
+  // Pipeline persistence delegated to PipelineStore (Fowler/Cherny extraction)
 
   constructor(
     config: HogConfig,
@@ -228,9 +124,7 @@ export class Conductor {
     this.pollIntervalMs = options.pollIntervalMs ?? 10_000;
     this.maxConcurrentPipelines = options.maxConcurrentPipelines ?? 3;
     this.onPhaseCompleted = options.onPhaseCompleted;
-
-    // Restore pipelines from previous sessions
-    this.loadPipelines();
+    this.store = new PipelineStore(config);
 
     // Listen for agent completion/failure to advance pipelines
     this.eventBus.on("agent:completed", (event) => {
@@ -250,7 +144,7 @@ export class Conductor {
   /** Start the conductor polling loop. */
   start(): void {
     // Clean up stale questions from pipelines that no longer exist
-    const activeIds = new Set([...this.pipelines.keys()]);
+    const activeIds = new Set(this.store.getAll().map((p) => p.featureId));
     this.questionQueue = pruneOrphaned(this.questionQueue, activeIds);
     saveQuestionQueue(this.questionQueue);
 
@@ -274,7 +168,7 @@ export class Conductor {
 
   /** Get all active pipelines. */
   getPipelines(): Pipeline[] {
-    return [...this.pipelines.values()];
+    return this.store.getAll();
   }
 
   /** Get the decision log. */
@@ -323,7 +217,7 @@ export class Conductor {
       }
     }
 
-    const activePipelines = [...this.pipelines.values()].filter((p) => p.status === "running");
+    const activePipelines = this.store.getAll().filter((p) => p.status === "running");
     if (activePipelines.length >= this.maxConcurrentPipelines) {
       return {
         error: `Max concurrent pipelines (${this.maxConcurrentPipelines}) reached`,
@@ -372,8 +266,8 @@ export class Conductor {
       startedAt: new Date().toISOString(),
     };
 
-    this.pipelines.set(featureId, pipeline);
-    this.savePipelines();
+    this.store.set(featureId, pipeline);
+    this.store.save();
     this.log(featureId, "pipeline:started", `Created DAG for: ${title}`);
 
     // Don't tick here — the watcher process handles advancement.
@@ -385,27 +279,27 @@ export class Conductor {
 
   /** Pause a pipeline. Agents keep running but no new ones are spawned. */
   pausePipeline(featureId: string): boolean {
-    const pipeline = this.pipelines.get(featureId);
+    const pipeline = this.store.get(featureId);
     if (!pipeline || pipeline.status !== "running") return false;
     pipeline.status = "paused";
-    this.savePipelines();
+    this.store.save();
     this.log(featureId, "pipeline:paused", "Paused by user");
     return true;
   }
 
   /** Resume a paused pipeline. */
   resumePipeline(featureId: string): boolean {
-    const pipeline = this.pipelines.get(featureId);
+    const pipeline = this.store.get(featureId);
     if (!pipeline || pipeline.status !== "paused") return false;
     pipeline.status = "running";
-    this.savePipelines();
+    this.store.save();
     this.log(featureId, "pipeline:resumed", "Resumed by user");
     return true;
   }
 
   /** Cancel and remove a pipeline, cleaning up active agents and worktrees. */
   cancelPipeline(featureId: string): boolean {
-    const pipeline = this.pipelines.get(featureId);
+    const pipeline = this.store.get(featureId);
     if (!pipeline) return false;
 
     // Clean up any active sessions for this pipeline
@@ -421,114 +315,25 @@ export class Conductor {
       }
     }
 
-    this.pipelines.delete(featureId);
-    this.savePipelines();
+    this.store.delete(featureId);
+    this.store.save();
     this.log(featureId, "pipeline:cancelled", `Cancelled: ${pipeline.title}`);
     return true;
   }
 
   /**
    * Sync pipelines from disk — picks up new pipelines created by other processes
-   * and respects "clear all" signal (empty file).
+   * Delegated to PipelineStore (Fowler extraction).
    */
-  private syncFromDisk(): void {
-    if (process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true") return;
-    if (!existsSync(Conductor.PIPELINES_FILE)) return;
-
-    try {
-      const raw: unknown = JSON.parse(readFileSync(Conductor.PIPELINES_FILE, "utf-8"));
-      if (!Array.isArray(raw)) return;
-
-      // Empty file = clear signal
-      if (raw.length === 0 && this.pipelines.size > 0) {
-        this.pipelines.clear();
-        return;
-      }
-
-      // Add pipelines from disk that we don't already have
-      for (const entry of raw) {
-        if (typeof entry !== "object" || entry === null) continue;
-        const e = entry as Record<string, unknown>;
-        const featureId = e["featureId"];
-        if (typeof featureId !== "string") continue;
-
-        // Update existing pipelines with progress from other processes
-        const existing = this.pipelines.get(featureId);
-        if (existing) {
-          const diskCompleted = typeof e["completedBeads"] === "number" ? e["completedBeads"] : 0;
-          if (diskCompleted > existing.completedBeads) {
-            existing.completedBeads = diskCompleted;
-          }
-          if (typeof e["activePhase"] === "string" && e["activePhase"] !== existing.activePhase) {
-            existing.activePhase = e["activePhase"];
-          }
-          const diskStatus = e["status"] as string;
-          if (diskStatus === "completed" || diskStatus === "failed") {
-            existing.status = diskStatus as Pipeline["status"];
-            if (diskStatus === "completed" && typeof e["completedAt"] === "string") {
-              existing.completedAt = e["completedAt"];
-            }
-          }
-          continue;
-        }
-
-        // Skip terminal states for new pipelines
-        if (e["status"] === "completed" || e["status"] === "failed") continue;
-
-        // Validate beadIds
-        const beadIds = e["beadIds"];
-        if (
-          typeof beadIds !== "object" ||
-          beadIds === null ||
-          typeof (beadIds as Record<string, unknown>)["brainstorm"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["stories"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["tests"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["impl"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["redteam"] !== "string" ||
-          typeof (beadIds as Record<string, unknown>)["merge"] !== "string"
-        ) {
-          continue;
-        }
-
-        const localPath = (e["localPath"] as string) ?? "";
-        const repoConfig =
-          this.config.repos.find((r) => r.name === e["repo"]) ??
-          ({
-            name: (e["repo"] as string) ?? "",
-            shortName: (e["repo"] as string) ?? "",
-            projectNumber: 0,
-            statusFieldId: "",
-            localPath,
-            completionAction: { type: "closeIssue" },
-          } as RepoConfig);
-
-        this.pipelines.set(featureId, {
-          featureId,
-          title: (e["title"] as string) ?? "",
-          repo: (e["repo"] as string) ?? "",
-          localPath: localPath || repoConfig.localPath || "",
-          repoConfig,
-          beadIds: beadIds as Pipeline["beadIds"],
-          status: (e["status"] as PipelineStatus) ?? "running",
-          completedBeads: (e["completedBeads"] as number) ?? 0,
-          activePhase: e["activePhase"] as string | undefined,
-          startedAt: (e["startedAt"] as string) ?? new Date().toISOString(),
-          ...(typeof e["completedAt"] === "string" ? { completedAt: e["completedAt"] } : {}),
-        });
-      }
-    } catch {
-      // best-effort
-    }
-  }
 
   // ── Core Loop ──
 
   /** One tick of the conductor — check all running pipelines for ready work. */
   private async tick(): Promise<void> {
     // Pick up pipelines created by other processes (CLI, watcher)
-    this.syncFromDisk();
+    this.store.syncFromDisk();
 
-    for (const pipeline of this.pipelines.values()) {
+    for (const pipeline of this.store.getAll()) {
       // Skip completed/failed pipelines
       if (pipeline.status === "completed" || pipeline.status === "failed") continue;
       // Skip paused pipelines
@@ -555,7 +360,7 @@ export class Conductor {
     }
 
     // Persist any state changes from this tick cycle
-    this.savePipelines();
+    this.store.save();
   }
 
   /** Check a single pipeline for ready beads and spawn agents. */
@@ -794,7 +599,7 @@ export class Conductor {
       }
       if (pipeline.completedBeads !== closed) {
         pipeline.completedBeads = closed;
-        this.savePipelines();
+        this.store.save();
       }
     } catch {
       // best-effort
@@ -817,7 +622,7 @@ export class Conductor {
       if (allClosed) {
         pipeline.status = "completed";
         pipeline.completedAt = new Date().toISOString();
-        this.savePipelines();
+        this.store.save();
         this.log(
           pipeline.featureId,
           "pipeline:completed",
@@ -839,7 +644,7 @@ export class Conductor {
   ): void {
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
-    const pipeline = featureId ? this.pipelines.get(featureId) : undefined;
+    const pipeline = featureId ? this.store.get(featureId) : undefined;
     if (!pipeline) return;
 
     const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
@@ -933,7 +738,7 @@ export class Conductor {
             this.questionQueue = result.queue;
             saveQuestionQueue(this.questionQueue);
             pipeline.status = "blocked";
-            this.savePipelines();
+            this.store.save();
           }
         }
 
@@ -975,8 +780,8 @@ export class Conductor {
     this.sessionToPipeline.delete(sessionId);
 
     const matchedPipelines = featureId
-      ? ([this.pipelines.get(featureId)].filter(Boolean) as Pipeline[])
-      : [...this.pipelines.values()]; // fallback for sessions without mapping
+      ? ([this.store.get(featureId)].filter(Boolean) as Pipeline[])
+      : this.store.getAll(); // fallback for sessions without mapping
 
     for (const pipeline of matchedPipelines) {
       const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
@@ -1017,7 +822,7 @@ export class Conductor {
         this.questionQueue = result.queue;
         saveQuestionQueue(this.questionQueue);
         pipeline.status = "blocked";
-        this.savePipelines();
+        this.store.save();
         this.log(
           pipeline.featureId,
           "pipeline:blocked",
