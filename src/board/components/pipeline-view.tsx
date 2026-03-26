@@ -363,7 +363,10 @@ function PipelineDetailPanel({
           if (phaseOrder < completed) {
             phaseIcon = "✓";
             phaseColor = "green";
-          } else if (phase === pipeline.activePhase) {
+          } else if (
+            phase === pipeline.activePhase ||
+            (phase === "tests" && pipeline.activePhase === "test")
+          ) {
             phaseIcon = "◐";
             phaseColor = "yellow";
           } else if (pipeline.status === "failed") {

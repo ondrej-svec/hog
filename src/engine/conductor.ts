@@ -141,6 +141,7 @@ export class Conductor {
         event.issueNumber,
         event.phase,
         event.exitCode,
+        event.errorMessage,
       );
     });
   }
@@ -784,6 +785,7 @@ export class Conductor {
     _issueNumber: number,
     phase: string,
     exitCode: number,
+    errorMessage?: string,
   ): void {
     // Clean up worktree for failed agent
     const worktreeInfo = this.sessionWorktrees.get(sessionId);
@@ -807,7 +809,9 @@ export class Conductor {
       this.log(
         pipeline.featureId,
         `agent:failed:${phase}`,
-        `Agent failed with exit code ${exitCode}`,
+        errorMessage
+          ? `Agent failed: ${errorMessage.slice(0, 200)}`
+          : `Agent failed with exit code ${exitCode}`,
       );
 
       // Mark bead as blocked so it can be retried

@@ -13,6 +13,7 @@ export interface EngineEvents {
     issueNumber: number;
     phase: string;
     exitCode: number;
+    errorMessage?: string;
   };
   "data:refreshed": { data: unknown };
   "mutation:started": { description: string };

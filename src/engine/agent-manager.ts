@@ -200,16 +200,18 @@ export class AgentManager {
           body: `${opts.phase} for #${opts.issueNumber} completed successfully`,
         });
       } else {
+        const errorMessage = monitor.lastText ?? `Process exited with code ${exitCode}`;
         this.eventBus.emit("agent:failed", {
           sessionId: session.id,
           repo: opts.repoFullName,
           issueNumber: opts.issueNumber,
           phase: opts.phase,
           exitCode,
+          errorMessage,
         });
         notify(this.config.pipeline.notifications, {
           title: "Agent failed",
-          body: `${opts.phase} for #${opts.issueNumber} failed (exit ${exitCode})`,
+          body: `${opts.phase}: ${errorMessage.slice(0, 100)}`,
         });
       }
     };
