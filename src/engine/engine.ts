@@ -1,10 +1,8 @@
-import type { FetchOptions } from "../board/fetch.js";
 import type { HogConfig } from "../config.js";
 import { ActionExecutor } from "./actions.js";
 import { AgentManager } from "./agent-manager.js";
 import { BeadsClient } from "./beads.js";
 import { EventBus } from "./event-bus.js";
-import { FetchLoop } from "./fetch-loop.js";
 import { Orchestrator } from "./orchestrator.js";
 import { WorkflowEngine } from "./workflow.js";
 
@@ -22,19 +20,17 @@ export class Engine {
   readonly agents: AgentManager;
   readonly actions: ActionExecutor;
   readonly orchestrator: Orchestrator;
-  readonly fetchLoop: FetchLoop;
   readonly beads: BeadsClient;
   readonly beadsAvailable: boolean;
 
   private started = false;
 
-  constructor(config: HogConfig, fetchOptions: FetchOptions = {}) {
+  constructor(config: HogConfig) {
     this.eventBus = new EventBus();
     this.workflow = new WorkflowEngine(config, this.eventBus);
     this.agents = new AgentManager(config, this.eventBus, this.workflow);
     this.actions = new ActionExecutor(config, this.eventBus);
     this.orchestrator = new Orchestrator(config, this.eventBus, this.agents, this.workflow);
-    this.fetchLoop = new FetchLoop(config, this.eventBus, fetchOptions);
     this.beads = new BeadsClient(config.board.assignee);
     this.beadsAvailable = this.beads.isInstalled();
   }
@@ -45,7 +41,6 @@ export class Engine {
     this.started = true;
 
     this.agents.start();
-    await this.fetchLoop.start();
   }
 
   /** Stop all engine subsystems gracefully. */
@@ -54,7 +49,6 @@ export class Engine {
     this.started = false;
 
     this.agents.stop();
-    this.fetchLoop.stop();
     this.eventBus.removeAllListeners();
   }
 

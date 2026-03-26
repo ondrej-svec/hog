@@ -11,7 +11,6 @@ import {
   updateProjectItemDateAsync,
   updateProjectItemStatusAsync,
 } from "../github.js";
-import { pickIssue } from "../pick.js";
 import type { Result } from "../types.js";
 import { formatError } from "../utils.js";
 import type { EventBus } from "./event-bus.js";
@@ -40,10 +39,9 @@ export class ActionExecutor {
     this.eventBus.emit("mutation:started", { description });
 
     try {
-      const result = await pickIssue(this.config, { repo: repoConfig, issueNumber });
-      const msg = result.warning ? `${description} (${result.warning})` : description;
-      this.eventBus.emit("mutation:completed", { description: msg });
-      return { ok: true, value: { description: msg } };
+      await assignIssueAsync(repoConfig.name, issueNumber);
+      this.eventBus.emit("mutation:completed", { description });
+      return { ok: true, value: { description } };
     } catch (err) {
       const error = formatError(err);
       this.eventBus.emit("mutation:failed", { description, error });

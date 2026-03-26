@@ -42,16 +42,25 @@ interface InitOptions {
 
 // -- Helpers --
 
-async function resolveRef(
-  ref: string,
-  config: HogConfig,
-): Promise<Awaited<ReturnType<typeof import("./pick.js").parseIssueRef>>> {
-  const { parseIssueRef } = await import("./pick.js");
-  try {
-    return parseIssueRef(ref, config);
-  } catch (err) {
-    errorOut(err instanceof Error ? err.message : String(err));
+interface ParsedIssueRef {
+  repo: RepoConfig;
+  issueNumber: number;
+}
+
+function resolveRef(ref: string, config: HogConfig): ParsedIssueRef {
+  const match = ref.match(/^([a-zA-Z0-9_.-]+)\/(\d+)$/);
+  if (!(match?.[1] && match[2])) {
+    errorOut("Invalid format. Use: shortName/number (e.g., myrepo/145)");
   }
+  const repo = findRepo(config, match[1]);
+  if (!repo) {
+    errorOut(`Unknown repo "${match[1]}". Run: hog config repos`);
+  }
+  const num = Number.parseInt(match[2], 10);
+  if (num < 1 || num > 999999) {
+    errorOut("Invalid issue number");
+  }
+  return { repo, issueNumber: num };
 }
 
 // -- Program --
@@ -91,118 +100,26 @@ program
     await runCockpit(config);
   });
 
-// -- Board command (legacy — will be tombstoned in v2) --
-
-interface BoardOptions {
-  repo?: string;
-  mine?: true;
-  backlog?: true;
-  live?: true;
-  headless?: true;
-  profile?: string;
-}
+// -- Board command (tombstone — removed in v2) --
 
 program
   .command("board")
-  .description("Show unified task dashboard")
-  .option("--repo <name>", "Filter by repo (short name or full)")
-  .option("--mine", "Show only my assigned issues and tasks")
-  .option("--backlog", "Show only unassigned issues")
-  .option("--live", "Persistent TUI with auto-refresh and keyboard navigation")
-  .option("--headless", "Stream engine events as JSON to stdout (no TUI)")
-  .option("--profile <name>", "Use a named board profile")
-  .action(async (opts: BoardOptions) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg, activeProfile } = resolveProfile(rawCfg, opts.profile);
-    const jsonMode = useJson();
-    const fetchOptions = {
-      repoFilter: opts.repo,
-      mineOnly: opts.mine ?? false,
-      backlogOnly: opts.backlog ?? false,
-    };
-
-    if (opts.headless) {
-      const { Engine } = await import("./engine/engine.js");
-      const engine = new Engine(cfg, fetchOptions);
-
-      // Stream all engine events as NDJSON to stdout
-      const write = (type: string, payload: unknown): void => {
-        process.stdout.write(
-          `${JSON.stringify({ type, ...(payload as Record<string, unknown>) })}\n`,
-        );
-      };
-
-      engine.eventBus.on("data:refreshed", (p) =>
-        write("data:refreshed", { fetchedAt: p.data.fetchedAt, repoCount: p.data.repos.length }),
-      );
-      engine.eventBus.on("agent:spawned", (p) => write("agent:spawned", p));
-      engine.eventBus.on("agent:progress", (p) => write("agent:progress", p));
-      engine.eventBus.on("agent:completed", (p) => write("agent:completed", p));
-      engine.eventBus.on("agent:failed", (p) => write("agent:failed", p));
-      engine.eventBus.on("mutation:started", (p) => write("mutation:started", p));
-      engine.eventBus.on("mutation:completed", (p) => write("mutation:completed", p));
-      engine.eventBus.on("mutation:failed", (p) => write("mutation:failed", p));
-      engine.eventBus.on("workflow:phase-changed", (p) => write("workflow:phase-changed", p));
-
-      process.on("SIGINT", () => {
-        engine.stop();
-        process.exit(0);
-      });
-      process.on("SIGTERM", () => {
-        engine.stop();
-        process.exit(0);
-      });
-
-      await engine.start();
-      // Keep alive — engine runs until signal
-      await new Promise(() => {});
-      return;
-    }
-
-    if (opts.live) {
-      const { runLiveDashboard } = await import("./board/live.js");
-      await runLiveDashboard(cfg, fetchOptions, activeProfile);
-      return;
-    }
-
-    const { fetchDashboard } = await import("./board/fetch.js");
-    const data = await fetchDashboard(cfg, fetchOptions);
-
-    if (jsonMode) {
-      const { renderBoardJson } = await import("./board/format-static.js");
-      jsonOut(renderBoardJson(data, cfg.board.assignee));
-    } else {
-      const { renderStaticBoard } = await import("./board/format-static.js");
-      renderStaticBoard(data, cfg.board.assignee, opts.backlog ?? false);
-    }
+  .description("(Removed in v2.0 — use hog cockpit)")
+  .allowUnknownOption()
+  .action(() => {
+    console.log("hog board was removed in v2.0. Use: hog cockpit");
+    console.log("The GitHub Issues dashboard has been replaced with the pipeline cockpit.");
   });
 
-// -- Pick command --
+// -- Pick command (tombstone — removed in v2) --
 
 program
-  .command("pick <issueRef>")
-  .description("Pick up an issue: assign to self on GitHub (e.g., hog pick myrepo/145)")
-  .action(async (issueRef: string) => {
-    const cfg = loadFullConfig();
-    const { parseIssueRef, pickIssue } = await import("./pick.js");
-    const ref = parseIssueRef(issueRef, cfg);
-    const result = await pickIssue(cfg, ref);
-
-    if (useJson()) {
-      jsonOut({
-        ok: result.success,
-        data: {
-          issue: result.issue,
-          warning: result.warning ?? null,
-        },
-      });
-    } else {
-      console.log(`Picked ${ref.repo.shortName}#${ref.issueNumber}: ${result.issue.title}`);
-      console.log(`  GitHub: assigned to @me`);
-      if (result.warning) {
-        console.log(`  Warning: ${result.warning}`);
-      }
-    }
+  .command("pick")
+  .argument("[issueRef]")
+  .description("(Removed in v2.0)")
+  .action(() => {
+    console.log("hog pick was removed in v2.0.");
+    console.log("Start pipelines instead: hog pipeline create --issue <ref>");
   });
 
 // -- Launch command --
@@ -2180,99 +2097,11 @@ workflowCommand
 
 workflowCommand
   .command("triage")
-  .description("List stale issues and optionally launch background agents")
-  .option("-r, --repo <name>", "Filter to a specific repo")
-  .option("-p, --phase <phase>", "Phase to run (research, plan, review)", "research")
-  .option("-l, --launch", "Launch background agents for all stale issues")
-  .action(async (opts: { repo?: string; phase?: string; launch?: boolean }) => {
-    const cfg = loadFullConfig();
-    const { loadEnrichment, isSnoozed } = await import("./enrichment.js");
-    const { fetchDashboard } = await import("./board/fetch.js");
-
-    const data = await fetchDashboard(cfg, {});
-    const enrichment = loadEnrichment();
-    const warningDays = cfg.board.workflow?.staleness?.warningDays ?? 7;
-
-    type StaleIssue = {
-      repo: string;
-      number: number;
-      title: string;
-      url: string;
-      ageDays: number;
-    };
-
-    const staleIssues: StaleIssue[] = [];
-    for (const rd of data.repos) {
-      if (opts.repo && rd.repo.name !== opts.repo && rd.repo.shortName !== opts.repo) continue;
-      for (const issue of rd.issues) {
-        if (isSnoozed(enrichment, rd.repo.name, issue.number)) continue;
-        const ageDays = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / 86_400_000);
-        if (ageDays >= warningDays) {
-          staleIssues.push({
-            repo: rd.repo.name,
-            number: issue.number,
-            title: issue.title,
-            url: issue.url,
-            ageDays,
-          });
-        }
-      }
-    }
-
-    staleIssues.sort((a, b) => b.ageDays - a.ageDays);
-
-    if (useJson()) {
-      jsonOut({ ok: true, data: { issues: staleIssues } });
-      return;
-    }
-
-    if (staleIssues.length === 0) {
-      console.log("No stale issues found.");
-      return;
-    }
-
-    console.log(`Found ${staleIssues.length} stale issue${staleIssues.length > 1 ? "s" : ""}:\n`);
-    for (const issue of staleIssues) {
-      const color = issue.ageDays >= 14 ? "\x1b[31m" : "\x1b[33m";
-      console.log(
-        `  ${color}[${issue.ageDays}d]\x1b[0m #${issue.number} ${issue.title} (${issue.repo})`,
-      );
-    }
-
-    if (opts.launch) {
-      const { spawnBackgroundAgent } = await import("./board/spawn-agent.js");
-      const phase = opts.phase ?? "research";
-      console.log(`\nLaunching ${phase} agents...\n`);
-
-      let launched = 0;
-      for (const issue of staleIssues) {
-        const rc = cfg.repos.find((r) => r.name === issue.repo);
-        if (!rc?.localPath) {
-          console.log(`  Skip #${issue.number} — no localPath configured for ${issue.repo}`);
-          continue;
-        }
-        const result = spawnBackgroundAgent({
-          localPath: rc.localPath,
-          repoFullName: issue.repo,
-          issueNumber: issue.number,
-          issueTitle: issue.title,
-          issueUrl: issue.url,
-          phase,
-        });
-        if (result.ok) {
-          const pid = result.value.pid;
-          console.log(`  Started ${phase} agent for #${issue.number} (PID ${pid})`);
-          // Detach child so CLI can exit
-          result.value.child.unref();
-          launched++;
-        } else {
-          console.log(`  Failed #${issue.number}: ${result.error.message}`);
-        }
-      }
-      console.log(`\nLaunched ${launched} agent${launched !== 1 ? "s" : ""}.`);
-    } else {
-      console.log(`\nRun with --launch to start background agents.`);
-    }
+  .description("(Removed in v2.0 — use pipelines instead)")
+  .allowUnknownOption()
+  .action(() => {
+    console.log("hog workflow triage was removed in v2.0.");
+    console.log("Use pipelines for structured agent work: hog pipeline create");
   });
 
 // -- Workflow launch command --
@@ -2579,7 +2408,9 @@ program
   .allowUnknownOption()
   .action(() => {
     console.log("hog sync was removed in v2.0.");
-    console.log("Sync functionality (TickTick) was dropped. GitHub integration is now via pipeline phase sync.");
+    console.log(
+      "Sync functionality (TickTick) was dropped. GitHub integration is now via pipeline phase sync.",
+    );
     console.log("See: hog init --help");
   });
 

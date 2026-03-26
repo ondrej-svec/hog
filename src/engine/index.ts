@@ -18,7 +18,7 @@ export { Conductor } from "./conductor.js";
 export { Engine } from "./engine.js";
 export type { EngineEvents } from "./event-bus.js";
 export { EventBus } from "./event-bus.js";
-export { FetchLoop } from "./fetch-loop.js";
+// FetchLoop removed — pipeline doesn't need GitHub dashboard polling
 export type { LaunchIssueContext } from "./orchestrator.js";
 export { Orchestrator, resolvePhaseConfig } from "./orchestrator.js";
 export type {

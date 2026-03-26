@@ -425,7 +425,7 @@ function PipelineDetailPanel({
             const ts = match ? timeAgo(match[1]!) : "";
             return (
               <Box key={`${i}`}>
-                <Text dimColor>  {ts ? `${ts}: ` : ""}</Text>
+                <Text dimColor> {ts ? `${ts}: ` : ""}</Text>
                 <Text>{msg}</Text>
               </Box>
             );

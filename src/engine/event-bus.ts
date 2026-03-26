@@ -1,5 +1,4 @@
 import { EventEmitter } from "node:events";
-import type { DashboardData } from "../board/fetch.js";
 import type { AgentSession } from "../enrichment.js";
 
 // ── Event Types ──
@@ -15,7 +14,7 @@ export interface EngineEvents {
     phase: string;
     exitCode: number;
   };
-  "data:refreshed": { data: DashboardData };
+  "data:refreshed": { data: unknown };
   "mutation:started": { description: string };
   "mutation:completed": { description: string };
   "mutation:failed": { description: string; error: string };

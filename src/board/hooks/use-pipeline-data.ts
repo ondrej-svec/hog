@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CONFIG_DIR } from "../../config.js";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import { CONFIG_DIR } from "../../config.js";
 import type { TrackedAgent } from "../../engine/agent-manager.js";
 import { AgentManager } from "../../engine/agent-manager.js";
 import { BeadsClient } from "../../engine/beads.js";
@@ -12,10 +12,7 @@ import type { Pipeline } from "../../engine/conductor.js";
 import { Conductor } from "../../engine/conductor.js";
 import { EventBus } from "../../engine/event-bus.js";
 import type { Question } from "../../engine/question-queue.js";
-import {
-  getPendingQuestions,
-  loadQuestionQueue,
-} from "../../engine/question-queue.js";
+import { getPendingQuestions, loadQuestionQueue } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import { WorkflowEngine } from "../../engine/workflow.js";
 
@@ -120,14 +117,16 @@ export function usePipelineData(
               // Skip completed/failed
               if (entry["status"] === "completed" || entry["status"] === "failed") continue;
 
-              const repoConfig = config.repos.find((r) => r.name === entry["repo"]) ?? ({
-                name: (entry["repo"] as string) ?? "",
-                shortName: (entry["repo"] as string) ?? "",
-                projectNumber: 0,
-                statusFieldId: "",
-                localPath: (entry["localPath"] as string) ?? "",
-                completionAction: { type: "closeIssue" },
-              } as RepoConfig);
+              const repoConfig =
+                config.repos.find((r) => r.name === entry["repo"]) ??
+                ({
+                  name: (entry["repo"] as string) ?? "",
+                  shortName: (entry["repo"] as string) ?? "",
+                  projectNumber: 0,
+                  statusFieldId: "",
+                  localPath: (entry["localPath"] as string) ?? "",
+                  completionAction: { type: "closeIssue" },
+                } as RepoConfig);
 
               loaded.push({
                 featureId: entry["featureId"] as string,
@@ -140,7 +139,9 @@ export function usePipelineData(
                 completedBeads: (entry["completedBeads"] as number) ?? 0,
                 activePhase: entry["activePhase"] as string | undefined,
                 startedAt: (entry["startedAt"] as string) ?? "",
-                ...(typeof entry["completedAt"] === "string" ? { completedAt: entry["completedAt"] } : {}),
+                ...(typeof entry["completedAt"] === "string"
+                  ? { completedAt: entry["completedAt"] }
+                  : {}),
               });
             }
             setPipelines(loaded);
@@ -187,10 +188,7 @@ export function usePipelineData(
         if (!("error" in result)) {
           // Spawn a watcher process to advance the pipeline (cockpit doesn't tick)
           try {
-            const cliPath = join(
-              fileURLToPath(import.meta.url),
-              "..", "..", "..", "cli.js",
-            );
+            const cliPath = join(fileURLToPath(import.meta.url), "..", "..", "..", "cli.js");
             const watchArgs = ["pipeline", "watch", result.featureId, "--repo", repo];
             const child = spawn(process.execPath, [cliPath, ...watchArgs], {
               detached: true,
