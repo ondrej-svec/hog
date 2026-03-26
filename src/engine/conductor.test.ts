@@ -232,6 +232,8 @@ describe("Conductor Pipeline", () => {
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature X", "Description");
+      // startPipeline no longer ticks — watcher handles advancement
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       expect(worktrees.create).toHaveBeenCalled();
       const createCall = vi.mocked(worktrees.create).mock.calls[0];
@@ -256,6 +258,7 @@ describe("Conductor Pipeline", () => {
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       const launchCall = vi.mocked(agents.launchAgent).mock.calls[0]?.[0];
       expect(launchCall?.localPath).toBe("/tmp/worktrees/hog-feat-stories");
@@ -280,6 +283,7 @@ describe("Conductor Pipeline", () => {
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       const firstCall = vi.mocked(agents.launchAgent).mock.calls[0]?.[0];
       expect(firstCall?.phase).toBe("stories");
@@ -322,6 +326,7 @@ describe("Conductor Pipeline", () => {
       });
       beads.ready = vi.fn().mockResolvedValue([testsBead]);
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       const testSessionId = vi.mocked(agents.launchAgent).mock.results[0]?.value;
 
@@ -354,9 +359,11 @@ describe("Conductor Pipeline", () => {
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       // Get the session ID from the launch
       const sessionId = vi.mocked(agents.launchAgent).mock.results[0]?.value as string;
+      expect(sessionId).toBeDefined();
 
       // Simulate agent completion
       eventBus.emit("agent:completed", {
@@ -497,6 +504,7 @@ describe("Conductor Pipeline", () => {
       beads.ready = vi.fn().mockResolvedValue([storiesBead]);
 
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
+      await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       const log = conductor.getDecisionLog();
       expect(log.some((e) => e.action === "agent:spawned:stories")).toBe(true);
