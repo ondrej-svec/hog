@@ -101,7 +101,13 @@ export class Refinery {
   }
 
   /** Submit a completed branch to the merge queue. */
-  submit(featureId: string, branch: string, worktreePath: string, repoPath: string, role?: string): string {
+  submit(
+    featureId: string,
+    branch: string,
+    worktreePath: string,
+    repoPath: string,
+    role?: string,
+  ): string {
     const id = `merge-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const entry: MergeQueueEntry = {
       id,

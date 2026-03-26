@@ -302,28 +302,23 @@ const abuseGate: QualityGate = {
 // ── Role Audit Gate (Amodei) ──
 
 const TEST_FILE_PATTERNS = [
-	/\.test\.[jt]sx?$/,
-	/\.spec\.[jt]sx?$/,
-	/\/__tests__\//,
-	/\/tests?\//,
-	/_test\.[jt]sx?$/,
-	/_test\.py$/,
-	/test_[^/]+\.py$/,
+  /\.test\.[jt]sx?$/,
+  /\.spec\.[jt]sx?$/,
+  /\/__tests__\//,
+  /\/tests?\//,
+  /_test\.[jt]sx?$/,
+  /_test\.py$/,
+  /test_[^/]+\.py$/,
 ];
 
-const SOURCE_PATTERNS = [
-	/^src\//,
-	/^lib\//,
-	/^app\//,
-	/^pkg\//,
-];
+const SOURCE_PATTERNS = [/^src\//, /^lib\//, /^app\//, /^pkg\//];
 
 function isTestFile(path: string): boolean {
-	return TEST_FILE_PATTERNS.some((p) => p.test(path));
+  return TEST_FILE_PATTERNS.some((p) => p.test(path));
 }
 
 function isSourceFile(path: string): boolean {
-	return SOURCE_PATTERNS.some((p) => p.test(path));
+  return SOURCE_PATTERNS.some((p) => p.test(path));
 }
 
 /**
@@ -333,116 +328,122 @@ function isSourceFile(path: string): boolean {
  * Usage: `createRoleAuditGate("test")` returns a gate that fails if non-test files were modified.
  */
 export function createRoleAuditGate(role: string): QualityGate {
-	return {
-		name: `role-audit:${role}`,
-		severity: "error",
+  return {
+    name: `role-audit:${role}`,
+    severity: "error",
 
-		isAvailable(): boolean {
-			// Always available — no external tools needed
-			return true;
-		},
+    isAvailable(): boolean {
+      // Always available — no external tools needed
+      return true;
+    },
 
-		async check(_cwd: string, files: string[]): Promise<GateResult> {
-			const violations: GateIssue[] = [];
+    async check(_cwd: string, files: string[]): Promise<GateResult> {
+      const violations: GateIssue[] = [];
 
-			for (const file of files) {
-				let violation = false;
+      for (const file of files) {
+        let violation = false;
 
-				switch (role) {
-					case "test":
-					case "redteam":
-						// Test/redteam agents should only modify test files
-						if (!isTestFile(file)) {
-							violation = true;
-						}
-						break;
-					case "impl":
-						// Impl agent should only modify source files (not tests)
-						if (isTestFile(file)) {
-							violation = true;
-						}
-						break;
-					case "stories":
-						// Stories agent should only modify docs/stories files
-						if (!file.startsWith("docs/") && !file.startsWith("tests/stories/") && !file.endsWith(".md")) {
-							violation = true;
-						}
-						break;
-					// brainstorm and merge: no restrictions
-				}
+        switch (role) {
+          case "test":
+          case "redteam":
+            // Test/redteam agents should only modify test files
+            if (!isTestFile(file)) {
+              violation = true;
+            }
+            break;
+          case "impl":
+            // Impl agent should only modify source files (not tests)
+            if (isTestFile(file)) {
+              violation = true;
+            }
+            break;
+          case "stories":
+            // Stories agent should only modify docs/stories files
+            if (
+              !(
+                file.startsWith("docs/") ||
+                file.startsWith("tests/stories/") ||
+                file.endsWith(".md")
+              )
+            ) {
+              violation = true;
+            }
+            break;
+          // brainstorm and merge: no restrictions
+        }
 
-				if (violation) {
-					violations.push({
-						file,
-						message: `${role} agent modified file outside its allowed scope`,
-						rule: "role-boundary",
-					});
-				}
-			}
+        if (violation) {
+          violations.push({
+            file,
+            message: `${role} agent modified file outside its allowed scope`,
+            rule: "role-boundary",
+          });
+        }
+      }
 
-			return {
-				gate: `role-audit:${role}`,
-				severity: "error",
-				passed: violations.length === 0,
-				issues: violations,
-				detail:
-					violations.length === 0
-						? `${role} agent stayed within its file scope`
-						: `${role} agent modified ${violations.length} file(s) outside its allowed scope`,
-			};
-		},
-	};
+      return {
+        gate: `role-audit:${role}`,
+        severity: "error",
+        passed: violations.length === 0,
+        issues: violations,
+        detail:
+          violations.length === 0
+            ? `${role} agent stayed within its file scope`
+            : `${role} agent modified ${violations.length} file(s) outside its allowed scope`,
+      };
+    },
+  };
 }
 
 // ── Mutation Testing Gate (Farley) ──
 
 const mutationGate: QualityGate = {
-	name: "mutation-testing",
-	severity: "warning", // Advisory — don't block, but report
+  name: "mutation-testing",
+  severity: "warning", // Advisory — don't block, but report
 
-	isAvailable(cwd: string): boolean {
-		// Available when a mutation testing tool is configured
-		return !!(
-			existsSync(join(cwd, "stryker.config.mjs")) ||
-			existsSync(join(cwd, "stryker.config.js")) ||
-			existsSync(join(cwd, "Cargo.toml"))
-		);
-	},
+  isAvailable(cwd: string): boolean {
+    // Available when a mutation testing tool is configured
+    return !!(
+      existsSync(join(cwd, "stryker.config.mjs")) ||
+      existsSync(join(cwd, "stryker.config.js")) ||
+      existsSync(join(cwd, "Cargo.toml"))
+    );
+  },
 
-	async check(cwd: string, _files: string[]): Promise<GateResult> {
-		try {
-			// Dynamic import to avoid circular dependency
-			const { runMutationTesting } = await import("./tdd-enforcement.js");
-			const result = await runMutationTesting(cwd, {
-				enforceRedFirst: true,
-				mutationThreshold: 70,
-				specTraceability: true,
-			});
-			return {
-				gate: "mutation-testing",
-				severity: "warning",
-				passed: result.passed,
-				issues: result.passed
-					? []
-					: [
-							{
-								file: "mutation-report",
-								message: `Mutation score ${result.score}% below threshold (${result.survived} mutants survived)`,
-								rule: "mutation-threshold",
-							},
-						],
-				detail: `Mutation score: ${result.score}% (${result.killed}/${result.total} killed). ${result.passed ? "Above" : "Below"} threshold.`,
-			};
-		} catch (err) {
-			return {
-				gate: "mutation-testing",
-				severity: "warning",
-				passed: true, // Don't block if mutation tool fails
-				issues: [],
-				detail: `Mutation testing skipped: ${err instanceof Error ? err.message : "unknown error"}`,
-			};
-		}
-	},
+  async check(cwd: string, _files: string[]): Promise<GateResult> {
+    try {
+      // Dynamic import to avoid circular dependency
+      const { runMutationTesting } = await import("./tdd-enforcement.js");
+      const result = await runMutationTesting(cwd, {
+        enforceRedFirst: true,
+        mutationThreshold: 70,
+        specTraceability: true,
+      });
+      return {
+        gate: "mutation-testing",
+        severity: "warning",
+        passed: result.passed,
+        issues: result.passed
+          ? []
+          : [
+              {
+                file: "mutation-report",
+                message: `Mutation score ${result.score}% below threshold (${result.survived} mutants survived)`,
+                rule: "mutation-threshold",
+              },
+            ],
+        detail: `Mutation score: ${result.score}% (${result.killed}/${result.total} killed). ${result.passed ? "Above" : "Below"} threshold.`,
+      };
+    } catch (err) {
+      return {
+        gate: "mutation-testing",
+        severity: "warning",
+        passed: true, // Don't block if mutation tool fails
+        issues: [],
+        detail: `Mutation testing skipped: ${err instanceof Error ? err.message : "unknown error"}`,
+      };
+    }
+  },
 };
 
 // ── Registry ──

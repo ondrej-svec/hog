@@ -293,18 +293,26 @@ async function runWizard(opts: InitOptions): Promise<void> {
   }
 
   // Step 4: Select repos (only if GitHub is connected)
-  const allRepos = shouldSetupGithub ? (() => { console.log("Fetching repositories..."); return listAllRepos(); })() : [];
+  const allRepos = shouldSetupGithub
+    ? (() => {
+        console.log("Fetching repositories...");
+        return listAllRepos();
+      })()
+    : [];
   if (shouldSetupGithub && allRepos.length === 0) {
     console.log("  No repositories found. Skipping GitHub setup.");
   }
 
-  const selectedRepoNames = !shouldSetupGithub || allRepos.length === 0 ? [] : await checkbox<string>({
-    message: "Select repositories to track:",
-    choices: allRepos.map((r) => ({
-      name: r.nameWithOwner,
-      value: r.nameWithOwner,
-    })),
-  });
+  const selectedRepoNames =
+    !shouldSetupGithub || allRepos.length === 0
+      ? []
+      : await checkbox<string>({
+          message: "Select repositories to track:",
+          choices: allRepos.map((r) => ({
+            name: r.nameWithOwner,
+            value: r.nameWithOwner,
+          })),
+        });
 
   if (selectedRepoNames.length === 0) {
     console.log("No repos selected. You can add repos later with `hog config repos:add`.");

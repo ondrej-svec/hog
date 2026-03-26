@@ -2,7 +2,7 @@
 title: "refactor: Expert panel improvements — TDD enforcement, safety gates, conductor extraction"
 type: plan
 date: 2026-03-26
-status: approved
+status: in_progress
 brainstorm: null
 related:
   - docs/plans/2026-03-26-refactor-drop-github-board-pipeline-first-plan.md
@@ -71,10 +71,10 @@ Five phases, dependency-ordered. Each phase is independently shippable and leave
 
 ### Tasks
 
-- [ ] **2.1 RED: Test diff-audit gate rejects test agent modifying src/**
+- [x] **2.1 RED: Test diff-audit gate rejects test agent modifying src/**
   Write a failing test for a new `roleAuditGate`: given role "test" and changed files `["src/auth.ts"]`, the gate returns an error.
 
-- [ ] **2.2 GREEN: Implement roleAuditGate in quality-gates.ts**
+- [x] **2.2 GREEN: Implement roleAuditGate in quality-gates.ts**
   New `QualityGate` object in `ALL_GATES`. The gate is always available. The `check()` function receives the changed files list and a `role` metadata field. Rules:
   - `test` role: only `*.test.*`, `*.spec.*`, `tests/`, `__tests__/` files allowed
   - `impl` role: only `src/`, `lib/`, `app/` files allowed (not test files)
@@ -84,11 +84,11 @@ Five phases, dependency-ordered. Each phase is independently shippable and leave
   - `brainstorm` role: not audited (human-interactive)
   Severity: `"error"` — blocks the merge.
 
-- [ ] **2.3 Wire role metadata into Refinery submit**
+- [x] **2.3 Wire role metadata into Refinery submit**
   `refinery.submit()` at `refinery.ts:127` currently takes `(featureId, branch, worktreePath, repoPath)`. Add `role: PipelineRole` parameter so the Refinery can pass it to the diff-audit gate.
   File: `src/engine/refinery.ts:127`, `src/engine/conductor.ts:829`
 
-- [ ] **2.4 Wire roleAuditGate into runQualityGates**
+- [x] **2.4 Wire roleAuditGate into runQualityGates**
   `runQualityGates()` at `quality-gates.ts:308` currently takes `(cwd, changedFiles)`. Add optional `role?: PipelineRole` parameter. Pass it to `roleAuditGate.check()`.
 
 ### Acceptance Criteria

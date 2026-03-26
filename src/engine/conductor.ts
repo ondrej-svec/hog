@@ -886,9 +886,7 @@ export class Conductor {
           if (!green.passed) {
             this.log(pipeline.featureId, "tdd:green-failed", green.detail);
             // Re-open impl bead for retry
-            await this.beads
-              .updateStatus(pipeline.localPath, beadId, "open")
-              .catch(() => {});
+            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
             pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
             return; // Don't proceed to GitHub sync — impl needs retry
           }
@@ -916,9 +914,7 @@ export class Conductor {
               );
               // Re-open the impl bead so the next tick spawns a new impl agent
               const implBeadId = pipeline.beadIds.impl;
-              await this.beads
-                .updateStatus(pipeline.localPath, implBeadId, "open")
-                .catch(() => {});
+              await this.beads.updateStatus(pipeline.localPath, implBeadId, "open").catch(() => {});
               pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
               return; // Don't proceed — impl needs to fix the new failures
             }

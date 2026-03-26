@@ -181,8 +181,7 @@ describe("hog init wizard", () => {
       .mockResolvedValueOnce(true) // Connect to GitHub?
       .mockResolvedValueOnce(false) // auto-status for repo
       .mockResolvedValueOnce(false) // use due date field
-      .mockResolvedValueOnce(false) // LLM setup
-    ;
+      .mockResolvedValueOnce(false); // LLM setup
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
     mockSelect
       .mockResolvedValueOnce(1) // project number

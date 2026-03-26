@@ -649,7 +649,10 @@ pipelineCommand
     });
 
     const elapsed = pipeline.completedAt
-      ? Math.round((new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime()) / 60_000)
+      ? Math.round(
+          (new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime()) /
+            60_000,
+        )
       : Math.round((Date.now() - new Date(pipeline.startedAt).getTime()) / 60_000);
 
     const decisionLog = conductor.getDecisionLog().filter((e) => e.featureId === featureId);
@@ -669,19 +672,28 @@ pipelineCommand
       });
     } else {
       console.log(`\nPipeline: ${pipeline.featureId} — ${pipeline.title}`);
-      console.log(`Status: ${pipeline.status} (${elapsed}m${pipeline.completedAt ? " total" : " elapsed"})`);
+      console.log(
+        `Status: ${pipeline.status} (${elapsed}m${pipeline.completedAt ? " total" : " elapsed"})`,
+      );
       console.log(`Progress: ${pipeline.completedBeads}/6 phases`);
       console.log("");
       console.log("Phases:");
       for (const ps of phaseStatus) {
-        const icon = pipeline.completedBeads > phases.indexOf(ps.phase) ? "✓" : pipeline.activePhase === ps.phase ? "●" : "○";
+        const icon =
+          pipeline.completedBeads > phases.indexOf(ps.phase)
+            ? "✓"
+            : pipeline.activePhase === ps.phase
+              ? "●"
+              : "○";
         console.log(`  ${icon} ${ps.phase}`);
       }
       if (decisionLog.length > 0) {
         console.log("");
         console.log(`Decision log: ${decisionLog.length} entries`);
         for (const entry of decisionLog.slice(-5)) {
-          console.log(`  [${entry.timestamp.slice(11, 19)}] ${entry.action}: ${entry.detail.slice(0, 80)}`);
+          console.log(
+            `  [${entry.timestamp.slice(11, 19)}] ${entry.action}: ${entry.detail.slice(0, 80)}`,
+          );
         }
         if (decisionLog.length > 5) {
           console.log(`  ... and ${decisionLog.length - 5} more`);
