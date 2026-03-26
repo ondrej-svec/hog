@@ -659,42 +659,31 @@ pipelineCommand
 
 pipelineCommand
   .command("watch <featureId>", { hidden: true })
-  .description("Internal: keep conductor alive until a pipeline completes")
-  .option("--repo <name>", "Target repo")
-  .action(async (featureId: string, opts: { repo?: string }) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+  .description("Stream pipeline events from the daemon until completion")
+  .option("--repo <name>", "Target repo (ignored — kept for backward compat)")
+  .action(async (featureId: string) => {
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
     const { sendOsNotification } = await import("./notify.js");
-    const { mkdirSync, appendFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
 
-    const engine = new Engine(cfg);
-    if (!engine.beadsAvailable) {
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
       process.exitCode = 1;
       return;
     }
 
-    // Set up progress log
-    const logDir = join(CONFIG_DIR, "pipelines");
-    mkdirSync(logDir, { recursive: true });
-    const logFile = join(logDir, `${featureId}.log`);
+    const client = await connectDaemon();
 
-    const log = (msg: string) => {
-      const line = `[${new Date().toISOString()}] ${msg}\n`;
-      appendFileSync(logFile, line, "utf-8");
-    };
+    // Verify pipeline exists
+    const statusResult = await client.call("pipeline.status", { featureId });
+    if ("error" in statusResult) {
+      console.error(`Pipeline not found: ${featureId}`);
+      client.close();
+      process.exitCode = 1;
+      return;
+    }
 
-    log(`Watcher started for pipeline ${featureId}`);
-
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    engine.agents.start();
-    conductor.start();
-
-    // Track phase transitions for notifications
-    let lastPhase: string | undefined;
-    let lastCompletedBeads = 0;
+    console.log(`Watching pipeline ${featureId} (streaming from daemon)...`);
 
     const PHASE_LABELS: Record<string, string> = {
       brainstorm: "Brainstorm",
@@ -705,88 +694,78 @@ pipelineCommand
       merge: "Merge",
     };
 
-    // Poll until the pipeline completes, fails, or disappears
-    const checkInterval = setInterval(() => {
-      const pipelines = conductor.getPipelines();
-      const pipeline = pipelines.find((p) => p.featureId === featureId);
+    // Subscribe to events
+    client.subscribe((event) => {
+      const data = event.data as Record<string, unknown>;
 
-      if (!pipeline) {
-        log("Pipeline not found — watcher exiting");
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(0);
-        return;
-      }
-
-      // Detect phase transitions
-      if (pipeline.activePhase && pipeline.activePhase !== lastPhase) {
-        const label = PHASE_LABELS[pipeline.activePhase] ?? pipeline.activePhase;
-        log(`Phase: ${label} started (${pipeline.completedBeads}/6 complete)`);
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: `${label} phase started (${pipeline.completedBeads}/6)`,
-        });
-        lastPhase = pipeline.activePhase;
-      }
-
-      // Detect bead completions
-      if (pipeline.completedBeads > lastCompletedBeads) {
-        log(`Progress: ${pipeline.completedBeads}/6 beads completed`);
-        lastCompletedBeads = pipeline.completedBeads;
-      }
-
-      // Terminal states
-      if (pipeline.status === "completed") {
-        log("Pipeline completed successfully!");
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: "Pipeline complete! All 6 phases done.",
-        });
-        // Auto-stop Dolt server — no longer needed
-        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
-        log("Dolt server stopped (auto-cleanup)");
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(0);
-      }
-
-      if (pipeline.status === "failed") {
-        const phase = pipeline.activePhase ?? "unknown";
-        log(`Pipeline FAILED at ${phase} phase`);
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: `Pipeline failed at ${phase}. Run: hog pipeline list`,
-        });
-        // Auto-stop Dolt server on failure too
-        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(1);
-      }
-
-      if (pipeline.status === "blocked") {
-        // Only notify once per block
-        if (lastPhase !== `blocked:${pipeline.activePhase}`) {
-          const phase = pipeline.activePhase ?? "unknown";
-          log(`Pipeline BLOCKED at ${phase} — needs human decision`);
+      switch (event.event) {
+        case "agent:spawned":
+          console.log(`  Agent spawned: ${data["phase"]} (session: ${data["sessionId"]})`);
+          break;
+        case "agent:progress":
+          if (data["toolName"]) {
+            console.log(`  ${data["sessionId"]}: using ${data["toolName"]}`);
+          }
+          break;
+        case "agent:completed": {
+          const label = PHASE_LABELS[data["phase"] as string] ?? data["phase"];
+          console.log(`  ${label} completed`);
           sendOsNotification({
-            title: `hog: ${pipeline.title}`,
-            body: `Blocked at ${phase} — needs your decision. Run: hog board --live`,
+            title: "hog pipeline",
+            body: `${label} phase completed`,
           });
-          lastPhase = `blocked:${pipeline.activePhase}`;
+          break;
         }
+        case "agent:failed":
+          console.log(`  Agent FAILED: ${data["phase"]} (exit: ${data["exitCode"]})`);
+          break;
+        case "workflow:phase-changed":
+          console.log(`  Phase: ${data["phase"]} → ${data["state"]}`);
+          break;
+      }
+    });
+
+    // Poll daemon for pipeline terminal state
+    const checkInterval = setInterval(async () => {
+      try {
+        const result = await client.call("pipeline.status", { featureId });
+        if ("error" in result) {
+          console.log("Pipeline removed.");
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(0);
+          return;
+        }
+
+        if (result.status === "completed") {
+          console.log("Pipeline completed successfully!");
+          sendOsNotification({
+            title: "hog pipeline",
+            body: "Pipeline complete! All 6 phases done.",
+          });
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(0);
+        }
+
+        if (result.status === "failed") {
+          console.log(`Pipeline FAILED at ${result.activePhase ?? "unknown"} phase`);
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(1);
+        }
+      } catch {
+        // Connection lost — daemon may have stopped
+        console.log("Lost connection to daemon.");
+        clearInterval(checkInterval);
+        process.exit(1);
       }
     }, 5_000);
 
-    // Clean shutdown on SIGINT/SIGTERM
+    // Clean shutdown
     const shutdown = () => {
-      log("Watcher stopped (signal received)");
       clearInterval(checkInterval);
-      conductor.stop();
-      engine.agents.stop();
+      client.close();
       process.exit(0);
     };
     process.on("SIGINT", shutdown);
