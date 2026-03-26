@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import { CONFIG_DIR } from "../../config.js";
 import type { Pipeline } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
@@ -241,9 +242,34 @@ export function usePipelineData(
 
   const cancelPipeline = useCallback(async (featureId: string): Promise<boolean> => {
     const client = clientRef.current;
-    if (!client?.isConnected) return false;
-    const { ok } = await client.call("pipeline.cancel", { featureId });
-    return ok;
+    if (client?.isConnected) {
+      try {
+        const { ok } = await client.call("pipeline.cancel", { featureId });
+        if (ok) return true;
+      } catch {
+        // Daemon call failed — fall through to direct file removal
+      }
+    }
+
+    // Fallback: remove directly from pipelines.json
+    try {
+      const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const file = join(CONFIG_DIR, "pipelines.json");
+      if (existsSync(file)) {
+        const raw: unknown = JSON.parse(readFileSync(file, "utf-8"));
+        if (Array.isArray(raw)) {
+          const filtered = raw.filter(
+            (p: Record<string, unknown>) => p["featureId"] !== featureId,
+          );
+          writeFileSync(file, `${JSON.stringify(filtered, null, 2)}\n`, { mode: 0o600 });
+          return true;
+        }
+      }
+    } catch {
+      // best-effort
+    }
+    return false;
   }, []);
 
   const resolveDecision = useCallback(
