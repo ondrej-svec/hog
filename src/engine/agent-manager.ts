@@ -222,9 +222,12 @@ export class AgentManager {
       child,
       (event) => {
         if (event.toolName ?? event.text) {
+          const toolDisplay = event.toolDetail
+            ? `${event.toolName} (${event.toolDetail})`
+            : event.toolName;
           this.eventBus.emit("agent:progress", {
             sessionId: session.id,
-            ...(event.toolName ? { toolName: event.toolName } : {}),
+            ...(toolDisplay ? { toolName: toolDisplay } : {}),
             ...(event.text ? { text: event.text } : {}),
           });
         }
