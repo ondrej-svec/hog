@@ -451,27 +451,19 @@ export function Cockpit({ config }: CockpitProps) {
       />
       <ToastContainer toasts={toasts} />
       {/* Hint bar — always visible, context-sensitive (lazygit pattern) */}
-      <Box flexShrink={0}>
-        <Text>
-          <Text color="cyan">P</Text><Text dimColor>:new </Text>
-          {hasPipelines ? (
-            <>
-              <Text color="cyan">j/k</Text><Text dimColor>:nav </Text>
-              {canPauseResume ? (
-                <><Text color="cyan">x</Text><Text dimColor>:{selected?.status === "paused" ? "resume" : "pause"} </Text></>
-              ) : null}
-              <Text color="cyan">d</Text><Text dimColor>:cancel </Text>
-              <Text color="cyan">l</Text><Text dimColor>:log </Text>
-            </>
-          ) : null}
-          {hasDecisions ? (
-            <>
-              <Text color="red">D</Text><Text dimColor>:answer </Text>
-              <Text color="red">1-9</Text><Text dimColor>:pick </Text>
-            </>
-          ) : null}
-          <Text color="cyan">?</Text><Text dimColor>:help </Text>
-          <Text color="cyan">q</Text><Text dimColor>:quit</Text>
+      <Box flexShrink={0} height={1}>
+        <Text dimColor wrap="truncate">
+          {[
+            "P:new",
+            hasPipelines ? "j/k:nav" : "",
+            canPauseResume ? `x:${selected?.status === "paused" ? "resume" : "pause"}` : "",
+            hasPipelines ? "d:cancel" : "",
+            hasPipelines ? "l:log" : "",
+            hasDecisions ? "D:answer" : "",
+            hasDecisions ? "1-9:pick" : "",
+            "?:help",
+            "q:quit",
+          ].filter(Boolean).join("  ")}
         </Text>
       </Box>
     </Box>
