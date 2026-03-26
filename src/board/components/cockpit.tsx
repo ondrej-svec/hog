@@ -451,37 +451,27 @@ export function Cockpit({ config }: CockpitProps) {
       />
       <ToastContainer toasts={toasts} />
       {/* Hint bar — always visible, context-sensitive (lazygit pattern) */}
-      <Box>
-        <Text dimColor>
-          <Text color="cyan" bold>P</Text><Text dimColor> new</Text>
+      <Box flexShrink={0}>
+        <Text>
+          <Text color="cyan">P</Text><Text dimColor>:new </Text>
           {hasPipelines ? (
             <>
-              <Text dimColor>  </Text>
-              <Text color="cyan" bold>j/k</Text><Text dimColor> navigate</Text>
+              <Text color="cyan">j/k</Text><Text dimColor>:nav </Text>
               {canPauseResume ? (
-                <>
-                  <Text dimColor>  </Text>
-                  <Text color="cyan" bold>x</Text><Text dimColor> {selected?.status === "paused" ? "resume" : "pause"}</Text>
-                </>
+                <><Text color="cyan">x</Text><Text dimColor>:{selected?.status === "paused" ? "resume" : "pause"} </Text></>
               ) : null}
-              <Text dimColor>  </Text>
-              <Text color="cyan" bold>d</Text><Text dimColor> cancel</Text>
-              <Text dimColor>  </Text>
-              <Text color="cyan" bold>l</Text><Text dimColor> log</Text>
+              <Text color="cyan">d</Text><Text dimColor>:cancel </Text>
+              <Text color="cyan">l</Text><Text dimColor>:log </Text>
             </>
           ) : null}
           {hasDecisions ? (
             <>
-              <Text dimColor>  </Text>
-              <Text color="red" bold>D</Text><Text dimColor> answer decision</Text>
-              <Text dimColor>  </Text>
-              <Text color="red" bold>1-9</Text><Text dimColor> quick answer</Text>
+              <Text color="red">D</Text><Text dimColor>:answer </Text>
+              <Text color="red">1-9</Text><Text dimColor>:pick </Text>
             </>
           ) : null}
-          <Text dimColor>  </Text>
-          <Text color="cyan" bold>?</Text><Text dimColor> help</Text>
-          <Text dimColor>  </Text>
-          <Text color="cyan" bold>q</Text><Text dimColor> quit</Text>
+          <Text color="cyan">?</Text><Text dimColor>:help </Text>
+          <Text color="cyan">q</Text><Text dimColor>:quit</Text>
         </Text>
       </Box>
     </Box>
