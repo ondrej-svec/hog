@@ -25,9 +25,4 @@ export default defineConfig([
     banner: { js: "#!/usr/bin/env node" },
     clean: true,
   },
-  {
-    ...shared,
-    entry: { "fetch-worker": "src/board/fetch-worker.ts" },
-    clean: false, // Don't wipe cli.js from the first build
-  },
 ]);
