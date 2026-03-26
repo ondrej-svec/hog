@@ -394,9 +394,60 @@ export function createRoleAuditGate(role: string): QualityGate {
 	};
 }
 
+// ── Mutation Testing Gate (Farley) ──
+
+const mutationGate: QualityGate = {
+	name: "mutation-testing",
+	severity: "warning", // Advisory — don't block, but report
+
+	isAvailable(cwd: string): boolean {
+		// Available when a mutation testing tool is configured
+		return !!(
+			existsSync(join(cwd, "stryker.config.mjs")) ||
+			existsSync(join(cwd, "stryker.config.js")) ||
+			existsSync(join(cwd, "Cargo.toml"))
+		);
+	},
+
+	async check(cwd: string, _files: string[]): Promise<GateResult> {
+		try {
+			// Dynamic import to avoid circular dependency
+			const { runMutationTesting } = await import("./tdd-enforcement.js");
+			const result = await runMutationTesting(cwd, {
+				enforceRedFirst: true,
+				mutationThreshold: 70,
+				specTraceability: true,
+			});
+			return {
+				gate: "mutation-testing",
+				severity: "warning",
+				passed: result.passed,
+				issues: result.passed
+					? []
+					: [
+							{
+								file: "mutation-report",
+								message: `Mutation score ${result.score}% below threshold (${result.survived} mutants survived)`,
+								rule: "mutation-threshold",
+							},
+						],
+				detail: `Mutation score: ${result.score}% (${result.killed}/${result.total} killed). ${result.passed ? "Above" : "Below"} threshold.`,
+			};
+		} catch (err) {
+			return {
+				gate: "mutation-testing",
+				severity: "warning",
+				passed: true, // Don't block if mutation tool fails
+				issues: [],
+				detail: `Mutation testing skipped: ${err instanceof Error ? err.message : "unknown error"}`,
+			};
+		}
+	},
+};
+
 // ── Registry ──
 
-export const ALL_GATES: QualityGate[] = [lintingGate, securityGate, abuseGate];
+export const ALL_GATES: QualityGate[] = [lintingGate, securityGate, abuseGate, mutationGate];
 
 // ── Helpers ──
 

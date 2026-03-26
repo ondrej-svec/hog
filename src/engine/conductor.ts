@@ -616,6 +616,29 @@ export class Conductor {
         return;
       }
       this.log(pipeline.featureId, "tdd:red-verified", redResult.detail);
+
+      // Traceability check: verify stories map to tests (Farley)
+      try {
+        const { checkTraceability } = await import("./tdd-enforcement.js");
+        const storiesPath = join(pipeline.localPath, "tests", "stories");
+        const traceability = await checkTraceability(pipeline.localPath, storiesPath);
+        if (traceability.uncoveredStories.length > 0) {
+          this.log(
+            pipeline.featureId,
+            "tdd:traceability-warning",
+            `${traceability.uncoveredStories.length} stories without tests: ${traceability.uncoveredStories.join(", ")}`,
+          );
+        }
+        if (traceability.orphanTests.length > 0) {
+          this.log(
+            pipeline.featureId,
+            "tdd:orphan-tests",
+            `${traceability.orphanTests.length} tests without stories: ${traceability.orphanTests.join(", ")}`,
+          );
+        }
+      } catch {
+        // Traceability is advisory — don't block on failures
+      }
     }
 
     // Claim the bead (atomically set assignee + in_progress)

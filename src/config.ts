@@ -128,6 +128,7 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
       linting: z.boolean().default(true),
       security: z.boolean().default(true),
       abusePatterns: z.boolean().default(true),
+      mutationThreshold: z.number().min(0).max(100).default(70),
     })
     .optional(),
   notifications: z
