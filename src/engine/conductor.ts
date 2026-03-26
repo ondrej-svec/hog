@@ -831,6 +831,23 @@ export class Conductor {
           : `Agent failed with exit code ${exitCode}`,
       );
 
+      // Detect rate limit errors — pause pipeline instead of burning retries
+      const isRateLimit =
+        errorMessage?.includes("out of extra usage") ||
+        errorMessage?.includes("rate limit") ||
+        errorMessage?.includes("resets ") ||
+        errorMessage?.includes("429");
+      if (isRateLimit) {
+        pipeline.status = "paused";
+        this.store.save();
+        this.log(
+          pipeline.featureId,
+          "pipeline:rate-limited",
+          `Paused — API rate limit hit. Resume when usage resets: ${errorMessage?.match(/resets\s+\S+/)?.[0] ?? "check your plan"}`,
+        );
+        return;
+      }
+
       // Mark bead as blocked so it can be retried
       this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {
         // best-effort
