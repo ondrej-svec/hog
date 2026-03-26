@@ -206,7 +206,7 @@ async function tick(conductor: Conductor): Promise<void> {
  * The conductor's onAgentCompleted fires beads.close() as fire-and-forget,
  * so we flush microtasks to let the .then() callback run. */
 async function completeAgent(eventBus: EventBus, sessionId: string, phase: string): Promise<void> {
-	eventBus.emit("agent:completed", { sessionId, phase, exitCode: 0 });
+	eventBus.emit("agent:completed", { sessionId, repo: "owner/repo", issueNumber: 0, phase });
 	// Flush microtask queue so beads.close().then() increments completedBeads
 	await new Promise((r) => setTimeout(r, 0));
 }
@@ -319,7 +319,7 @@ describe("Pipeline Lifecycle Integration", () => {
 		await completeAgent(eventBus, "session-1", "stories");
 
 		// Simulate the agent failing by emitting failure
-		eventBus.emit("agent:failed", { sessionId: "session-1", phase: "stories", exitCode: 1 });
+		eventBus.emit("agent:failed", { sessionId: "session-1", repo: "owner/repo", issueNumber: 0, phase: "stories", exitCode: 1 });
 		await tick(conductor);
 
 		// After enough failures, the pipeline may become blocked

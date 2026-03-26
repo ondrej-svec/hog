@@ -2,6 +2,7 @@ import { render } from "ink";
 import type { ReactNode } from "react";
 import { Component } from "react";
 import type { HogConfig } from "../config.js";
+import { Cockpit } from "./components/cockpit.js";
 import { Dashboard } from "./components/dashboard.js";
 import type { FetchOptions } from "./fetch.js";
 import { setInkInstance } from "./ink-instance.js";
@@ -25,6 +26,18 @@ class InkErrorBoundary extends Component<
   }
 }
 
+/** Launch the pipeline cockpit TUI (v2 primary). */
+export async function runCockpit(config: HogConfig): Promise<void> {
+  const instance = render(
+    <InkErrorBoundary>
+      <Cockpit config={config} />
+    </InkErrorBoundary>,
+  );
+  setInkInstance(instance);
+  await instance.waitUntilExit();
+}
+
+/** Launch the full dashboard TUI (v1 legacy — will be removed). */
 export async function runLiveDashboard(
   config: HogConfig,
   options: FetchOptions,

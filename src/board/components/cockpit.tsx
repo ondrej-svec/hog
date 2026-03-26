@@ -1,0 +1,397 @@
+/**
+ * Cockpit — the pipeline-focused TUI.
+ *
+ * This replaces dashboard.tsx as the primary Ink component.
+ * It renders only pipeline-related views: PipelineView, StartPipelineOverlay,
+ * and generic overlays (toast, help, confirm). No GitHub board browsing.
+ */
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
+import { useState, useEffect } from "react";
+import type { HogConfig, RepoConfig } from "../../config.js";
+import { PIPELINE_ROLES } from "../../engine/roles.js";
+import { usePipelineData } from "../hooks/use-pipeline-data.js";
+import { useToast } from "../hooks/use-toast.js";
+import { launchClaude } from "../launch-claude.js";
+import { PipelineView } from "./pipeline-view.js";
+import { StartPipelineOverlay } from "./start-pipeline-overlay.js";
+import { ToastContainer } from "./toast-container.js";
+
+// ── Types ──
+
+interface CockpitProps {
+	readonly config: HogConfig;
+}
+
+type CockpitMode = "normal" | "overlay:startPipeline" | "help";
+
+// ── Help Overlay ──
+
+function HelpOverlay({ onClose }: { readonly onClose: () => void }) {
+	useInput((_input, key) => {
+		if (key.escape || _input === "?" || _input === "q") {
+			onClose();
+		}
+	});
+
+	return (
+		<Box flexDirection="column" paddingX={2} paddingY={1}>
+			<Text bold>Pipeline Cockpit — Keyboard Shortcuts</Text>
+			<Box marginTop={1} flexDirection="column">
+				<Text>
+					<Text color="cyan" bold>
+						P
+					</Text>{" "}
+					New pipeline
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						j/k
+					</Text>{" "}
+					Navigate pipelines
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						x
+					</Text>{" "}
+					Pause / resume selected
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						d
+					</Text>{" "}
+					Cancel selected pipeline
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						Z
+					</Text>{" "}
+					Open brainstorm session (tmux)
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						l
+					</Text>{" "}
+					Open pipeline log (tmux)
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						1-9
+					</Text>{" "}
+					Answer pending decision
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						?
+					</Text>{" "}
+					Toggle this help
+				</Text>
+				<Text>
+					<Text color="cyan" bold>
+						q
+					</Text>{" "}
+					Quit
+				</Text>
+			</Box>
+			<Box marginTop={1}>
+				<Text dimColor>Press ? or Esc to close</Text>
+			</Box>
+		</Box>
+	);
+}
+
+// ── Cockpit Component ──
+
+export function Cockpit({ config }: CockpitProps) {
+	const { exit } = useApp();
+	const { stdout } = useStdout();
+	const { toasts, toast } = useToast();
+	const pipelineData = usePipelineData(config, toast);
+
+	const [mode, setMode] = useState<CockpitMode>("normal");
+	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [termSize, setTermSize] = useState({
+		cols: stdout?.columns ?? 120,
+		rows: stdout?.rows ?? 40,
+	});
+
+	// Track terminal resize
+	useEffect(() => {
+		if (!stdout) return;
+		const onResize = () => {
+			setTermSize({
+				cols: stdout.columns ?? 120,
+				rows: stdout.rows ?? 40,
+			});
+		};
+		stdout.on("resize", onResize);
+		return () => {
+			stdout.off("resize", onResize);
+		};
+	}, [stdout]);
+
+	// Pipeline log entries for the selected pipeline
+	const [logEntries, setLogEntries] = useState<string[]>([]);
+	useEffect(() => {
+		const selected = pipelineData.pipelines[selectedIndex];
+		if (!selected) {
+			setLogEntries([]);
+			return;
+		}
+		const logFile = join(
+			process.env["HOME"] ?? "",
+			".config",
+			"hog",
+			"pipelines",
+			`${selected.featureId}.log`,
+		);
+		try {
+			if (existsSync(logFile)) {
+				const { readFileSync } = require("node:fs") as typeof import("node:fs");
+				const content = readFileSync(logFile, "utf-8");
+				setLogEntries(content.trim().split("\n").slice(-20));
+			} else {
+				setLogEntries([]);
+			}
+		} catch {
+			setLogEntries([]);
+		}
+	}, [pipelineData.pipelines, selectedIndex]);
+
+	// ── Keyboard Handling ──
+
+	useInput(
+		(input, key) => {
+			// Esc closes overlays
+			if (key.escape) {
+				if (mode === "overlay:startPipeline" || mode === "help") {
+					setMode("normal");
+				}
+				return;
+			}
+
+			if (mode !== "normal") return;
+
+			// P — start new pipeline
+			if (input === "P") {
+				setMode("overlay:startPipeline");
+				return;
+			}
+
+			// ? — toggle help
+			if (input === "?") {
+				setMode("help");
+				return;
+			}
+
+			// q — quit
+			if (input === "q") {
+				exit();
+				return;
+			}
+
+			// j/k — navigate
+			if (input === "j" || key.downArrow) {
+				setSelectedIndex((prev) =>
+					Math.min(prev + 1, pipelineData.pipelines.length - 1),
+				);
+				return;
+			}
+			if (input === "k" || key.upArrow) {
+				setSelectedIndex((prev) => Math.max(0, prev - 1));
+				return;
+			}
+
+			// x — pause/resume
+			if (input === "x") {
+				const selected = pipelineData.pipelines[selectedIndex];
+				if (selected) {
+					if (selected.status === "running") {
+						pipelineData.pausePipeline(selected.featureId);
+						toast.info(`Paused: ${selected.title}`);
+					} else if (selected.status === "paused") {
+						pipelineData.resumePipeline(selected.featureId);
+						toast.info(`Resumed: ${selected.title}`);
+					}
+				}
+				return;
+			}
+
+			// d — cancel pipeline
+			if (input === "d") {
+				const selected = pipelineData.pipelines[selectedIndex];
+				if (selected) {
+					pipelineData.cancelPipeline(selected.featureId);
+					toast.info(`Cancelled: ${selected.title}`);
+					setSelectedIndex((prev) => Math.max(0, prev - 1));
+				}
+				return;
+			}
+
+			// Z — brainstorm session
+			if (input === "Z") {
+				const selected = pipelineData.pipelines[selectedIndex];
+				if (selected?.activePhase === "brainstorm") {
+					const localPath = selected.localPath;
+					if (!localPath) {
+						toast.error("Pipeline has no localPath configured");
+						return;
+					}
+					const slug = selected.title
+						.toLowerCase()
+						.replace(/[^a-z0-9]+/g, "-")
+						.replace(/^-|-$/g, "");
+					const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
+						.replace(/\{title\}/g, selected.title)
+						.replace(/\{slug\}/g, slug)
+						.replace(/\{spec\}/g, selected.title)
+						.replace(/\{featureId\}/g, selected.featureId);
+
+					const result = launchClaude({
+						localPath,
+						issue: { number: 0, title: selected.title, url: "" },
+						promptTemplate: brainstormPrompt,
+						launchMode: config.board.claudeLaunchMode ?? "auto",
+						...(config.board.claudeTerminalApp
+							? { terminalApp: config.board.claudeTerminalApp }
+							: {}),
+					});
+					if (result.ok) {
+						toast.info("Brainstorm session opened");
+					} else {
+						toast.error(result.error.message);
+					}
+				}
+				return;
+			}
+
+			// l — open log in tmux
+			if (input === "l") {
+				const selected = pipelineData.pipelines[selectedIndex];
+				if (selected) {
+					const logFile = join(
+						process.env["HOME"] ?? "",
+						".config",
+						"hog",
+						"pipelines",
+						`${selected.featureId}.log`,
+					);
+					if (existsSync(logFile)) {
+						try {
+							const child = spawn(
+								"tmux",
+								["new-window", "-n", "pipeline-log", "tail", "-f", logFile],
+								{ stdio: "ignore", detached: true },
+							);
+							child.unref();
+							toast.info("Log opened in tmux window");
+						} catch {
+							toast.error("tmux required for log view");
+						}
+					} else {
+						toast.info("No log file yet");
+					}
+				}
+				return;
+			}
+
+			// 1-9 — answer pending decision
+			if (/^[1-9]$/.test(input) && pipelineData.pendingDecisions.length > 0) {
+				const decision = pipelineData.pendingDecisions[0];
+				if (decision?.options) {
+					const idx = parseInt(input, 10) - 1;
+					const answer = decision.options[idx];
+					if (answer) {
+						pipelineData.resolveDecision(decision.id, answer);
+						toast.info(`Decision resolved: ${answer}`);
+					}
+				}
+				return;
+			}
+		},
+		{ isActive: mode === "normal" },
+	);
+
+	// ── Render ──
+
+	// Start pipeline overlay
+	if (mode === "overlay:startPipeline") {
+		return (
+			<Box flexDirection="column">
+				<StartPipelineOverlay
+					beadsAvailable={pipelineData.beadsAvailable}
+					onSubmit={(description) => {
+						const cwd = process.cwd();
+						let targetRepo = config.repos.find(
+							(r) => r.localPath && cwd.startsWith(r.localPath),
+						);
+						let repoName: string;
+						if (targetRepo) {
+							repoName = targetRepo.name;
+						} else {
+							const dirName = cwd.split("/").pop() ?? "project";
+							repoName = dirName;
+							targetRepo = {
+								name: dirName,
+								shortName: dirName,
+								projectNumber: 0,
+								statusFieldId: "",
+								localPath: cwd,
+								completionAction: { type: "closeIssue" },
+							} as RepoConfig;
+						}
+						pipelineData
+							.startPipeline(
+								repoName,
+								targetRepo,
+								description
+									.split(/[.!?\n]/)[0]
+									?.trim()
+									.slice(0, 60) ?? description.slice(0, 60),
+								description,
+							)
+							.then((result) => {
+								if ("error" in result) {
+									toast.error(`Pipeline failed: ${result.error}`);
+								}
+								setMode("normal");
+							})
+							.catch(() => setMode("normal"));
+					}}
+					onCancel={() => setMode("normal")}
+				/>
+				<ToastContainer toasts={toasts} />
+			</Box>
+		);
+	}
+
+	// Help overlay
+	if (mode === "help") {
+		return (
+			<Box flexDirection="column">
+				<HelpOverlay onClose={() => setMode("normal")} />
+			</Box>
+		);
+	}
+
+	// Normal: pipeline view
+	return (
+		<Box flexDirection="column">
+			<PipelineView
+				data={{
+					pipelines: pipelineData.pipelines,
+					agents: pipelineData.agents,
+					pendingDecisions: pipelineData.pendingDecisions,
+					mergeQueue: pipelineData.mergeQueue,
+					selectedIndex,
+					logEntries,
+				}}
+				cols={termSize.cols}
+				rows={termSize.rows - 2}
+			/>
+			<ToastContainer toasts={toasts} />
+		</Box>
+	);
+}

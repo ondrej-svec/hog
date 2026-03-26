@@ -80,7 +80,18 @@ program
     await runInit({ force: opts.force ?? false });
   });
 
-// -- Board command --
+// -- Cockpit command (v2 primary TUI) --
+
+program
+  .command("cockpit")
+  .description("Pipeline cockpit — monitor and manage AI development pipelines")
+  .action(async () => {
+    const config = loadFullConfig();
+    const { runCockpit } = await import("./board/live.js");
+    await runCockpit(config);
+  });
+
+// -- Board command (legacy — will be tombstoned in v2) --
 
 interface BoardOptions {
   repo?: string;
