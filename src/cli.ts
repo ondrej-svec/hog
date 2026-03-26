@@ -2573,6 +2573,106 @@ program
     console.log("See: hog pipeline create --help");
   });
 
+// -- Daemon commands --
+
+const daemonCommand = program.command("daemon").description("Manage the hogd daemon process");
+
+daemonCommand
+  .command("start")
+  .description("Start the hogd daemon")
+  .option("--foreground", "Run in the foreground (don't detach)")
+  .action(async (opts: { foreground?: true }) => {
+    const { isDaemonRunning } = await import("./daemon/hogd.js");
+
+    if (isDaemonRunning()) {
+      console.log("Daemon is already running.");
+      return;
+    }
+
+    if (opts.foreground) {
+      const { startForeground } = await import("./daemon/hogd.js");
+      await startForeground();
+    } else {
+      // Spawn daemon as a detached background process
+      const { spawn: spawnProcess } = await import("node:child_process");
+      const { fileURLToPath } = await import("node:url");
+      const cliPath = fileURLToPath(import.meta.url).replace(/\.js$/, ".js");
+      const child = spawnProcess(process.execPath, [cliPath, "daemon", "start", "--foreground"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Wait briefly for daemon to start, then verify
+      await new Promise((r) => setTimeout(r, 500));
+      if (isDaemonRunning()) {
+        const { readDaemonPid } = await import("./daemon/hogd.js");
+        console.log(`Daemon started (pid: ${readDaemonPid()}).`);
+      } else {
+        console.error("Daemon failed to start. Try: hog daemon start --foreground");
+        process.exitCode = 1;
+      }
+    }
+  });
+
+daemonCommand
+  .command("stop")
+  .description("Stop the hogd daemon")
+  .action(async () => {
+    const { isDaemonRunning, readDaemonPid } = await import("./daemon/hogd.js");
+
+    if (!isDaemonRunning()) {
+      console.log("Daemon is not running.");
+      return;
+    }
+
+    const pid = readDaemonPid();
+    if (pid) {
+      process.kill(pid, "SIGTERM");
+      console.log(`Daemon stopped (pid: ${pid}).`);
+    } else {
+      console.error("Could not read daemon PID.");
+      process.exitCode = 1;
+    }
+  });
+
+daemonCommand
+  .command("status")
+  .description("Show daemon status")
+  .action(async () => {
+    const { isDaemonRunning } = await import("./daemon/hogd.js");
+
+    if (!isDaemonRunning()) {
+      if (useJson()) {
+        jsonOut({ ok: true, data: { running: false } });
+      } else {
+        console.log("Daemon is not running.");
+      }
+      return;
+    }
+
+    // Connect and get status
+    const { connectDaemon } = await import("./daemon/client.js");
+    try {
+      const client = await connectDaemon();
+      const status = await client.call("daemon.status", {});
+      client.close();
+
+      if (useJson()) {
+        jsonOut({ ok: true, data: { running: true, ...status } });
+      } else {
+        console.log(`Daemon running (pid: ${status.pid})`);
+        console.log(`  Uptime:    ${Math.floor(status.uptime / 60)}m ${status.uptime % 60}s`);
+        console.log(`  Pipelines: ${status.pipelines}`);
+        console.log(`  Agents:    ${status.agents}`);
+        console.log(`  Version:   ${status.version}`);
+      }
+    } catch (err) {
+      console.error(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
 // -- Run --
 
 program.parseAsync().catch((err: unknown) => {
