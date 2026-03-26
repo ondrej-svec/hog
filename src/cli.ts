@@ -279,6 +279,7 @@ pipelineCommand
         title,
         description: opts.description,
         brainstormDone: opts.brainstormDone,
+        localPath: cwd,
       });
 
       if ("error" in result) {

@@ -305,10 +305,10 @@ export class HogDaemon {
     socket: Socket,
     req: RpcRequest<"pipeline.create">,
   ): Promise<void> {
-    const { repo, title, description, brainstormDone } = req.params;
+    const { repo, title, description, brainstormDone, localPath } = req.params;
 
-    // Resolve repo config
-    const targetRepo = this.resolveRepo(repo);
+    // Resolve repo config — fall back to ad-hoc repo from localPath
+    const targetRepo = this.resolveRepo(repo, localPath);
     if (!targetRepo) {
       this.send(socket, req.id, { error: `Repo not found: ${repo}` });
       return;
@@ -437,14 +437,26 @@ export class HogDaemon {
 
   // ── Helpers ──
 
-  private resolveRepo(nameOrShort: string): RepoConfig | undefined {
+  private resolveRepo(nameOrShort: string, localPath?: string): RepoConfig | undefined {
     const { resolved } = resolveProfile(this.config);
     // Match by short name or full name
-    const found = resolved.repos.find((r) => r.shortName === nameOrShort || r.name === nameOrShort);
+    const found = resolved.repos.find(
+      (r) => r.shortName === nameOrShort || r.name === nameOrShort,
+    );
     if (found) return found;
 
-    // Ad-hoc repo from name (used when creating pipelines from cwd)
-    // The caller passes the cwd basename as repo name
+    // Ad-hoc repo from name — no GitHub config needed, just needs localPath
+    if (localPath) {
+      return {
+        name: nameOrShort,
+        shortName: nameOrShort,
+        projectNumber: 0,
+        statusFieldId: "",
+        localPath,
+        completionAction: { type: "closeIssue" },
+      } as RepoConfig;
+    }
+
     return undefined;
   }
 

@@ -21,6 +21,7 @@ export interface RpcMethods {
       title: string;
       description?: string | undefined;
       brainstormDone?: boolean | undefined;
+      localPath?: string | undefined;
     };
     result: Pipeline | { error: string };
   };
