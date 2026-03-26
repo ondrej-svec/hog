@@ -72,7 +72,7 @@ export class AgentManager {
 
   /** Maximum concurrent agents allowed. */
   get maxConcurrent(): number {
-    return this.config.board.workflow?.maxConcurrentAgents ?? 3;
+    return this.config.pipeline.maxConcurrentAgents;
   }
 
   /** Reconcile unprocessed result files from previous sessions. */
@@ -118,7 +118,7 @@ export class AgentManager {
           phase: session.phase,
           exitCode: 1,
         });
-        notify(this.config.board.workflow?.notifications, {
+        notify(this.config.pipeline.notifications, {
           title: "Agent exited",
           body: `${session.phase} for #${session.issueNumber} exited`,
         });
@@ -195,7 +195,7 @@ export class AgentManager {
           issueNumber: opts.issueNumber,
           phase: opts.phase,
         });
-        notify(this.config.board.workflow?.notifications, {
+        notify(this.config.pipeline.notifications, {
           title: "Agent completed",
           body: `${opts.phase} for #${opts.issueNumber} completed successfully`,
         });
@@ -207,7 +207,7 @@ export class AgentManager {
           phase: opts.phase,
           exitCode,
         });
-        notify(this.config.board.workflow?.notifications, {
+        notify(this.config.pipeline.notifications, {
           title: "Agent failed",
           body: `${opts.phase} for #${opts.issueNumber} failed (exit ${exitCode})`,
         });

@@ -73,7 +73,7 @@ export function usePipelineData(
   // Initialize conductor for creation only (no tick loop)
   useEffect(() => {
     const eventBus = new EventBus();
-    const beads = new BeadsClient(config.board.assignee);
+    const beads = new BeadsClient(config.pipeline.owner);
     const workflow = new WorkflowEngine(config, eventBus);
     const agentManager = new AgentManager(config, eventBus, workflow);
     const conductor = new Conductor(config, eventBus, agentManager, beads);

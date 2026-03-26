@@ -18,9 +18,9 @@ export function resolvePhaseConfig(
   startCommand: { command: string; extraArgs: readonly string[] } | undefined;
   slug: string;
 } {
-  const phasePrompts = rc.workflow?.phasePrompts ?? config.board.workflow?.phasePrompts ?? {};
+  const phasePrompts = rc.workflow?.phasePrompts ?? config.pipeline.phasePrompts ?? {};
   const template = phasePrompts[phase] ?? DEFAULT_PHASE_PROMPTS[phase];
-  const startCommand = rc.claudeStartCommand ?? config.board.claudeStartCommand;
+  const startCommand = rc.claudeStartCommand ?? config.pipeline.claudeStartCommand;
   const slug = issueTitle
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -73,18 +73,18 @@ export class Orchestrator {
       };
     }
 
-    const resolvedStartCommand = rc.claudeStartCommand ?? this.config.board.claudeStartCommand;
+    const resolvedStartCommand = rc.claudeStartCommand ?? this.config.pipeline.claudeStartCommand;
     const resolvedPromptTemplate =
-      promptTemplate ?? rc.claudePrompt ?? this.config.board.claudePrompt;
+      promptTemplate ?? rc.claudePrompt ?? this.config.pipeline.claudePrompt;
 
     const result = launchClaude({
       localPath: rc.localPath,
       issue: { number: ctx.issueNumber, title: ctx.issueTitle, url: ctx.issueUrl },
       ...(resolvedStartCommand ? { startCommand: resolvedStartCommand } : {}),
       ...(resolvedPromptTemplate ? { promptTemplate: resolvedPromptTemplate } : {}),
-      launchMode: this.config.board.claudeLaunchMode ?? "auto",
-      ...(this.config.board.claudeTerminalApp
-        ? { terminalApp: this.config.board.claudeTerminalApp }
+      launchMode: this.config.pipeline.launchMode ?? "auto",
+      ...(this.config.pipeline.terminalApp
+        ? { terminalApp: this.config.pipeline.terminalApp }
         : {}),
       repoFullName: ctx.repoName,
     });

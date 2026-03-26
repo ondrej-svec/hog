@@ -31,7 +31,7 @@ export class Engine {
     this.agents = new AgentManager(config, this.eventBus, this.workflow);
     this.actions = new ActionExecutor(config, this.eventBus);
     this.orchestrator = new Orchestrator(config, this.eventBus, this.agents, this.workflow);
-    this.beads = new BeadsClient(config.board.assignee);
+    this.beads = new BeadsClient(config.pipeline.owner);
     this.beadsAvailable = this.beads.isInstalled();
   }
 

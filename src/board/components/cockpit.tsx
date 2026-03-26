@@ -252,9 +252,9 @@ export function Cockpit({ config }: CockpitProps) {
             localPath,
             issue: { number: 0, title: selected.title, url: "" },
             promptTemplate: brainstormPrompt,
-            launchMode: config.board.claudeLaunchMode ?? "auto",
-            ...(config.board.claudeTerminalApp
-              ? { terminalApp: config.board.claudeTerminalApp }
+            launchMode: config.pipeline.launchMode ?? "auto",
+            ...(config.pipeline.terminalApp
+              ? { terminalApp: config.pipeline.terminalApp }
               : {}),
           });
           if (result.ok) {

@@ -7,11 +7,13 @@ import { derivePhaseStatus, resolvePhases } from "./workflow.js";
 const minConfig = {
   repos: [],
   board: { assignee: "test" },
+  pipeline: { owner: "test", phases: ["brainstorm", "plan", "implement", "review"] },
 } as unknown as HogConfig;
 
 const configWithBoardPhases = {
   repos: [],
-  board: { assignee: "test", workflow: { defaultPhases: ["design", "code", "ship"] } },
+  board: { assignee: "test" },
+  pipeline: { owner: "test", phases: ["design", "code", "ship"] },
 } as unknown as HogConfig;
 
 describe("resolvePhases", () => {

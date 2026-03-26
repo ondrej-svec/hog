@@ -29,7 +29,7 @@ export function resolvePhases(config: HogConfig, repoConfig?: RepoConfig): strin
   const repoPhases = repoConfig?.workflow?.phases;
   if (repoPhases && repoPhases.length > 0) return repoPhases;
 
-  const boardPhases = config.board.workflow?.defaultPhases;
+  const boardPhases = config.pipeline.phases;
   if (boardPhases && boardPhases.length > 0) return boardPhases;
 
   return ["brainstorm", "plan", "implement", "review"];
