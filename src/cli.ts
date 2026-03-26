@@ -784,6 +784,118 @@ pipelineCommand
   });
 
 pipelineCommand
+  .command("replay <featureId>")
+  .description("Replay a recorded pipeline run from the event log")
+  .option("--speed <multiplier>", "Playback speed multiplier (default: 10)", "10")
+  .action(async (featureId: string, opts: { speed: string }) => {
+    const { readEventLog, summarizeEventLog } = await import("./daemon/event-log.js");
+    const entries = readEventLog({ featureId });
+
+    if (entries.length === 0) {
+      console.error(`No event log found for pipeline ${featureId}.`);
+      console.error("Events are only recorded when the daemon is running.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const speed = Number.parseFloat(opts.speed);
+    const summary = summarizeEventLog(entries);
+    const PHASE_LABELS: Record<string, string> = {
+      brainstorm: "Brainstorm",
+      stories: "Stories",
+      test: "Tests",
+      impl: "Implementation",
+      redteam: "Red Team",
+      merge: "Merge",
+    };
+
+    console.log(`Replaying pipeline ${featureId} at ${speed}x speed...\n`);
+
+    let lastTs = new Date(entries[0]!.timestamp).getTime();
+
+    for (const entry of entries) {
+      const ts = new Date(entry.timestamp).getTime();
+      const delay = (ts - lastTs) / speed;
+      if (delay > 0 && delay < 10_000) {
+        await new Promise((r) => setTimeout(r, delay));
+      }
+      lastTs = ts;
+
+      const phase = entry.data["phase"] as string | undefined;
+      const label = phase ? (PHASE_LABELS[phase] ?? phase) : "";
+
+      switch (entry.event) {
+        case "agent:spawned":
+          console.log(`  ◐ ${label} started`);
+          break;
+        case "agent:progress": {
+          const tool = entry.data["toolName"] as string | undefined;
+          if (tool) process.stdout.write(`    using ${tool}...\r`);
+          break;
+        }
+        case "agent:completed":
+          console.log(`  ✓ ${label} completed                    `);
+          break;
+        case "agent:failed":
+          console.log(`  ✗ ${label} FAILED (exit: ${entry.data["exitCode"]})`);
+          break;
+        case "workflow:phase-changed":
+          console.log(`  Phase: ${label} → ${entry.data["state"]}`);
+          break;
+      }
+    }
+
+    console.log(`\nReplay complete. ${summary.agentCount} agents across ${summary.phaseCount} phases.`);
+    console.log(`Total duration: ${Math.round(summary.totalDurationMs / 1000)}s`);
+  });
+
+pipelineCommand
+  .command("compare <id1> <id2>")
+  .description("Compare two pipeline runs side-by-side")
+  .action(async (id1: string, id2: string) => {
+    const { readEventLog, summarizeEventLog } = await import("./daemon/event-log.js");
+    const entries1 = readEventLog({ featureId: id1 });
+    const entries2 = readEventLog({ featureId: id2 });
+
+    if (entries1.length === 0 || entries2.length === 0) {
+      console.error("Event log not found for one or both pipelines.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const s1 = summarizeEventLog(entries1);
+    const s2 = summarizeEventLog(entries2);
+
+    const fmt = (ms: number) => {
+      const s = Math.round(ms / 1000);
+      return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+
+    console.log("Pipeline Comparison\n");
+    console.log(`${"Metric".padEnd(20)} ${id1.slice(0, 20).padEnd(22)} ${id2.slice(0, 20)}`);
+    console.log("-".repeat(64));
+    console.log(`${"Phases".padEnd(20)} ${String(s1.phaseCount).padEnd(22)} ${s1.phaseCount}`);
+    console.log(`${"Agents".padEnd(20)} ${String(s1.agentCount).padEnd(22)} ${s2.agentCount}`);
+    console.log(`${"Duration".padEnd(20)} ${fmt(s1.totalDurationMs).padEnd(22)} ${fmt(s2.totalDurationMs)}`);
+    console.log("");
+
+    // Phase-by-phase comparison
+    const allPhases = new Set([
+      ...s1.phases.map((p) => p.phase),
+      ...s2.phases.map((p) => p.phase),
+    ]);
+
+    console.log("Per-phase durations:");
+    for (const phase of allPhases) {
+      const p1 = s1.phases.find((p) => p.phase === phase);
+      const p2 = s2.phases.find((p) => p.phase === phase);
+      console.log(
+        `  ${phase.padEnd(18)} ${(p1 ? fmt(p1.durationMs) : "-").padEnd(22)} ${p2 ? fmt(p2.durationMs) : "-"}`,
+      );
+    }
+  });
+
+pipelineCommand
   .command("init")
   .description("Add pipeline instructions to your project's CLAUDE.md")
   .action(async () => {

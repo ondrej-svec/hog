@@ -75,6 +75,10 @@ export class HogDaemon {
     // Bridge EventBus → subscribers
     this.bridgeEvents();
 
+    // Start append-only event log
+    const { startEventLog } = await import("./event-log.js");
+    startEventLog(this.engine.eventBus);
+
     // Start Unix socket server
     this.server = createServer((socket) => this.handleConnection(socket));
     this.server.listen(SOCKET_PATH, () => {
