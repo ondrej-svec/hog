@@ -107,7 +107,9 @@ describe("hog init wizard", () => {
     const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
     const saved = JSON.parse(savedJson);
 
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(5);
+    expect(saved.pipeline).toBeDefined();
+    expect(saved.pipeline.owner).toBe("test-user");
     expect(saved.repos).toHaveLength(1);
     expect(saved.repos[0].name).toBe("org/repo-one");
     expect(saved.repos[0].shortName).toBe("repo-one");

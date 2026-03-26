@@ -502,7 +502,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
   // Step 10: Build and write config
   const existingConfig = configExists ? loadFullConfig() : undefined;
   const config: HogConfig = {
-    version: 4,
+    version: 5,
     repos,
     board: {
       refreshInterval: Number.parseInt(refreshInterval, 10) || 60,
@@ -511,13 +511,22 @@ async function runWizard(opts: InitOptions): Promise<void> {
       focusDuration: Number.parseInt(focusDuration, 10) || 1500,
       workflow: boardWorkflow,
     },
+    pipeline: {
+      owner: login,
+      maxConcurrentAgents: boardWorkflow?.maxConcurrentAgents ?? 3,
+      tddEnforcement: true,
+      phases: boardWorkflow?.defaultPhases ?? ["brainstorm", "plan", "implement", "review"],
+      phasePrompts: boardWorkflow?.phasePrompts,
+      notifications: boardWorkflow?.notifications,
+    },
     profiles: existingConfig?.profiles ?? {},
   };
 
   saveFullConfig(config);
   console.log(`\nConfig written to ${CONFIG_DIR}/config.json`);
   console.log("\nSetup complete! Try:\n");
-  console.log("  hog board --live    # Interactive dashboard");
+  console.log("  hog cockpit         # Pipeline cockpit TUI");
+  console.log("  hog pipeline create # Start a new AI development pipeline");
   console.log("  hog config show     # View configuration\n");
 }
 

@@ -52,7 +52,7 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result).not.toHaveProperty("ticktick");
   });
 
@@ -73,11 +73,11 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result).not.toHaveProperty("ticktick");
   });
 
-  it("should not re-migrate v4 config", () => {
+  it("should migrate v4 config to v5 (adds pipeline section)", () => {
     const v4Config = {
       version: 4,
       repos: [],
@@ -93,9 +93,10 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
-    // Should NOT have called writeFileSync (no migration needed)
-    expect(writeFileSync).not.toHaveBeenCalled();
+    expect(result.version).toBe(5);
+    expect(result.pipeline.owner).toBe("ondrej");
+    // v4 → v5 migration should save to disk
+    expect(writeFileSync).toHaveBeenCalled();
   });
 
   it("should preserve all v2 fields during migration to v4", () => {
@@ -125,7 +126,7 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.repos).toHaveLength(1);
     expect(result.repos[0]?.name).toBe("owner/repo");
     expect(result.board.refreshInterval).toBe(30);
@@ -152,7 +153,7 @@ describe("config migration", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.repos).toEqual([]); // no legacy repos
     expect(result.board.assignee).toBe("unknown"); // placeholder default
     expect(result).not.toHaveProperty("ticktick");
@@ -196,20 +197,179 @@ describe("config migration", () => {
     loadFullConfig();
 
     expect(mkdirSync).toHaveBeenCalled();
-    expect(writeFileSync).toHaveBeenCalledTimes(1);
+    expect(writeFileSync).toHaveBeenCalled();
 
-    // Verify the saved config is v4
-    const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
+    // Verify the saved config is v5 (migrated all the way through)
+    const lastCallIdx = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls.length - 1;
+    const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[lastCallIdx]?.[1] as string;
     const saved = JSON.parse(savedJson);
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(5);
+    expect(saved.pipeline).toBeDefined();
     expect(saved).not.toHaveProperty("ticktick");
+  });
+
+  // ── v4 → v5 migration tests (Phase 3.1) ──
+
+  it("should migrate v4 config to v5 with pipeline section", () => {
+    const v4Config = {
+      version: 4,
+      repos: [
+        {
+          name: "owner/repo",
+          shortName: "repo",
+          projectNumber: 1,
+          statusFieldId: "SF_1",
+          completionAction: { type: "closeIssue" },
+          localPath: "/Users/dev/repo",
+        },
+      ],
+      board: {
+        refreshInterval: 60,
+        backlogLimit: 20,
+        assignee: "ondrej",
+        claudeLaunchMode: "tmux",
+        claudeTerminalApp: "Ghostty",
+        workflow: {
+          defaultPhases: ["brainstorm", "plan", "implement"],
+          maxConcurrentAgents: 5,
+        },
+      },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
+
+    const result = loadFullConfig();
+
+    expect(result.version).toBe(5);
+    // Pipeline section derived from board
+    expect(result.pipeline.owner).toBe("ondrej");
+    expect(result.pipeline.launchMode).toBe("tmux");
+    expect(result.pipeline.terminalApp).toBe("Ghostty");
+    expect(result.pipeline.maxConcurrentAgents).toBe(5);
+    expect(result.pipeline.phases).toEqual(["brainstorm", "plan", "implement"]);
+    expect(result.pipeline.tddEnforcement).toBe(true); // default
+    // Repos preserved
+    expect(result.repos).toHaveLength(1);
+    expect(result.repos[0]?.localPath).toBe("/Users/dev/repo");
+  });
+
+  it("should migrate v4 config with full workflow to v5", () => {
+    const v4Config = {
+      version: 4,
+      repos: [
+        {
+          name: "org/api",
+          shortName: "api",
+          projectNumber: 3,
+          statusFieldId: "SF_3",
+          completionAction: { type: "addLabel", label: "done" },
+          localPath: "/Users/dev/api",
+          statusGroups: ["Backlog", "In Progress", "Done"],
+          autoStatus: { enabled: true, triggers: { branchCreated: "In Progress" } },
+        },
+        {
+          name: "org/web",
+          shortName: "web",
+          projectNumber: 4,
+          statusFieldId: "SF_4",
+          completionAction: { type: "closeIssue" },
+        },
+      ],
+      board: {
+        assignee: "dev-user",
+        claudePrompt: "You are a helpful assistant",
+        workflow: {
+          defaultMode: "freeform",
+          defaultPhases: ["implement", "review"],
+          phasePrompts: { implement: "Write code", review: "Review carefully" },
+          maxConcurrentAgents: 2,
+          notifications: { os: true, sound: false },
+        },
+      },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
+
+    const result = loadFullConfig();
+
+    expect(result.version).toBe(5);
+    expect(result.pipeline.owner).toBe("dev-user");
+    expect(result.pipeline.claudePrompt).toBe("You are a helpful assistant");
+    expect(result.pipeline.maxConcurrentAgents).toBe(2);
+    expect(result.pipeline.phases).toEqual(["implement", "review"]);
+    expect(result.pipeline.phasePrompts).toEqual({ implement: "Write code", review: "Review carefully" });
+    expect(result.pipeline.notifications).toEqual({ os: true, sound: false });
+    // All repos preserved
+    expect(result.repos).toHaveLength(2);
+  });
+
+  it("should migrate minimal v4 config (no workflow) to v5 with defaults", () => {
+    const v4Config = {
+      version: 4,
+      repos: [],
+      board: { assignee: "test-user" },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
+
+    const result = loadFullConfig();
+
+    expect(result.version).toBe(5);
+    expect(result.pipeline.owner).toBe("test-user");
+    expect(result.pipeline.maxConcurrentAgents).toBe(3); // default
+    expect(result.pipeline.tddEnforcement).toBe(true); // default
+    expect(result.pipeline.launchMode).toBeUndefined();
+  });
+
+  it("v4→v5 migration is idempotent (migrating twice gives same result)", () => {
+    const v4Config = {
+      version: 4,
+      repos: [],
+      board: { assignee: "test", workflow: { maxConcurrentAgents: 4 } },
+    };
+
+    mockedExistsSync.mockImplementation((p) => {
+      const path = String(p);
+      if (path.endsWith("config.json")) return true;
+      return false;
+    });
+    mockedReadFileSync.mockReturnValue(JSON.stringify(v4Config));
+
+    const first = loadFullConfig();
+
+    // Simulate loading the already-migrated config
+    mockedReadFileSync.mockReturnValue(JSON.stringify(first));
+    vi.mocked(writeFileSync).mockClear();
+
+    const second = loadFullConfig();
+
+    expect(second.version).toBe(5);
+    expect(second.pipeline.owner).toBe("test");
+    expect(second.pipeline.maxConcurrentAgents).toBe(4);
+    // Should NOT have written to disk (already v5)
+    expect(writeFileSync).not.toHaveBeenCalled();
   });
 });
 
 describe("resolveProfile", () => {
   function makeBaseConfig(): HogConfig {
     return {
-      version: 4,
+      version: 5,
       repos: [
         {
           name: "owner/main-repo",
@@ -220,6 +380,7 @@ describe("resolveProfile", () => {
         },
       ],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
+      pipeline: { owner: "ondrej", maxConcurrentAgents: 3, tddEnforcement: true, phases: ["brainstorm", "plan", "implement", "review"] },
       profiles: {
         work: {
           repos: [
@@ -296,7 +457,7 @@ describe("resolveProfile", () => {
 
     const { resolved } = resolveProfile(config, "work");
 
-    expect(resolved.version).toBe(4);
+    expect(resolved.version).toBe(5);
     expect(resolved.profiles).toEqual(config.profiles);
   });
 
@@ -330,7 +491,7 @@ describe("loadFullConfig with no config file", () => {
 
     const result = loadFullConfig();
 
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.repos).toEqual([]);
     expect(result.board.assignee).toBe("unknown");
     expect(result).not.toHaveProperty("ticktick");
@@ -350,7 +511,7 @@ describe("loadFullConfig with no config file", () => {
     const result = loadFullConfig();
 
     // malformed JSON returns {} from loadRawConfig, triggers migration
-    expect(result.version).toBe(4);
+    expect(result.version).toBe(5);
     expect(result.repos).toEqual([]);
   });
 });
@@ -461,6 +622,7 @@ describe("findRepo", () => {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "user", focusDuration: 1500 },
+    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, phases: [] },
     profiles: {},
   };
 

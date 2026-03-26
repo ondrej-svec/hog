@@ -113,21 +113,50 @@ const BOARD_CONFIG_SCHEMA = z.object({
     .optional(),
 });
 
+const PIPELINE_CONFIG_SCHEMA = z.object({
+  owner: z.string().min(1),
+  maxConcurrentAgents: z.number().default(3),
+  launchMode: z.enum(["auto", "tmux", "terminal"]).optional(),
+  terminalApp: z
+    .enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"])
+    .optional(),
+  claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
+  claudePrompt: z.string().optional(),
+  tddEnforcement: z.boolean().default(true),
+  phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
+  phasePrompts: z.record(z.string(), z.string()).optional(),
+  qualityGates: z
+    .object({
+      linting: z.boolean().default(true),
+      security: z.boolean().default(true),
+      abusePatterns: z.boolean().default(true),
+    })
+    .optional(),
+  notifications: z
+    .object({
+      os: z.boolean().default(false),
+      sound: z.boolean().default(false),
+    })
+    .optional(),
+});
+
 const PROFILE_SCHEMA = z.object({
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
   board: BOARD_CONFIG_SCHEMA,
 });
 
 const HOG_CONFIG_SCHEMA = z.object({
-  version: z.number().int().default(4),
+  version: z.number().int().default(5),
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
   board: BOARD_CONFIG_SCHEMA,
+  pipeline: PIPELINE_CONFIG_SCHEMA,
   profiles: z.record(z.string(), PROFILE_SCHEMA).default({}),
   defaultProfile: z.string().optional(),
 });
 
 export type CompletionAction = z.infer<typeof COMPLETION_ACTION_SCHEMA>;
 export type RepoConfig = z.infer<typeof REPO_CONFIG_SCHEMA>;
+export type PipelineConfig = z.infer<typeof PIPELINE_CONFIG_SCHEMA>;
 export type BoardConfig = z.infer<typeof BOARD_CONFIG_SCHEMA>;
 export type ProfileConfig = z.infer<typeof PROFILE_SCHEMA>;
 export type HogConfig = z.infer<typeof HOG_CONFIG_SCHEMA>;
@@ -176,6 +205,30 @@ function migrateConfig(raw: Record<string, unknown>): HogConfig {
     }
   }
 
+  // v4 → v5: Add pipeline section, derived from board fields
+  const v4Version = typeof raw["version"] === "number" ? raw["version"] : 4;
+  if (v4Version < 5) {
+    const board = (raw["board"] ?? {}) as Record<string, unknown>;
+    const workflow = (board["workflow"] ?? {}) as Record<string, unknown>;
+
+    raw = {
+      ...raw,
+      version: 5,
+      pipeline: {
+        owner: board["assignee"] ?? "unknown",
+        maxConcurrentAgents: workflow["maxConcurrentAgents"] ?? 3,
+        launchMode: board["claudeLaunchMode"],
+        terminalApp: board["claudeTerminalApp"],
+        claudeStartCommand: board["claudeStartCommand"],
+        claudePrompt: board["claudePrompt"],
+        tddEnforcement: true,
+        phases: workflow["defaultPhases"] ?? ["brainstorm", "plan", "implement", "review"],
+        phasePrompts: workflow["phasePrompts"],
+        notifications: workflow["notifications"],
+      },
+    };
+  }
+
   return HOG_CONFIG_SCHEMA.parse(raw);
 }
 
@@ -192,7 +245,7 @@ export function loadFullConfig(): HogConfig {
   }
 
   const version = typeof raw["version"] === "number" ? raw["version"] : 1;
-  if (version < 4) {
+  if (version < 5) {
     const migrated = migrateConfig(raw);
     saveFullConfig(migrated);
     return migrated;
