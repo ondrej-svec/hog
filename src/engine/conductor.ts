@@ -354,6 +354,9 @@ export class Conductor {
       // Skip paused pipelines
       if (pipeline.status === "paused") continue;
 
+      // Self-healing: reconcile state before making decisions
+      await this.healPipeline(pipeline);
+
       // Check if blocked pipeline can be unblocked
       if (pipeline.status === "blocked") {
         if (getPendingForFeature(this.questionQueue, pipeline.featureId).length === 0) {
@@ -374,9 +377,132 @@ export class Conductor {
       await this.tickPipeline(pipeline);
     }
 
+    // Detect stuck agents across all pipelines
+    this.detectStuckAgents();
+
     // Persist any state changes from this tick cycle (but not if stopped)
     if (!this.stopped) {
       this.store.save();
+    }
+  }
+
+  // ── Self-Healing ──
+
+  /**
+   * Heal a pipeline by reconciling in-memory state against ground truth.
+   * Runs on every tick — all operations are idempotent.
+   */
+  private async healPipeline(pipeline: Pipeline): Promise<void> {
+    // 1. Reconcile completedBeads from actual bead state
+    try {
+      let closedCount = 0;
+      const beadStatuses: Record<string, string> = {};
+      for (const [role, id] of Object.entries(pipeline.beadIds)) {
+        const bead = await this.beads.show(pipeline.localPath, id);
+        beadStatuses[role] = bead.status;
+        if (bead.status === "closed") closedCount++;
+      }
+
+      if (pipeline.completedBeads !== closedCount) {
+        const old = pipeline.completedBeads;
+        pipeline.completedBeads = closedCount;
+        this.log(
+          pipeline.featureId,
+          "heal:beads-reconciled",
+          `Bead count corrected: ${old} → ${closedCount} (from actual bead state)`,
+        );
+      }
+
+      // 2. Fix activePhase drift — find what's actually running
+      const activeAgents = this.getActiveAgentsForPipeline(pipeline.featureId);
+      if (activeAgents.length > 0) {
+        // An agent is running — activePhase should match
+        const agentPhase = activeAgents[0]!.phase;
+        if (pipeline.activePhase !== agentPhase) {
+          pipeline.activePhase = agentPhase;
+        }
+      } else {
+        // No agents running — find the next ready phase from bead state
+        const phaseOrder: Array<[string, PipelineRole]> = [
+          ["brainstorm", "brainstorm"],
+          ["stories", "stories"],
+          ["tests", "test"],
+          ["impl", "impl"],
+          ["redteam", "redteam"],
+          ["merge", "merge"],
+        ];
+        let nextPhase: string | undefined;
+        for (const [beadKey, role] of phaseOrder) {
+          const status = beadStatuses[beadKey];
+          if (status === "in_progress" || status === "open") {
+            nextPhase = role;
+            break;
+          }
+        }
+        if (nextPhase && pipeline.activePhase !== nextPhase) {
+          pipeline.activePhase = nextPhase;
+        }
+      }
+
+      // 3. Unstick in_progress beads with no active agent
+      for (const [role, id] of Object.entries(pipeline.beadIds)) {
+        if (beadStatuses[role] !== "in_progress") continue;
+        const pipelineRole = role === "tests" ? "test" : (role as PipelineRole);
+        const hasAgent = activeAgents.some((a) => a.phase === pipelineRole);
+        if (!hasAgent) {
+          // Bead claimed but agent is gone — re-open for retry
+          await this.beads.updateStatus(pipeline.localPath, id, "open").catch(() => {});
+          this.log(
+            pipeline.featureId,
+            `heal:bead-unstuck:${role}`,
+            `Re-opened stuck bead (was in_progress with no active agent)`,
+          );
+        }
+      }
+    } catch {
+      // Beads not available — skip healing
+    }
+  }
+
+  /** Find agents that belong to a specific pipeline. */
+  private getActiveAgentsForPipeline(featureId: string): Array<{ sessionId: string; phase: string }> {
+    const result: Array<{ sessionId: string; phase: string }> = [];
+    for (const [sessionId, pipelineId] of this.sessionToPipeline) {
+      if (pipelineId !== featureId) continue;
+      const agent = this.agentManager.getAgents().find((a) => a.sessionId === sessionId);
+      if (agent?.monitor.isRunning) {
+        result.push({ sessionId, phase: agent.phase });
+      }
+    }
+    return result;
+  }
+
+  /** Detect agents stuck for too long with no tool use changes. */
+  private detectStuckAgents(): void {
+    const STUCK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+    const now = Date.now();
+
+    for (const agent of this.agentManager.getAgents()) {
+      if (!agent.monitor.isRunning) continue;
+      const elapsed = now - new Date(agent.startedAt).getTime();
+      if (elapsed < STUCK_THRESHOLD_MS) continue;
+
+      // Agent has been running > 30 min — check if it's making progress
+      // We can't easily track "last progress time" without new state,
+      // so just log a warning for the user
+      const featureId = this.sessionToPipeline.get(agent.sessionId);
+      if (featureId) {
+        const alreadyWarned = this.decisionLog.some(
+          (e) => e.featureId === featureId && e.action === `heal:stuck-warning:${agent.phase}`,
+        );
+        if (!alreadyWarned) {
+          this.log(
+            featureId,
+            `heal:stuck-warning:${agent.phase}`,
+            `${PIPELINE_ROLES[agent.phase as PipelineRole]?.label ?? agent.phase} has been running for ${Math.round(elapsed / 60_000)}m — may be stuck`,
+          );
+        }
+      }
     }
   }
 
@@ -393,8 +519,7 @@ export class Conductor {
     const pipelineBeadIds = new Set(Object.values(pipeline.beadIds));
     const pipelineReady = readyBeads.filter((b) => pipelineBeadIds.has(b.id));
 
-    // Sync completedBeads from actual bead state (handles externally-closed beads like brainstorm)
-    await this.syncCompletedBeads(pipeline);
+    // Bead state reconciliation is now handled by healPipeline() in the tick loop
 
     // Build reverse lookup: bead ID → role (Cherny: avoid title-parsing)
     const beadIdToRole: Record<string, PipelineRole> = {};
@@ -615,26 +740,7 @@ export class Conductor {
     }
   }
 
-  /**
-   * Sync completedBeads count from actual bead state.
-   * Needed because interactive sessions (brainstorm) close beads directly
-   * without going through onAgentCompleted.
-   */
-  private async syncCompletedBeads(pipeline: Pipeline): Promise<void> {
-    try {
-      let closed = 0;
-      for (const id of Object.values(pipeline.beadIds)) {
-        const bead = await this.beads.show(pipeline.localPath, id);
-        if (bead.status === "closed") closed++;
-      }
-      if (pipeline.completedBeads !== closed) {
-        pipeline.completedBeads = closed;
-        this.store.save();
-      }
-    } catch {
-      // best-effort
-    }
-  }
+  // syncCompletedBeads removed — replaced by healPipeline()
 
   /** Check if all pipeline beads are closed. */
   private async checkPipelineCompletion(pipeline: Pipeline): Promise<void> {
