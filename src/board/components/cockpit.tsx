@@ -253,9 +253,7 @@ export function Cockpit({ config }: CockpitProps) {
             issue: { number: 0, title: selected.title, url: "" },
             promptTemplate: brainstormPrompt,
             launchMode: config.pipeline.launchMode ?? "auto",
-            ...(config.pipeline.terminalApp
-              ? { terminalApp: config.pipeline.terminalApp }
-              : {}),
+            ...(config.pipeline.terminalApp ? { terminalApp: config.pipeline.terminalApp } : {}),
           });
           if (result.ok) {
             toast.info("Brainstorm session opened");

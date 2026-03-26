@@ -201,7 +201,9 @@ describe("config migration", () => {
 
     // Verify the saved config is v5 (migrated all the way through)
     const lastCallIdx = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls.length - 1;
-    const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[lastCallIdx]?.[1] as string;
+    const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[
+      lastCallIdx
+    ]?.[1] as string;
     const saved = JSON.parse(savedJson);
     expect(saved.version).toBe(5);
     expect(saved.pipeline).toBeDefined();
@@ -307,7 +309,10 @@ describe("config migration", () => {
     expect(result.pipeline.claudePrompt).toBe("You are a helpful assistant");
     expect(result.pipeline.maxConcurrentAgents).toBe(2);
     expect(result.pipeline.phases).toEqual(["implement", "review"]);
-    expect(result.pipeline.phasePrompts).toEqual({ implement: "Write code", review: "Review carefully" });
+    expect(result.pipeline.phasePrompts).toEqual({
+      implement: "Write code",
+      review: "Review carefully",
+    });
     expect(result.pipeline.notifications).toEqual({ os: true, sound: false });
     // All repos preserved
     expect(result.repos).toHaveLength(2);
@@ -380,7 +385,12 @@ describe("resolveProfile", () => {
         },
       ],
       board: { refreshInterval: 60, backlogLimit: 20, assignee: "ondrej", focusDuration: 1500 },
-      pipeline: { owner: "ondrej", maxConcurrentAgents: 3, tddEnforcement: true, phases: ["brainstorm", "plan", "implement", "review"] },
+      pipeline: {
+        owner: "ondrej",
+        maxConcurrentAgents: 3,
+        tddEnforcement: true,
+        phases: ["brainstorm", "plan", "implement", "review"],
+      },
       profiles: {
         work: {
           repos: [

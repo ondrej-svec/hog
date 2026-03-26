@@ -326,24 +326,23 @@ pipelineCommand
             "./engine/beads-sync.js"
           );
           const syncState = loadBeadsSyncState();
-          const updated = linkIssueToBead(syncState, linkedRepo, linkedIssueNumber, result.featureId);
+          const updated = linkIssueToBead(
+            syncState,
+            linkedRepo,
+            linkedIssueNumber,
+            result.featureId,
+          );
           saveBeadsSyncState(updated);
           if (!useJson()) {
             console.log(`  Linked:  ${linkedRepo}#${linkedIssueNumber}`);
           }
         } else {
-          console.error(
-            "Warning: invalid --issue format. Expected: owner/repo#123",
-          );
+          console.error("Warning: invalid --issue format. Expected: owner/repo#123");
         }
       } else if (opts.createIssue) {
         try {
           const { createIssueAsync } = await import("./github.js");
-          const issueUrl = await createIssueAsync(
-            repoName,
-            title,
-            opts.description ?? title,
-          );
+          const issueUrl = await createIssueAsync(repoName, title, opts.description ?? title);
           // Parse issue number from URL (gh returns the URL)
           const numMatch = issueUrl.match(/\/(\d+)$/);
           if (numMatch?.[1]) {
@@ -353,7 +352,12 @@ pipelineCommand
               "./engine/beads-sync.js"
             );
             const syncState = loadBeadsSyncState();
-            const updated = linkIssueToBead(syncState, linkedRepo, linkedIssueNumber, result.featureId);
+            const updated = linkIssueToBead(
+              syncState,
+              linkedRepo,
+              linkedIssueNumber,
+              result.featureId,
+            );
             saveBeadsSyncState(updated);
             if (!useJson()) {
               console.log(`  Issue:   ${linkedRepo}#${linkedIssueNumber} (created)`);
@@ -375,7 +379,8 @@ pipelineCommand
             repo: result.repo,
             beadIds: result.beadIds,
             brainstormDone: opts.brainstormDone ?? false,
-            linkedIssue: linkedIssueNumber > 0 ? { repo: linkedRepo, number: linkedIssueNumber } : null,
+            linkedIssue:
+              linkedIssueNumber > 0 ? { repo: linkedRepo, number: linkedIssueNumber } : null,
           },
         });
       } else {

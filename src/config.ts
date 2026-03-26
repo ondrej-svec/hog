@@ -117,9 +117,7 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   owner: z.string().min(1),
   maxConcurrentAgents: z.number().default(3),
   launchMode: z.enum(["auto", "tmux", "terminal"]).optional(),
-  terminalApp: z
-    .enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"])
-    .optional(),
+  terminalApp: z.enum(["Terminal", "iTerm", "Ghostty", "WezTerm", "Kitty", "Alacritty"]).optional(),
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
   tddEnforcement: z.boolean().default(true),
@@ -251,7 +249,14 @@ export function loadFullConfig(): HogConfig {
     return migrated;
   }
 
-  return HOG_CONFIG_SCHEMA.parse(raw);
+  // Use safeParse for user-friendly error messages instead of raw ZodError
+  const result = HOG_CONFIG_SCHEMA.safeParse(raw);
+  if (result.success) return result.data;
+
+  const issues = result.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");
+  console.error(`Invalid config at ${CONFIG_FILE}:\n${issues}`);
+  console.error("\nFix the config manually or run: hog init --force");
+  process.exit(1);
 }
 
 export function saveFullConfig(config: HogConfig): void {
