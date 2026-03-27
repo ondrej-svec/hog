@@ -451,14 +451,17 @@ function PipelineDetailPanel({
         <Box flexDirection="column" marginTop={1}>
           <Text dimColor>── Log ──</Text>
           {logEntries.map((entry, i) => {
-            // Parse timestamp and message from "[ISO] message" format
-            const match = entry.match(/^\[([^\]]+)\]\s+(.*)/);
-            const msg = match ? match[2] : entry;
+            // Parse timestamp and message from "[ISO] action: detail" format
+            const match = entry.match(/^\[([^\]]+)\]\s+(\S+?):\s*(.*)/);
             const ts = match ? timeAgo(match[1]!) : "";
+            const action = match ? match[2]! : "";
+            const detail = match ? match[3]! : entry;
+            const timeCol = (ts || "").padEnd(10);
             return (
               <Box key={`${i}`}>
-                <Text dimColor> {ts ? `${ts}: ` : ""}</Text>
-                <Text>{msg}</Text>
+                <Text dimColor>{` ${timeCol}`}</Text>
+                <Text color="cyan">{action ? `${action}: ` : ""}</Text>
+                <Text>{detail}</Text>
               </Box>
             );
           })}

@@ -2712,6 +2712,72 @@ daemonCommand
   });
 
 daemonCommand
+  .command("logs")
+  .description("Show daemon event log")
+  .option("-n, --lines <count>", "Number of lines to show", "30")
+  .option("--follow", "Follow log output (tail -f)")
+  .action(async (opts: { lines: string; follow?: true }) => {
+    const { join } = await import("node:path");
+    const { existsSync, readFileSync } = await import("node:fs");
+    const logFile = join(CONFIG_DIR, "pipelines", "events.jsonl");
+
+    if (!existsSync(logFile)) {
+      console.log("No event log found. Start a pipeline first.");
+      return;
+    }
+
+    const showEntries = () => {
+      const content = readFileSync(logFile, "utf-8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      const limit = Number.parseInt(opts.lines, 10) || 30;
+      const recent = lines.slice(-limit);
+
+      for (const line of recent) {
+        try {
+          const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+          const time = entry.timestamp.slice(11, 19);
+          const phase = entry.data["phase"] as string ?? "";
+          const tool = entry.data["toolName"] as string ?? "";
+          const text = entry.data["text"] as string ?? "";
+          const summary = tool || (text ? text.slice(0, 100) : "");
+
+          console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
+        } catch {
+          // skip malformed
+        }
+      }
+    };
+
+    showEntries();
+
+    if (opts.follow) {
+      const { watchFile } = await import("node:fs");
+      console.log("\n  --- following (Ctrl+C to stop) ---\n");
+      let lastSize = readFileSync(logFile, "utf-8").length;
+      watchFile(logFile, { interval: 1000 }, () => {
+        const content = readFileSync(logFile, "utf-8");
+        if (content.length > lastSize) {
+          const newContent = content.slice(lastSize);
+          for (const line of newContent.trim().split("\n").filter(Boolean)) {
+            try {
+              const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+              const time = entry.timestamp.slice(11, 19);
+              const phase = entry.data["phase"] as string ?? "";
+              const tool = entry.data["toolName"] as string ?? "";
+              const text = entry.data["text"] as string ?? "";
+              const summary = tool || (text ? text.slice(0, 80) : "");
+              console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
+            } catch { /* skip */ }
+          }
+        }
+        lastSize = content.length;
+      });
+      // Keep process alive
+      await new Promise(() => {});
+    }
+  });
+
+daemonCommand
   .command("status")
   .description("Show daemon status")
   .action(async () => {
