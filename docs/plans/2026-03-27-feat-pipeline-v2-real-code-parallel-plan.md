@@ -169,13 +169,20 @@ Three workstreams, each independently shippable:
   - "If you find hardcoded return values, template strings, or functions that just return fixtures — write tests that would expose this (e.g., call with different inputs and verify different outputs)"
   - "If the architecture doc says 'use rss-parser' but the code doesn't import it, flag this"
 
-- [ ] **C.3 Add `--dangerously-skip-permissions` to agent spawning**
-  Currently defined in `buildAgentLaunchArgs()` but not used. Enable it:
-  - Agents need to install npm packages, run arbitrary commands
-  - Without it, Claude Code prompts for permission on every `npm install`, `npx`, etc.
-  - The worktree + refinery provide the safety net (nothing merges without passing gates)
+- [ ] **C.3 Use `--permission-mode auto` for agent spawning**
+  Claude Code shipped auto mode (March 2026) — a classifier-backed alternative to
+  `--dangerously-skip-permissions`. A separate Sonnet 4.6 model reviews each tool call
+  and blocks risky actions (rm -rf, credential access) while allowing safe ones
+  (file edits, npm install, test runs).
 
-  Update `spawn-agent.ts` to include the flag when spawning pipeline agents.
+  Update `spawn-agent.ts`:
+  - Add `--permission-mode auto` to agent args
+  - Fallback: if auto mode fails (no Team plan), use `--permission-mode acceptEdits`
+    with `--allowedTools "Read,Write,Edit,Bash(npm:*),Bash(npx:*),Bash(git:*)"`
+  - Never use `--dangerously-skip-permissions` in pipeline agents
+
+  The worktree + refinery remain the outer safety net — nothing merges without
+  passing quality gates regardless of what the agent does in its worktree.
 
 - [ ] **C.4 Improve stories prompt for integration awareness**
   Add to stories prompt:
@@ -208,7 +215,7 @@ Three workstreams, each independently shippable:
 
 | Assumption | Status | Evidence |
 |------------|--------|----------|
-| Claude Code `-p` mode supports `--dangerously-skip-permissions` | Unverified | Flag exists in `buildAgentLaunchArgs` but never tested in pipeline |
+| Claude Code `-p` mode supports `--permission-mode auto` | Verified | Shipped March 24, 2026. Requires Sonnet/Opus 4.6 + Team plan. Aborts after 3 blocked actions in `-p` mode. |
 | Worktree parallel merges are conflict-free for independent stories | Likely | Stories touching different files won't conflict; same-file stories need grouping |
 | Smart story grouping reduces conflicts | Unverified | Needs testing with real pipelines |
 | Architecture doc improves impl quality | High confidence | The Bobo run proved that without context, impl produces stubs |
@@ -222,7 +229,7 @@ Three workstreams, each independently shippable:
 |------|-----------|--------|------------|
 | Parallel agents produce merge conflicts | Medium | Medium | Smart story grouping (B.5); refinery detects and re-queues conflicting chunks |
 | Architecture doc is too vague to guide impl | Medium | High | Brainstorm prompt includes specific examples; redteam catches scaffolding |
-| `--dangerously-skip-permissions` enables unsafe operations | Low | Medium | Worktree isolation + refinery gates; agents can't merge without passing quality checks |
+| Auto mode classifier blocks legitimate agent actions | Low | Medium | Falls back to `acceptEdits` + explicit allowedTools; 0.4% false-positive rate per Anthropic |
 | Rate limits hit with 3+ concurrent agents | Medium | Low | Rate limit auto-pause already built; stagger spawns by 10s |
 | Story grouping heuristic fails | Low | Low | Falls back to sequential chunking; refinery handles conflicts |
 
