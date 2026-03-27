@@ -72,6 +72,17 @@ export class HogDaemon {
     await this.engine.start();
     this.conductor.start();
 
+    // Ensure Dolt is running for all active pipelines (prevents port mismatch on restart)
+    for (const pipeline of this.conductor.getPipelines()) {
+      if (pipeline.status === "running" || pipeline.status === "paused") {
+        try {
+          await this.engine.beads.ensureDoltRunning(pipeline.localPath);
+        } catch {
+          console.log(`[hogd] Warning: could not start Dolt for ${pipeline.localPath}`);
+        }
+      }
+    }
+
     // Bridge EventBus → subscribers
     this.bridgeEvents();
 

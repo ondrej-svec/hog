@@ -69,11 +69,14 @@ export class DaemonClient {
     const id = this.nextId++;
     const msg = JSON.stringify({ id, method, params });
 
+    // pipeline.create can take longer (Dolt startup + DAG creation)
+    const timeoutMs = method === "pipeline.create" ? 120_000 : 30_000;
+
     return new Promise<RpcMethods[M]["result"]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`RPC call ${method} timed out after 30s`));
-      }, 30_000);
+        reject(new Error(`RPC call ${method} timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
 
       this.pending.set(id, {
         resolve: (value) => {
