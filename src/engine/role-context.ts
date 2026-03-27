@@ -39,13 +39,13 @@ Use your tools actively — this should feel like an interactive session, not a 
 
 ## Output (when ready)
 
-### 1. Stories file: \`tests/stories/{slug}.md\`
+### 1. Stories file: \`docs/stories/{slug}.md\`
 - STORY-001, STORY-002, etc. (unique IDs)
 - Clear acceptance criteria as a checklist
 - Edge cases to consider
 - [INTEGRATION] tag for stories needing external services
 
-### 2. Architecture doc: \`tests/stories/{slug}.architecture.md\`
+### 2. Architecture doc: \`docs/stories/{slug}.architecture.md\`
 - **Dependencies**: packages to install (npm, pip, etc.)
 - **Integration Pattern**: dependency injection, constructor params for testability
 - **File Structure**: where new modules go, module boundaries
@@ -61,7 +61,7 @@ When the human says the stories are good:
 
 ## Allowed Actions
 - Read any file (for context)
-- Write to \`tests/stories/\` only
+- Write to \`docs/stories/\` only
 - Run \`hog pipeline done\` to advance the pipeline
 
 ## Forbidden Actions
@@ -78,8 +78,8 @@ You are the Story Writer. You break feature specifications into testable user st
 AND write an architecture doc for downstream agents.
 
 ## Output
-1. **Stories**: \`tests/stories/{slug}.md\` — user stories with acceptance criteria
-2. **Architecture doc**: \`tests/stories/{slug}.architecture.md\` — dependencies, integration patterns, file structure
+1. **Stories**: \`docs/stories/{slug}.md\` — user stories with acceptance criteria
+2. **Architecture doc**: \`docs/stories/{slug}.architecture.md\` — dependencies, integration patterns, file structure
 
 ## Rules
 - Each story MUST have a unique ID (STORY-001, STORY-002, etc.)
@@ -91,7 +91,7 @@ AND write an architecture doc for downstream agents.
 
 ## Allowed Actions
 - Read any file (for context)
-- Write files in \`tests/stories/\` only
+- Write files in \`docs/stories/\` only
 - Use git to commit your stories
 
 ## Forbidden Actions
@@ -106,7 +106,7 @@ const TEST_CLAUDE_MD = `# Agent Role: Test Writer
 You are the Test Writer. You write failing tests from user stories that catch scaffolding.
 
 ## Your Inputs
-1. **User stories** — find the stories file (check \`tests/stories/\` or search for the feature name)
+1. **User stories** — find the stories file (check \`docs/stories/\` or search for the feature name)
 2. **Architecture doc** — find the \`.architecture.md\` file for integration patterns and file paths
 
 ## Rules
@@ -122,7 +122,7 @@ You are the Test Writer. You write failing tests from user stories that catch sc
 - If the architecture doc says "use library X", write tests that would fail without it
 
 ## Allowed Actions
-- Read files in \`tests/stories/\` (stories + architecture docs)
+- Read files in \`docs/stories/\` (stories + architecture docs)
 - Read existing test files (for patterns/conventions)
 - Read project config files (package.json, vitest.config.ts, etc.)
 - Create new test files
@@ -141,7 +141,7 @@ You are the Implementer. You write REAL, production-quality code to make failing
 
 ## Your Inputs (read all three)
 1. **Failing tests** — run the test suite first to see what needs to pass
-2. **User stories** — find the stories file (check \`tests/stories/\` or search for the feature name)
+2. **User stories** — find the stories file (check \`docs/stories/\` or search for the feature name)
 3. **Architecture doc** — find the \`.architecture.md\` file for integration patterns, libraries, and FILE PATHS
 
 ## Rules
@@ -155,8 +155,8 @@ You are the Implementer. You write REAL, production-quality code to make failing
 
 ## Allowed Actions
 - Read test files (*.test.*)
-- Read user stories in \`tests/stories/\`
-- Read architecture docs in \`tests/stories/*.architecture.md\`
+- Read user stories in \`docs/stories/\`
+- Read architecture docs in \`docs/stories/*.architecture.md\`
 - Read existing source files (for patterns/conventions)
 - Read project config files
 - Create/modify source files in \`src/\`

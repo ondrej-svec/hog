@@ -675,6 +675,27 @@ export class Conductor {
       return;
     }
 
+    // Skip stories phase if brainstorm already produced stories
+    if (role === "stories") {
+      const { findStoriesFile } = await import("./story-splitter.js");
+      const slug = pipeline.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const existing = findStoriesFile(pipeline.localPath, slug);
+      if (existing) {
+        this.log(
+          pipeline.featureId,
+          "phase:skipped:stories",
+          `Stories already exist (from brainstorm) — skipping to tests`,
+        );
+        await this.beads.close(pipeline.localPath, bead.id, "Stories already written by brainstorm");
+        pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
+        this.store.save();
+        return;
+      }
+    }
+
     // RED verification: before spawning impl agent, verify tests fail
     if (role === "impl") {
       const redResult = await verifyRedState(pipeline.localPath);
@@ -750,10 +771,17 @@ export class Conductor {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
+    // Resolve actual paths to stories and architecture files
+    const { findStoriesFile } = await import("./story-splitter.js");
+    const storiesPath = findStoriesFile(pipeline.localPath, slug) ?? `docs/stories/${slug}.md`;
+    const archPath = storiesPath.replace(/\.md$/, ".architecture.md");
+
     const basePrompt = roleConfig.promptTemplate
       .replace(/\{title\}/g, pipeline.title)
       .replace(/\{slug\}/g, slug)
-      .replace(/\{spec\}/g, bead.description ?? pipeline.title);
+      .replace(/\{spec\}/g, bead.description ?? pipeline.title)
+      .replace(/\{storiesPath\}/g, storiesPath)
+      .replace(/\{archPath\}/g, archPath);
     const prompt = scopeSuffix ? basePrompt + scopeSuffix : basePrompt;
 
     // Create worktree for isolation (if worktree manager available)

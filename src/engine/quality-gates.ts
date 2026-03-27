@@ -362,7 +362,7 @@ export function createRoleAuditGate(role: string): QualityGate {
             if (
               !(
                 file.startsWith("docs/") ||
-                file.startsWith("tests/stories/") ||
+                file.startsWith("docs/stories/") ||
                 file.endsWith(".md")
               )
             ) {

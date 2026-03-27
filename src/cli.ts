@@ -921,8 +921,8 @@ pipelineCommand
 This project uses [hog](https://github.com/ondrejsvec/hog) for autonomous development pipelines.
 
 When the user wants to turn a feature into autonomous work ("ship it", "build this", "/pipeline"):
-1. Write user stories to \`tests/stories/{slug}.md\` using STORY-001 format with acceptance criteria
-2. Run: \`hog pipeline create "Feature title" --brainstorm-done --stories tests/stories/{slug}.md\`
+1. Write user stories to \`docs/stories/{slug}.md\` using STORY-001 format with acceptance criteria
+2. Run: \`hog pipeline create "Feature title" --brainstorm-done --stories docs/stories/{slug}.md\`
 3. The pipeline runs autonomously: stories → tests → impl → redteam → merge
 
 Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeline resume <id>\`
@@ -1071,7 +1071,7 @@ program
     console.error("");
     console.error("Usage:");
     console.error('  hog pipeline create "Add user authentication"');
-    console.error("  hog pipeline create --brainstorm-done --stories tests/stories/auth.md");
+    console.error("  hog pipeline create --brainstorm-done --stories docs/stories/auth.md");
     console.error("  hog pipeline list");
     console.error("  hog pipeline pause <featureId>");
     console.error("  hog pipeline resume <featureId>");

@@ -37,6 +37,8 @@ export function extractStoryIds(storiesPath: string): string[] {
  */
 export function findStoriesFile(localPath: string, slug: string): string | undefined {
   const candidates = [
+    join(localPath, "docs", "stories", `${slug}.md`),
+    join(localPath, "docs", "stories"),
     join(localPath, "tests", "stories", `${slug}.md`),
     join(localPath, "tests", "stories"),
   ];
