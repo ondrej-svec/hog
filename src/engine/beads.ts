@@ -358,10 +358,7 @@ export class BeadsClient {
 
   /** Get all beads that are ready to work on (unblocked). */
   async ready(cwd: string, limit?: number): Promise<Bead[]> {
-    const args = ["ready"];
-    if (limit) {
-      args.push("--limit", String(limit));
-    }
+    const args = ["ready", "-n", String(limit ?? 100)];
     const raw = await runBdJsonAsync<unknown[]>(args, cwd);
     return raw.map((b) => BEAD_SCHEMA.parse(b));
   }
