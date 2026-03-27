@@ -22,6 +22,7 @@ export interface RpcMethods {
       description?: string | undefined;
       brainstormDone?: boolean | undefined;
       localPath?: string | undefined;
+      storiesPath?: string | undefined;
     };
     result: Pipeline | { error: string };
   };

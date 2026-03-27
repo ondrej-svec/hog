@@ -46,6 +46,10 @@ export interface Pipeline {
   activePhase?: string | undefined;
   readonly startedAt: string;
   completedAt?: string;
+  /** Path to stories file (set by brainstorm or --stories flag). */
+  storiesPath?: string | undefined;
+  /** Path to architecture doc (derived from storiesPath). */
+  architecturePath?: string | undefined;
   /** Estimated cost tracking per phase (in USD). */
   costByPhase?: Record<string, number>;
   /** Total estimated cost (in USD). */
@@ -215,6 +219,7 @@ export class Conductor {
     repoConfig: RepoConfig,
     title: string,
     description: string,
+    storiesPath?: string,
   ): Promise<Pipeline | { error: string }> {
     if (!repoConfig.localPath) {
       return { error: `No localPath configured for ${repo}` };
@@ -281,6 +286,10 @@ export class Conductor {
       status: "running",
       completedBeads: 0,
       activePhase: "brainstorm",
+      ...(storiesPath ? {
+        storiesPath,
+        architecturePath: storiesPath.replace(/\.md$/, ".architecture.md"),
+      } : {}),
       startedAt: new Date().toISOString(),
     };
 
@@ -773,14 +782,19 @@ export class Conductor {
 
     // Resolve actual paths to stories and architecture files
     const { findStoriesFile } = await import("./story-splitter.js");
-    const storiesPath = findStoriesFile(pipeline.localPath, slug) ?? `docs/stories/${slug}.md`;
-    const archPath = storiesPath.replace(/\.md$/, ".architecture.md");
+    const resolvedStoriesPath =
+      pipeline.storiesPath ??
+      findStoriesFile(pipeline.localPath, slug) ??
+      `docs/stories/${slug}.md`;
+    const archPath =
+      pipeline.architecturePath ??
+      resolvedStoriesPath.replace(/\.md$/, ".architecture.md");
 
     const basePrompt = roleConfig.promptTemplate
       .replace(/\{title\}/g, pipeline.title)
       .replace(/\{slug\}/g, slug)
       .replace(/\{spec\}/g, bead.description ?? pipeline.title)
-      .replace(/\{storiesPath\}/g, storiesPath)
+      .replace(/\{storiesPath\}/g, resolvedStoriesPath)
       .replace(/\{archPath\}/g, archPath);
     const prompt = scopeSuffix ? basePrompt + scopeSuffix : basePrompt;
 

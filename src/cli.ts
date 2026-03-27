@@ -280,6 +280,7 @@ pipelineCommand
         description: opts.description,
         brainstormDone: opts.brainstormDone,
         localPath: cwd,
+        storiesPath: opts.stories,
       });
 
       if ("error" in result) {

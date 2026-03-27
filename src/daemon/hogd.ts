@@ -316,7 +316,7 @@ export class HogDaemon {
     socket: Socket,
     req: RpcRequest<"pipeline.create">,
   ): Promise<void> {
-    const { repo, title, description, brainstormDone, localPath } = req.params;
+    const { repo, title, description, brainstormDone, localPath, storiesPath } = req.params;
 
     // Resolve repo config — fall back to ad-hoc repo from localPath
     const targetRepo = this.resolveRepo(repo, localPath);
@@ -330,6 +330,7 @@ export class HogDaemon {
       targetRepo,
       title,
       description ?? title,
+      storiesPath,
     );
 
     if ("error" in result) {

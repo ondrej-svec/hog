@@ -32,6 +32,8 @@ const PIPELINE_SCHEMA = z.object({
   activePhase: z.string().optional(),
   startedAt: z.string().default(() => new Date().toISOString()),
   completedAt: z.string().optional(),
+  storiesPath: z.string().optional(),
+  architecturePath: z.string().optional(),
   costByPhase: z.record(z.string(), z.number()).optional(),
   totalCost: z.number().optional(),
 });
