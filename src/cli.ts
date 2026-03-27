@@ -219,6 +219,7 @@ pipelineCommand
   .description("Create an autonomous development pipeline")
   .option("--description <text>", "Feature description (defaults to title)")
   .option("--stories <path>", "Path to stories file")
+  .option("--architecture <path>", "Path to architecture doc")
   .option("--brainstorm-done", "Skip brainstorm phase (mark as already completed)")
   .option("--repo <name>", "Target repo (short name or full)")
   .option("--issue <ref>", "Link to existing GitHub issue (owner/repo#123)")
@@ -229,6 +230,7 @@ pipelineCommand
       opts: {
         description?: string;
         stories?: string;
+        architecture?: string;
         brainstormDone?: true;
         repo?: string;
         issue?: string;
@@ -281,6 +283,7 @@ pipelineCommand
         brainstormDone: opts.brainstormDone,
         localPath: cwd,
         storiesPath: opts.stories,
+        architecturePath: opts.architecture,
       });
 
       if ("error" in result) {

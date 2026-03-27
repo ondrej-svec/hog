@@ -220,6 +220,7 @@ export class Conductor {
     title: string,
     description: string,
     storiesPath?: string,
+    architecturePath?: string,
   ): Promise<Pipeline | { error: string }> {
     if (!repoConfig.localPath) {
       return { error: `No localPath configured for ${repo}` };
@@ -286,10 +287,12 @@ export class Conductor {
       status: "running",
       completedBeads: 0,
       activePhase: "brainstorm",
-      ...(storiesPath ? {
-        storiesPath,
-        architecturePath: storiesPath.replace(/\.md$/, ".architecture.md"),
-      } : {}),
+      ...(storiesPath ? { storiesPath } : {}),
+      ...(architecturePath
+        ? { architecturePath }
+        : storiesPath
+          ? { architecturePath: storiesPath.replace(/\.md$/, ".architecture.md") }
+          : {}),
       startedAt: new Date().toISOString(),
     };
 
