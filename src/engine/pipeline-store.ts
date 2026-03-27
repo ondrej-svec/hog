@@ -131,6 +131,8 @@ export class PipelineStore {
         activePhase: p.activePhase,
         startedAt: p.startedAt,
         completedAt: p.completedAt,
+        storiesPath: p.storiesPath,
+        architecturePath: p.architecturePath,
         costByPhase: p.costByPhase,
         totalCost: p.totalCost,
       }));
@@ -186,6 +188,8 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
+          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         };
@@ -235,6 +239,8 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
+          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         });
