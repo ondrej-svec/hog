@@ -39,7 +39,7 @@ Three workstreams, each independently shippable:
 
 ### Tasks
 
-- [ ] **A.1 Add architecture doc to brainstorm output**
+- [x] **A.1 Add architecture doc to brainstorm output**
   The brainstorm phase already produces stories. Add a second output: `tests/stories/{slug}.architecture.md` containing:
   - External dependencies and which packages to use
   - Integration pattern (dependency injection, constructor params)
@@ -48,12 +48,12 @@ Three workstreams, each independently shippable:
 
   The brainstorm prompt already delegates research to subagents — add "produce an architecture doc" to Phase 3.
 
-- [ ] **A.2 Pass architecture doc to ALL subsequent agents**
+- [x] **A.2 Pass architecture doc to ALL subsequent agents**
   In `role-context.ts`, update CLAUDE.md templates for test, impl, redteam, and merge:
   - Add to allowed reads: `tests/stories/{slug}.architecture.md`
   - Modify prompt templates to reference it: "Read the architecture doc for integration patterns and dependency choices"
 
-- [ ] **A.3 Relax impl isolation — give it stories + architecture**
+- [x] **A.3 Relax impl isolation — give it stories + architecture**
   Current prompt: "You can ONLY see the failing tests"
   New prompt: "You have three inputs: (1) failing tests, (2) user stories for intent, (3) architecture doc for how to build it"
 
@@ -61,7 +61,7 @@ Three workstreams, each independently shippable:
 
   Keep the core constraint: impl still can't see the original spec/brainstorm. Stories + architecture are the filtered view.
 
-- [ ] **A.4 Update test prompt for two-tier testing**
+- [x] **A.4 Update test prompt for two-tier testing**
   Current: tests just need to fail
   New: tests must enforce real behavior, not just mock contracts
 
@@ -70,7 +70,7 @@ Three workstreams, each independently shippable:
   - "Use dependency injection: test against interfaces, not mocks. The impl should provide real implementations by default."
   - "Each test file must have at least one test that verifies the code does real work (not just returns a fixture)"
 
-- [ ] **A.5 Add stub detection gate after impl**
+- [x] **A.5 Add stub detection gate after impl**
   New verification step in `conductor.ts` after GREEN passes:
   - Grep impl's changed files for patterns: `return \{`, hardcoded template literals >3 lines, `// stub`, `// mock`, `// TODO`
   - Check that imports match architecture doc (if arch says "use rss-parser", verify `import` exists)
@@ -151,7 +151,7 @@ Three workstreams, each independently shippable:
 
 ### Tasks
 
-- [ ] **C.1 Update impl prompt for real implementations**
+- [x] **C.1 Update impl prompt for real implementations**
   Replace the "minimum code" framing:
 
   Old: "Write the MINIMUM code needed to make all tests pass"
@@ -163,13 +163,13 @@ Three workstreams, each independently shippable:
   - "If a test mocks an external dependency, implement the real version AND ensure the mock interface matches"
   - "Install npm packages if the architecture doc lists them"
 
-- [ ] **C.2 Update redteam prompt to detect scaffolding**
+- [x] **C.2 Update redteam prompt to detect scaffolding**
   Add to redteam responsibilities:
   - "Check if the implementation is real or scaffolding"
   - "If you find hardcoded return values, template strings, or functions that just return fixtures — write tests that would expose this (e.g., call with different inputs and verify different outputs)"
   - "If the architecture doc says 'use rss-parser' but the code doesn't import it, flag this"
 
-- [ ] **C.3 Use `--permission-mode auto` for agent spawning**
+- [x] **C.3 Use `--permission-mode auto` for agent spawning**
   Claude Code shipped auto mode (March 2026) — a classifier-backed alternative to
   `--dangerously-skip-permissions`. A separate Sonnet 4.6 model reviews each tool call
   and blocks risky actions (rm -rf, credential access) while allowing safe ones
@@ -184,7 +184,7 @@ Three workstreams, each independently shippable:
   The worktree + refinery remain the outer safety net — nothing merges without
   passing quality gates regardless of what the agent does in its worktree.
 
-- [ ] **C.4 Improve stories prompt for integration awareness**
+- [x] **C.4 Improve stories prompt for integration awareness**
   Add to stories prompt:
   - "For each story, note whether it requires external integration (API calls, CLI tools, file I/O) or is pure business logic"
   - "Mark integration stories with [INTEGRATION] tag"
