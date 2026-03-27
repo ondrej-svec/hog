@@ -898,10 +898,12 @@ export class Conductor {
                 "redteam:impl-loop",
                 `Redteam wrote failing tests — re-opening impl (attempt ${implRetries + 1}/2)`,
               );
-              // Re-open the impl bead so the next tick spawns a new impl agent
+              // Re-open impl AND merge so merge doesn't run while impl is re-doing work
               const implBeadId = pipeline.beadIds.impl;
+              const mergeBeadId = pipeline.beadIds.merge;
               await this.beads.updateStatus(pipeline.localPath, implBeadId, "open").catch(() => {});
-              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
+              await this.beads.updateStatus(pipeline.localPath, mergeBeadId, "open").catch(() => {});
+              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 2);
               return; // Don't proceed — impl needs to fix the new failures
             }
             // Max iterations reached — escalate to human

@@ -446,11 +446,11 @@ function PipelineDetailPanel({
         </Box>
       ) : null}
 
-      {/* Recent log entries */}
+      {/* Recent log entries (capped to prevent overflow) */}
       {logEntries && logEntries.length > 0 ? (
         <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>── Log ──</Text>
-          {logEntries.map((entry, i) => {
+          <Text dimColor>── Log (last {Math.min(logEntries.length, 10)}) ──</Text>
+          {logEntries.slice(-10).map((entry, i) => {
             // Parse timestamp and message from "[ISO] action: detail" format
             const match = entry.match(/^\[([^\]]+)\]\s+(\S+?):\s*(.*)/);
             const ts = match ? timeAgo(match[1]!) : "";
