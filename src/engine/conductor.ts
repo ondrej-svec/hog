@@ -103,6 +103,8 @@ export class Conductor {
   private readonly sessionToPipeline: Map<string, string> = new Map();
   /** Test baselines captured before impl agent runs — for diff-based GREEN verification. */
   private readonly testBaselines: Map<string, import("./tdd-enforcement.js").TestBaseline> = new Map();
+  /** Tracks pending parallel agents per bead. Bead closes when count reaches 0. */
+  private readonly pendingParallelAgents: Map<string, number> = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -610,6 +612,46 @@ export class Conductor {
       const role = beadIdToRole[bead.id] ?? beadToRole(bead);
       if (!role) continue;
 
+      // Check if this phase should run parallel agents
+      const { isParallelizablePhase, splitIntoChunks, findStoriesFile, extractStoryIds } =
+        await import("./story-splitter.js");
+
+      if (
+        isParallelizablePhase(role) &&
+        this.config.pipeline?.maxConcurrentAgents > 1 &&
+        !this.pendingParallelAgents.has(bead.id)
+      ) {
+        const slug = pipeline.title
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "");
+        const storiesFile = findStoriesFile(pipeline.localPath, slug);
+        const storyIds = storiesFile ? extractStoryIds(storiesFile) : [];
+
+        if (storyIds.length > 1) {
+          const maxAgents = this.config.pipeline.maxConcurrentAgents;
+          const chunks = splitIntoChunks(
+            storyIds,
+            maxAgents,
+            role as "test" | "impl",
+          );
+
+          if (chunks.length > 1) {
+            this.log(
+              pipeline.featureId,
+              `parallel:${role}`,
+              `Splitting ${storyIds.length} stories into ${chunks.length} parallel agents`,
+            );
+            this.pendingParallelAgents.set(bead.id, chunks.length);
+
+            for (const chunk of chunks) {
+              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction);
+            }
+            continue; // Don't fall through to single spawn
+          }
+        }
+      }
+
       await this.spawnForRole(pipeline, bead, role);
     }
 
@@ -618,7 +660,12 @@ export class Conductor {
   }
 
   /** Spawn an agent for a specific role. */
-  private async spawnForRole(pipeline: Pipeline, bead: Bead, role: PipelineRole): Promise<void> {
+  private async spawnForRole(
+    pipeline: Pipeline,
+    bead: Bead,
+    role: PipelineRole,
+    scopeSuffix?: string,
+  ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
     // Brainstorm is a HUMAN activity — only launched by the user pressing Z
@@ -702,10 +749,11 @@ export class Conductor {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-    const prompt = roleConfig.promptTemplate
+    const basePrompt = roleConfig.promptTemplate
       .replace(/\{title\}/g, pipeline.title)
       .replace(/\{slug\}/g, slug)
       .replace(/\{spec\}/g, bead.description ?? pipeline.title);
+    const prompt = scopeSuffix ? basePrompt + scopeSuffix : basePrompt;
 
     // Create worktree for isolation (if worktree manager available)
     let agentCwd = pipeline.localPath;
@@ -913,6 +961,22 @@ export class Conductor {
         `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
       );
       this.sessionWorktrees.delete(sessionId);
+    }
+
+    // Check if this is a parallel agent — don't close bead until all are done
+    const pending = this.pendingParallelAgents.get(beadId);
+    if (pending !== undefined && pending > 1) {
+      this.pendingParallelAgents.set(beadId, pending - 1);
+      this.log(
+        pipeline.featureId,
+        `parallel:agent-done:${phase}`,
+        `Parallel agent completed (${pending - 1} remaining)`,
+      );
+      return; // Don't close bead yet — wait for all agents
+    }
+    // Last parallel agent (or single agent) — close the bead
+    if (pending !== undefined) {
+      this.pendingParallelAgents.delete(beadId);
     }
 
     // Close the bead
