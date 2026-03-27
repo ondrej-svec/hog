@@ -213,6 +213,7 @@ export function usePipelineData(
           repo,
           title,
           description,
+          localPath: process.cwd(),
         });
         if (!("error" in result)) {
           toast.info(`Pipeline started: ${title}`);
