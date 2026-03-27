@@ -2,7 +2,7 @@
 title: "feat: Pipeline v2 — real code, parallel agents, smarter orchestration"
 type: plan
 date: 2026-03-27
-status: approved
+status: in_progress
 brainstorm: null
 confidence: medium
 ---

@@ -25,8 +25,10 @@ export interface SpawnAgentOptions {
   readonly promptTemplate?: string | undefined;
   readonly promptVariables?: PromptVariables | undefined;
   readonly startCommand?: { command: string; extraArgs: readonly string[] } | undefined;
-  /** Claude model to use (e.g., "claude-sonnet-4-5"). Passed as --model flag. */
+  /** Claude model to use (e.g., "claude-sonnet-4-6"). Passed as --model flag. */
   readonly model?: string | undefined;
+  /** Permission mode: "auto", "acceptEdits", "bypassPermissions", etc. Defaults to "auto". */
+  readonly permissionMode?: string | undefined;
 }
 
 export interface SpawnAgentResult {
@@ -214,6 +216,15 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
   const extraArgs = opts.startCommand?.extraArgs ?? [];
 
   const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json", "--verbose"];
+
+  // Permission mode: auto (classifier-backed) with acceptEdits fallback
+  // Auto mode uses a classifier to allow safe operations and block risky ones.
+  // If auto mode isn't available, acceptEdits allows file changes without prompting.
+  if (opts.permissionMode) {
+    args.push("--permission-mode", opts.permissionMode);
+  } else {
+    args.push("--permission-mode", "auto");
+  }
 
   // Pass --model flag if specified
   if (opts.model) {
