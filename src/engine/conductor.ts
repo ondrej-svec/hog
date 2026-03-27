@@ -508,6 +508,77 @@ export class Conductor {
     }
   }
 
+  /** Detect stub/scaffolding patterns in recently changed files. */
+  private async detectStubs(
+    cwd: string,
+  ): Promise<{ stubRatio: number; stubFiles: string[] }> {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { readFileSync } = await import("node:fs");
+    const execFileAsync = promisify(execFile);
+
+    // Get files changed vs HEAD~1
+    let changedFiles: string[];
+    try {
+      const { stdout } = await execFileAsync("git", ["diff", "--name-only", "HEAD~1", "HEAD"], {
+        cwd,
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      changedFiles = stdout.trim().split("\n").filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+    } catch {
+      // No commits or git error — check unstaged changes
+      try {
+        const { stdout } = await execFileAsync("git", ["diff", "--name-only"], {
+          cwd,
+          encoding: "utf-8",
+          timeout: 10_000,
+        });
+        changedFiles = stdout.trim().split("\n").filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+      } catch {
+        return { stubRatio: 0, stubFiles: [] };
+      }
+    }
+
+    if (changedFiles.length === 0) return { stubRatio: 0, stubFiles: [] };
+
+    // Check each file for stub patterns
+    const stubPatterns = [
+      /return\s*\{[^}]{0,50}\}\s*;/g, // Short hardcoded object returns
+      /return\s*["'`][^"'`]{20,}["'`]/g, // Hardcoded string returns >20 chars
+      /\/\/\s*(stub|mock|todo|hack|placeholder|fixme)/gi, // Stub comments
+      /throw new Error\(["'`](not implemented|todo)/gi, // Not implemented errors
+    ];
+
+    const stubFiles: string[] = [];
+    for (const file of changedFiles) {
+      if (file.includes(".test.")) continue; // Skip test files
+      try {
+        const content = readFileSync(`${cwd}/${file}`, "utf-8");
+        const lines = content.split("\n").length;
+        if (lines < 10) continue; // Skip tiny files
+
+        let stubHits = 0;
+        for (const pattern of stubPatterns) {
+          const matches = content.match(pattern);
+          if (matches) stubHits += matches.length;
+        }
+
+        // If >20% of lines have stub patterns, flag it
+        if (stubHits > 0 && stubHits / lines > 0.05) {
+          stubFiles.push(file);
+        }
+      } catch {
+        // skip unreadable files
+      }
+    }
+
+    return {
+      stubRatio: changedFiles.length > 0 ? stubFiles.length / changedFiles.length : 0,
+      stubFiles,
+    };
+  }
+
   /** Check a single pipeline for ready beads and spawn agents. */
   private async tickPipeline(pipeline: Pipeline): Promise<void> {
     let readyBeads: Bead[];
@@ -876,6 +947,26 @@ export class Conductor {
             return; // Don't proceed to GitHub sync — impl needs retry
           }
           this.log(pipeline.featureId, "tdd:green-verified", green.detail);
+
+          // Stub detection gate — warn if implementation looks like scaffolding
+          try {
+            const stubResult = await this.detectStubs(pipeline.localPath);
+            if (stubResult.stubRatio > 0.3) {
+              this.log(
+                pipeline.featureId,
+                "quality:stub-warning",
+                `${Math.round(stubResult.stubRatio * 100)}% of changed files appear to be scaffolding (${stubResult.stubFiles.join(", ")}). Redteam should catch this.`,
+              );
+            } else if (stubResult.stubFiles.length > 0) {
+              this.log(
+                pipeline.featureId,
+                "quality:stub-info",
+                `${stubResult.stubFiles.length} file(s) with stub patterns detected: ${stubResult.stubFiles.join(", ")}`,
+              );
+            }
+          } catch {
+            // best-effort — don't block pipeline on detection failure
+          }
         }
 
         // Redteam→impl feedback loop (Farley)

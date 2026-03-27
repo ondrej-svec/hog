@@ -58,12 +58,13 @@ describe("role-context", () => {
       expect(content).toContain("catch scaffolding");
     });
 
-    it("stories CLAUDE.md forbids writing code", () => {
+    it("stories CLAUDE.md forbids writing code and mentions architecture doc", () => {
       writeRoleClaudeMd(tempDir, "stories");
       const content = readFileSync(join(tempDir, "CLAUDE.md"), "utf-8");
 
       expect(content).toContain("Do NOT write any code");
-      expect(content).toContain("Do NOT modify any source files");
+      expect(content).toContain("architecture doc");
+      expect(content).toContain("[INTEGRATION]");
     });
 
     it("redteam CLAUDE.md forbids modifying implementation", () => {

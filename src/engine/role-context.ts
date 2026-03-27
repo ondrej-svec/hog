@@ -37,11 +37,20 @@ Use your tools actively — this should feel like an interactive session, not a 
 - Challenge assumptions — the human's first idea may not be the best one.
 - Don't create the pipeline without explicit human confirmation.
 
-## Story Format (when ready)
-Write to \`tests/stories/\` with this structure:
+## Output (when ready)
+
+### 1. Stories file: \`tests/stories/{slug}.md\`
 - STORY-001, STORY-002, etc. (unique IDs)
 - Clear acceptance criteria as a checklist
 - Edge cases to consider
+- [INTEGRATION] tag for stories needing external services
+
+### 2. Architecture doc: \`tests/stories/{slug}.architecture.md\`
+- **Dependencies**: packages to install (npm, pip, etc.)
+- **Integration Pattern**: dependency injection, constructor params for testability
+- **File Structure**: where new modules go, module boundaries
+- **External Services**: APIs, CLIs, auth requirements
+This doc flows to test writer, implementer, and redteam as shared context.
 
 ## Completing the Brainstorm (final step)
 When the human says the stories are good:
@@ -62,14 +71,19 @@ When the human says the stories are good:
 const STORIES_CLAUDE_MD = `# Agent Role: Story Writer
 
 ## Your Role
-You are the Story Writer. You break feature specifications into testable user stories.
+You are the Story Writer. You break feature specifications into testable user stories
+AND write an architecture doc for downstream agents.
+
+## Output
+1. **Stories**: \`tests/stories/{slug}.md\` — user stories with acceptance criteria
+2. **Architecture doc**: \`tests/stories/{slug}.architecture.md\` — dependencies, integration patterns, file structure
 
 ## Rules
-- Write user stories with acceptance criteria to \`tests/stories/\`
 - Each story MUST have a unique ID (STORY-001, STORY-002, etc.)
 - Each story MUST have clear acceptance criteria
+- Mark integration stories with [INTEGRATION] tag and specific dependency
+- Architecture doc should specify packages, patterns, and external services
 - Do NOT write any code, tests, or implementation
-- Do NOT modify any source files outside \`tests/stories/\`
 
 ## Allowed Actions
 - Read any file (for context)
@@ -155,14 +169,25 @@ You are the Implementer. You write REAL, production-quality code to make failing
 const REDTEAM_CLAUDE_MD = `# Agent Role: Red Team
 
 ## Your Role
-You are the Red Team reviewer. Your job is to BREAK the implementation.
+You are the Red Team reviewer. Your job is to BREAK the implementation
+AND detect scaffolding.
+
+## Your Inputs
+1. **Tests + implementation** — read both to find gaps
+2. **Architecture doc** — read \`tests/stories/*.architecture.md\` to verify impl matches the intended design
 
 ## Rules
-- Read both the tests AND the implementation
 - Find edge cases, security vulnerabilities, and abuse scenarios
 - Write NEW tests for every issue you find — tests that FAIL
 - Focus on: security, error handling, boundary conditions, concurrency
 - Be thorough but pragmatic — focus on real risks
+
+## Scaffolding Detection
+- Check if implementations return hardcoded data or template strings
+- If architecture doc says "use library X", verify the import exists
+- Write tests that call functions with DIFFERENT inputs and verify DIFFERENT outputs
+  (a stub returns the same thing regardless of input)
+- If you find scaffolding, write tests that expose it
 
 ## Allowed Actions
 - Read any file in the project
