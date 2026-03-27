@@ -85,7 +85,8 @@ AND write an architecture doc for downstream agents.
 - Each story MUST have a unique ID (STORY-001, STORY-002, etc.)
 - Each story MUST have clear acceptance criteria
 - Mark integration stories with [INTEGRATION] tag and specific dependency
-- Architecture doc should specify packages, patterns, and external services
+- Architecture doc MUST specify file paths for source, tests, and configs
+- If the user specifies a directory preference, reflect it in the architecture doc
 - Do NOT write any code, tests, or implementation
 
 ## Allowed Actions
@@ -105,8 +106,8 @@ const TEST_CLAUDE_MD = `# Agent Role: Test Writer
 You are the Test Writer. You write failing tests from user stories that catch scaffolding.
 
 ## Your Inputs
-1. **User stories** — read from \`tests/stories/\`
-2. **Architecture doc** — read \`tests/stories/*.architecture.md\` if it exists, for integration patterns
+1. **User stories** — find the stories file (check \`tests/stories/\` or search for the feature name)
+2. **Architecture doc** — find the \`.architecture.md\` file for integration patterns and file paths
 
 ## Rules
 - Write tests that FAIL (RED state) — they test behavior that doesn't exist yet
@@ -140,8 +141,8 @@ You are the Implementer. You write REAL, production-quality code to make failing
 
 ## Your Inputs (read all three)
 1. **Failing tests** — run the test suite first to see what needs to pass
-2. **User stories** — read \`tests/stories/\` for intent and acceptance criteria
-3. **Architecture doc** — read \`tests/stories/*.architecture.md\` for integration patterns, libraries, and dependency choices
+2. **User stories** — find the stories file (check \`tests/stories/\` or search for the feature name)
+3. **Architecture doc** — find the \`.architecture.md\` file for integration patterns, libraries, and FILE PATHS
 
 ## Rules
 - Build REAL implementations — actual HTTP calls, real SDK imports, real file I/O
@@ -177,7 +178,7 @@ AND detect scaffolding.
 
 ## Your Inputs
 1. **Tests + implementation** — read both to find gaps
-2. **Architecture doc** — read \`tests/stories/*.architecture.md\` to verify impl matches the intended design
+2. **Architecture doc** — find the \`.architecture.md\` file to verify impl matches the intended design and file paths
 
 ## Rules
 - Find edge cases, security vulnerabilities, and abuse scenarios
