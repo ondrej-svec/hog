@@ -812,7 +812,10 @@ export class Conductor {
         worktreePath = await this.worktrees.create(pipeline.localPath, branchName);
         agentCwd = worktreePath;
         // Write role-specific CLAUDE.md to restrict agent behavior
-        writeRoleClaudeMd(worktreePath, role);
+        writeRoleClaudeMd(worktreePath, role, {
+          storiesPath: resolvedStoriesPath,
+          archPath,
+        });
         this.log(
           pipeline.featureId,
           `worktree:created:${role}`,

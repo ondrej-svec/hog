@@ -241,8 +241,29 @@ const ROLE_CLAUDE_MDS: Record<PipelineRole, string> = {
  * Write a role-specific CLAUDE.md to a worktree directory.
  * This configures the agent's behavior when Claude Code starts in that directory.
  */
-export function writeRoleClaudeMd(worktreePath: string, role: PipelineRole): void {
-  const content = ROLE_CLAUDE_MDS[role];
+export function writeRoleClaudeMd(
+  worktreePath: string,
+  role: PipelineRole,
+  variables?: { storiesPath?: string; archPath?: string },
+): void {
+  let content = ROLE_CLAUDE_MDS[role];
+
+  // Inject paths if provided — agents need to know WHERE to create files
+  if (variables?.storiesPath || variables?.archPath) {
+    const pathSection = [
+      "",
+      "## File Paths (from pipeline config)",
+      variables.storiesPath ? `- Stories: \`${variables.storiesPath}\`` : "",
+      variables.archPath ? `- Architecture doc: \`${variables.archPath}\`` : "",
+      "- **Read the architecture doc's ## File Structure section for where to create source and test files**",
+      "- Do NOT default to tests/ or src/ — use the paths specified in the architecture doc",
+      "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    content += pathSection;
+  }
+
   const filePath = join(worktreePath, "CLAUDE.md");
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, content, { encoding: "utf-8" });
