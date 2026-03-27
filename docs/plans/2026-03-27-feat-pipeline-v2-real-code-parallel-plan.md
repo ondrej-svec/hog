@@ -2,7 +2,7 @@
 title: "feat: Pipeline v2 — real code, parallel agents, smarter orchestration"
 type: plan
 date: 2026-03-27
-status: in_progress
+status: complete
 brainstorm: null
 confidence: medium
 ---
@@ -92,7 +92,7 @@ Three workstreams, each independently shippable:
 
 ### Tasks
 
-- [ ] **B.1 Add story-level work splitting to conductor**
+- [x] **B.1 Add story-level work splitting to conductor**
   When a phase bead becomes ready, the conductor:
   1. Reads `tests/stories/{slug}.md` and extracts story IDs (STORY-001, etc.)
   2. Groups stories into chunks based on `maxConcurrentAgents` config (default 3)
@@ -105,7 +105,7 @@ Three workstreams, each independently shippable:
   Redteam stays serial (needs to see full implementation).
   Merge stays serial (one merge operation).
 
-- [ ] **B.2 Parallel worktree spawning**
+- [x] **B.2 Parallel worktree spawning**
   The conductor already creates worktrees per agent. For parallel agents:
   1. Create N worktrees (one per story chunk)
   2. Spawn N agents, each in their own worktree
@@ -114,21 +114,21 @@ Three workstreams, each independently shippable:
 
   The `maxConcurrentAgents` config controls parallelism (default 3).
 
-- [ ] **B.3 Parallel completion tracking**
+- [x] **B.3 Parallel completion tracking**
   The phase bead closes only when ALL parallel agents complete:
   1. Track `pendingAgents` count per bead
   2. On each `agent:completed`, decrement counter
   3. When counter reaches 0, close the bead and run GREEN/quality verification
   4. If any agent fails, re-open only its story chunk (not the whole phase)
 
-- [ ] **B.4 Refinery merge queue for parallel results**
+- [x] **B.4 Refinery merge queue for parallel results**
   The refinery already handles serial merge. For parallel:
   1. All N worktree branches queue into the refinery
   2. Refinery merges them one-at-a-time (serial is fine — merges are fast)
   3. Each merge: rebase onto previous result → test → fast-forward
   4. If merge conflict: log which stories conflicted, re-open those chunks
 
-- [ ] **B.5 Smart story grouping**
+- [x] **B.5 Smart story grouping**
   Naive chunking (first 8, next 8, etc.) may split related stories across agents.
   Better: group by file/module when possible.
 
