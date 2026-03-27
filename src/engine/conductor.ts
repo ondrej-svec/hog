@@ -687,14 +687,18 @@ export class Conductor {
       return;
     }
 
-    // Skip stories phase if brainstorm already produced stories
+    // Skip stories phase if stories file already exists (from brainstorm or --stories flag)
     if (role === "stories") {
+      const { existsSync } = await import("node:fs");
       const { findStoriesFile } = await import("./story-splitter.js");
       const slug = pipeline.title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-|-$/g, "");
-      const existing = findStoriesFile(pipeline.localPath, slug);
+      // Check pipeline.storiesPath first (explicit --stories flag), then search by slug
+      const existing =
+        (pipeline.storiesPath && existsSync(pipeline.storiesPath) ? pipeline.storiesPath : null) ??
+        findStoriesFile(pipeline.localPath, slug);
       if (existing) {
         this.log(
           pipeline.featureId,
