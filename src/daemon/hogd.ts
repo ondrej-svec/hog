@@ -365,10 +365,33 @@ export class HogDaemon {
       return;
     }
 
-    const phase = pipeline.activePhase;
+    let phase = pipeline.activePhase;
+
+    // If no active phase set, find the first open bead
     if (!phase) {
-      this.send(socket, req.id, { ok: false, error: "No active phase" });
-      return;
+      const beadIdToPhase: Record<string, string> = {
+        [pipeline.beadIds.brainstorm]: "brainstorm",
+        [pipeline.beadIds.stories]: "stories",
+        [pipeline.beadIds.tests]: "test",
+        [pipeline.beadIds.impl]: "impl",
+        [pipeline.beadIds.redteam]: "redteam",
+        [pipeline.beadIds.merge]: "merge",
+      };
+      try {
+        for (const [beadId, phaseName] of Object.entries(beadIdToPhase)) {
+          const bead = await this.engine.beads.show(pipeline.localPath, beadId);
+          if (bead.status === "open" || bead.status === "in_progress") {
+            phase = phaseName;
+            break;
+          }
+        }
+      } catch {
+        // best-effort
+      }
+      if (!phase) {
+        this.send(socket, req.id, { ok: false, error: "No active phase" });
+        return;
+      }
     }
 
     const beadIdMap: Record<string, string> = {

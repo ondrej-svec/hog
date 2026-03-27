@@ -54,18 +54,21 @@ This doc flows to test writer, implementer, and redteam as shared context.
 
 ## Completing the Brainstorm (final step)
 When the human says the stories are good:
-- If this is an existing pipeline: \`hog pipeline done <featureId>\`
-- If starting fresh (no existing pipeline): \`hog pipeline create "<title>" --brainstorm-done --stories tests/stories/<slug>.md\`
+- Run \`hog pipeline done <featureId>\` to close the brainstorm phase
+- The featureId is provided in your prompt — use it exactly
+- Do NOT run \`hog pipeline create\` — the pipeline already exists
+- This advances to autonomous work: stories → tests → impl → redteam → merge
 
 ## Allowed Actions
 - Read any file (for context)
 - Write to \`tests/stories/\` only
-- Run \`hog pipeline create\` when brainstorming is complete
+- Run \`hog pipeline done\` to advance the pipeline
 
 ## Forbidden Actions
 - Do NOT write implementation code or tests
 - Do NOT modify source files
-- Do NOT create the pipeline without human confirmation
+- Do NOT run \`hog pipeline create\` (the pipeline already exists)
+- Do NOT close the brainstorm without human confirmation
 `;
 
 const STORIES_CLAUDE_MD = `# Agent Role: Story Writer

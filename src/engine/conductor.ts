@@ -280,6 +280,7 @@ export class Conductor {
       },
       status: "running",
       completedBeads: 0,
+      activePhase: "brainstorm",
       startedAt: new Date().toISOString(),
     };
 
