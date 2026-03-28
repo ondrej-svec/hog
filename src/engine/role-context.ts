@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { PipelineRole } from "./roles.js";
+import { PIPELINE_ROLES, type PipelineRole, scopeToClaudeMd } from "./roles.js";
 
 /**
  * Generate a role-specific CLAUDE.md file for a worktree.
@@ -310,6 +310,12 @@ export function writeRoleClaudeMd(
       .filter(Boolean)
       .join("\n");
     content += pathSection;
+  }
+
+  // Append scope section from roles.ts — single source of truth for role constraints
+  const roleConfig = PIPELINE_ROLES[role];
+  if (roleConfig) {
+    content += `\n\n${scopeToClaudeMd(roleConfig.scope)}\n`;
   }
 
   const filePath = join(worktreePath, "CLAUDE.md");

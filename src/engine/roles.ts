@@ -10,11 +10,39 @@
 
 export type PipelineRole = "brainstorm" | "stories" | "test" | "impl" | "redteam" | "merge";
 
+/** File scope constraints for a role — single source of truth for role-audit gates. */
+export interface RoleScope {
+  /** Glob patterns for files this role may read. Empty = read anything. */
+  readonly canRead: readonly string[];
+  /** Glob patterns for files this role may create/modify. */
+  readonly canWrite: readonly string[];
+  /** Human-readable forbidden actions (for CLAUDE.md generation). */
+  readonly forbidden: readonly string[];
+}
+
 export interface RoleConfig {
   readonly role: PipelineRole;
   readonly label: string;
   readonly envRole: string;
   readonly promptTemplate: string;
+  /** Structural file scope — used by role-audit gate AND CLAUDE.md generation. */
+  readonly scope: RoleScope;
+}
+
+/** Generate the "Allowed/Forbidden Actions" CLAUDE.md section from a role's scope. */
+export function scopeToClaudeMd(scope: RoleScope): string {
+  const lines = ["## Scope (enforced by role-audit gate)", ""];
+  if (scope.canWrite.length > 0) {
+    lines.push("**May modify:** " + scope.canWrite.join(", "));
+  }
+  if (scope.forbidden.length > 0) {
+    lines.push("");
+    lines.push("**Forbidden:**");
+    for (const f of scope.forbidden) {
+      lines.push(`- ${f}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 // ── Role Prompts ──
@@ -421,36 +449,66 @@ export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
     label: "Brainstorm",
     envRole: "HOG_ROLE=brainstorm",
     promptTemplate: BRAINSTORM_PROMPT,
+    scope: {
+      canRead: [],
+      canWrite: ["docs/stories/**"],
+      forbidden: ["Do NOT write implementation code or tests", "Do NOT modify source files"],
+    },
   },
   stories: {
     role: "stories",
     label: "Story Writer",
     envRole: "HOG_ROLE=stories",
     promptTemplate: STORIES_PROMPT,
+    scope: {
+      canRead: [],
+      canWrite: ["docs/stories/**/*.md"],
+      forbidden: ["Do NOT create or modify files in src/", "Do NOT create or modify test files"],
+    },
   },
   test: {
     role: "test",
     label: "Test Writer",
     envRole: "HOG_ROLE=test",
     promptTemplate: TEST_PROMPT,
+    scope: {
+      canRead: ["docs/stories/**", "*.test.*", "*.spec.*", "package.json", "vitest.config.*", "tsconfig.*"],
+      canWrite: ["*.test.*", "*.spec.*", "*_test.*"],
+      forbidden: ["Do NOT write implementation code in src/", "Do NOT read brainstorm/plan documents"],
+    },
   },
   impl: {
     role: "impl",
     label: "Implementer",
     envRole: "HOG_ROLE=impl",
     promptTemplate: IMPL_PROMPT,
+    scope: {
+      canRead: ["*.test.*", "docs/stories/**", "package.json"],
+      canWrite: ["src/**", "package.json", "*.config.*"],
+      forbidden: ["Do NOT modify test files", "Do NOT read brainstorm/plan documents", "Do NOT add features beyond what the tests require"],
+    },
   },
   redteam: {
     role: "redteam",
     label: "Red Team",
     envRole: "HOG_ROLE=redteam",
     promptTemplate: REDTEAM_PROMPT,
+    scope: {
+      canRead: [],
+      canWrite: ["*.test.*", "*.spec.*", "*_test.*"],
+      forbidden: ["Do NOT modify implementation code in src/", "Do NOT fix issues — only expose them with failing tests"],
+    },
   },
   merge: {
     role: "merge",
     label: "Merge Gatekeeper",
     envRole: "HOG_ROLE=merge",
     promptTemplate: MERGE_PROMPT,
+    scope: {
+      canRead: [],
+      canWrite: [],
+      forbidden: ["Do NOT modify source files", "Do NOT modify test files", "Do NOT skip failing tests"],
+    },
   },
 };
 
