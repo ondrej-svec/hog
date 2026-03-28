@@ -5,7 +5,7 @@
  * into chunks for parallel agent execution.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StoryChunk {
@@ -47,7 +47,6 @@ export function findStoriesFile(localPath: string, slug: string): string | undef
     if (existsSync(candidate)) {
       // If it's a directory, look for any .md file
       if (candidate.endsWith("stories")) {
-        const { readdirSync } = require("node:fs") as typeof import("node:fs");
         try {
           const files = readdirSync(candidate).filter(
             (f: string) => f.endsWith(".md") && !f.endsWith(".architecture.md"),

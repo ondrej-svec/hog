@@ -362,6 +362,14 @@ export class Conductor {
   private async tick(): Promise<void> {
     if (this.stopped) return;
 
+    try {
+      await this.tickInner();
+    } catch (err) {
+      console.error(`[conductor] Tick failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async tickInner(): Promise<void> {
     // Pick up pipelines created by other processes (CLI, watcher)
     this.store.syncFromDisk();
 
@@ -681,6 +689,8 @@ export class Conductor {
   ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
+    this.log(pipeline.featureId, `agent:preparing:${role}`, `Preparing to spawn ${roleConfig.label}`);
+
     // Brainstorm is a HUMAN activity — only launched by the user pressing Z
     // in the cockpit. The watcher/conductor never auto-launches it.
     if (role === "brainstorm") {
@@ -777,8 +787,13 @@ export class Conductor {
     // Claim the bead (atomically set assignee + in_progress)
     try {
       await this.beads.claim(pipeline.localPath, bead.id);
-    } catch {
-      return; // Another agent may have claimed it
+    } catch (err) {
+      this.log(
+        pipeline.featureId,
+        `agent:claim-failed:${role}`,
+        `Failed to claim bead ${bead.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
     }
 
     // Build the prompt with variable substitution
