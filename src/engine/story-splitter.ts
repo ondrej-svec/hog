@@ -113,5 +113,8 @@ function buildScopeInstruction(storyIds: string[], phase: "test" | "impl"): stri
 
 /** Check if a phase supports parallel execution. */
 export function isParallelizablePhase(phase: string): boolean {
-  return phase === "test" || phase === "impl";
+  // Only test phase parallelizes — each agent creates independent test files.
+  // Impl stays serial: shared types, utilities, and config make parallel impl
+  // produce duplicated code and merge conflicts, even with worktree isolation.
+  return phase === "test";
 }
