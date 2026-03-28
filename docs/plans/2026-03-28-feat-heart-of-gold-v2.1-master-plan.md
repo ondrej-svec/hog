@@ -278,7 +278,7 @@ This phase adds personality without compromising rigor.
   defaults (`plan`, `implement`) don't match actual phase names.
   Files: `src/config.ts`
 
-- [ ] 4.2 **Remove vestigial `board` config** — Delete `BOARD_CONFIG_SCHEMA` and all
+- [x] 4.2 **Remove vestigial `board` config** — Delete `BOARD_CONFIG_SCHEMA` and all
   references. The v1 dashboard was removed in v2.0 but the schema, migration path, and
   `config show` output still include it.
   (Remaining work from drop-github-board plan)
@@ -289,7 +289,7 @@ This phase adds personality without compromising rigor.
   (Remaining work from drop-github-board plan)
   Files: `src/config.ts`
 
-- [ ] 4.4 **Consolidate role enforcement** — Generate role-specific `CLAUDE.md` content
+- [x] 4.4 **Consolidate role enforcement** — Generate role-specific `CLAUDE.md` content
   FROM role definitions in `roles.ts`, not maintain them separately in `role-context.ts`.
   Single source of truth prevents drift.
   Files: `src/engine/role-context.ts`, `src/engine/roles.ts`
@@ -311,7 +311,7 @@ This phase adds personality without compromising rigor.
   (Remaining work from beads-server-lifecycle plan)
   Files: `src/cli.ts`
 
-- [ ] 4.9 **Enrich `pipeline compare`** — Add quality gate results, cost, test counts,
+- [x] 4.9 **Enrich `pipeline compare`** — Add quality gate results, cost, test counts,
   phase durations to comparison output. Currently shows only duration.
   Files: `src/cli.ts`
 
@@ -387,12 +387,12 @@ config that teams own and version-control.
   spawning in `spawn-agent.ts` becomes the first adapter implementation.
   Files: new `src/engine/worker-adapter.ts`, refactor `src/board/spawn-agent.ts`
 
-- [ ] 5.8 **Claude adapter** — Extract current Claude Code spawning into a `ClaudeAdapter`
+- [x] 5.8 **Claude adapter** — Extract current Claude Code spawning into a `ClaudeAdapter`
   that implements the worker interface. Stream-json parsing, permission mode handling,
   model selection — all encapsulated.
   Files: `src/engine/adapters/claude-adapter.ts`
 
-- [ ] 5.9 **Configurable worker in config** — Add `pipeline.worker: "claude" | "codex" | "custom"`
+- [x] 5.9 **Configurable worker in config** — Add `pipeline.worker: "claude" | "codex" | "custom"`
   to config schema. Conductor reads this and instantiates the right adapter. Default: `"claude"`.
   Files: `src/config.ts`, `src/engine/conductor.ts`
 
@@ -403,11 +403,11 @@ config that teams own and version-control.
   presets.
   Files: `src/engine/quality-gates.ts`
 
-- [ ] 5.11 **`hog demo` polish** — Under 2 minutes, themed with H2G2 narration.
+- [x] 5.11 **`hog demo` polish** — Under 2 minutes, themed with H2G2 narration.
   Impressive first contact with the Heart of Gold.
   Files: `src/demo/demo.ts`
 
-- [ ] 5.12 **Performance instrumentation** — CI benchmarks for cockpit latency (<500ms),
+- [x] 5.12 **Performance instrumentation** — CI benchmarks for cockpit latency (<500ms),
   daemon startup (<500ms), demo time (<2 min).
   Files: new benchmark test files
 
