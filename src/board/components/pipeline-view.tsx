@@ -1,17 +1,16 @@
+/**
+ * Pipeline View — the cockpit's main display.
+ *
+ * Design A with personality: spacious layout, agent names, humanized tools,
+ * narrative activity feed, quality gates row.
+ */
+
 import { Box, Text } from "ink";
 import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Pipeline, PipelineStatus } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
-
-function timeAgo(isoString: string): string {
-  const ms = Date.now() - new Date(isoString).getTime();
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  return `${hrs}h ${mins % 60}m ago`;
-}
+import { agentName, formatElapsed, humanizeTool, timeAgo } from "../humanize.js";
 
 // ── Types ──
 
@@ -21,7 +20,6 @@ export interface PipelineViewData {
   readonly pendingDecisions: Question[];
   readonly mergeQueue: readonly MergeQueueEntry[];
   readonly selectedIndex: number;
-  /** Recent log entries for the selected pipeline. */
   readonly logEntries?: readonly string[] | undefined;
 }
 
@@ -31,59 +29,58 @@ interface PipelineViewProps {
   readonly rows: number;
 }
 
-// ── Status Icons ──
+// ── Constants ──
 
-function statusIcon(status: PipelineStatus): string {
-  switch (status) {
-    case "running":
-      return "◐";
-    case "paused":
-      return "⏸";
-    case "blocked":
-      return "⚠";
-    case "completed":
-      return "✓";
-    case "failed":
-      return "✗";
-  }
-}
+const LEFT_PANEL_WIDTH = 26;
 
-function statusColor(status: PipelineStatus): string {
-  switch (status) {
-    case "running":
-      return "yellow";
-    case "paused":
-      return "gray";
-    case "blocked":
-      return "red";
-    case "completed":
-      return "green";
-    case "failed":
-      return "red";
-  }
-}
-
-// ── Phase Descriptions ──
-
-const PHASE_DESCRIPTIONS: Record<string, string> = {
-	brainstorm: "Interactive session — you brainstorm with Claude to define the feature",
-	stories: "Writing testable user stories with acceptance criteria",
-	test: "Writing tests that FAIL (RED state) — cannot see the spec, only stories",
-	impl: "Writing minimum code to make tests pass (GREEN) — can only see failing tests",
-	redteam: "Adversarial review — writing new tests for edge cases and security",
-	merge: "Rebasing, running full test suite, linting, and security scan",
+const PHASE_LABELS: Record<string, string> = {
+  brainstorm: "brainstorm",
+  stories: "stories",
+  test: "tests",
+  impl: "impl",
+  redteam: "redteam",
+  merge: "merge",
 };
 
-function progressBar(pipeline: Pipeline, width: number): string {
-  const total = 6;
-  const completed = pipeline.completedBeads ?? 0;
-  const filled = Math.round((completed / total) * width);
-  return "█".repeat(filled) + "░".repeat(width - filled);
-}
+const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
 
-function progressPercent(pipeline: Pipeline): string {
-  const pct = Math.round(((pipeline.completedBeads ?? 0) / 6) * 100);
-  return `${pct}%`;
+// ── Main Component ──
+
+export function PipelineView({ data, cols, rows }: PipelineViewProps) {
+  const { pipelines, agents, pendingDecisions, selectedIndex, logEntries } = data;
+
+  if (pipelines.length === 0) {
+    return <EmptyState cols={cols} rows={rows} />;
+  }
+
+  const selectedPipeline = pipelines[selectedIndex];
+  const showLeftPanel = pipelines.length > 1;
+  const rightWidth = showLeftPanel ? cols - LEFT_PANEL_WIDTH - 3 : cols;
+
+  return (
+    <Box flexDirection="row" height={rows}>
+      {showLeftPanel ? (
+        <Box flexDirection="column" width={LEFT_PANEL_WIDTH} borderStyle="single" borderRight>
+          <Text bold> Pipelines</Text>
+          <Text> </Text>
+          {pipelines.map((p, i) => (
+            <PipelineListItem key={p.featureId} pipeline={p} selected={i === selectedIndex} />
+          ))}
+        </Box>
+      ) : null}
+
+      {selectedPipeline ? (
+        <PipelineDetail
+          pipeline={selectedPipeline}
+          agents={agents}
+          pendingDecisions={pendingDecisions}
+          logEntries={logEntries}
+          width={rightWidth}
+          rows={rows}
+        />
+      ) : null}
+    </Box>
+  );
 }
 
 // ── Pipeline List Item ──
@@ -91,542 +88,419 @@ function progressPercent(pipeline: Pipeline): string {
 function PipelineListItem({
   pipeline,
   selected,
-  width,
 }: {
   pipeline: Pipeline;
   selected: boolean;
-  width: number;
 }) {
-  const isBrainstorming = pipeline.activePhase === "brainstorm";
-  const icon = isBrainstorming ? "?" : statusIcon(pipeline.status);
-  const color = isBrainstorming ? "cyan" : statusColor(pipeline.status);
-  // Allocate: 4 chars icon/selection + title + 1 space + bar(8) + percentage(5) + phase(10)
-  const overhead = 28; // icon(4) + bar(8) + pct(5) + phase(10) + spaces
-  const maxTitle = Math.max(10, width - overhead);
-  const bar = progressBar(pipeline, 8);
-  const title =
-    pipeline.title.length > maxTitle
-      ? `${pipeline.title.slice(0, maxTitle - 3)}...`
-      : pipeline.title;
+  const completed = pipeline.completedBeads ?? 0;
+  const pct = Math.round((completed / 6) * 100);
+  const phase = pipeline.activePhase ?? "";
+  const barWidth = 12;
+  const filled = Math.round((completed / 6) * barWidth);
+  const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 
   return (
-    <Box>
-      {selected ? (
-        <Text color="cyan" bold>
-          {"▶ "}
+    <Box flexDirection="column" paddingLeft={1}>
+      <Box>
+        {selected ? (
+          <Text color="cyan" bold>
+            {"► "}
+            {pipeline.title.length > 20 ? `${pipeline.title.slice(0, 18)}..` : pipeline.title}
+          </Text>
+        ) : (
+          <Text>
+            {"  "}
+            {pipeline.title.length > 20 ? `${pipeline.title.slice(0, 18)}..` : pipeline.title}
+          </Text>
+        )}
+      </Box>
+      <Box paddingLeft={2}>
+        <Text dimColor>
+          {bar} {pct}% {phase}
         </Text>
-      ) : (
-        <Text>{"  "}</Text>
-      )}
-      <Text color={color}>{icon} </Text>
-      {selected ? <Text bold>{title}</Text> : <Text>{title}</Text>}
+      </Box>
       <Text> </Text>
-      <Text color="yellow">{bar}</Text>
-      <Text dimColor> {progressPercent(pipeline)}</Text>
-      {pipeline.activePhase ? <Text dimColor> {pipeline.activePhase}</Text> : null}
     </Box>
   );
 }
 
-// ── Agent List Item ──
+// ── Pipeline Detail ──
 
-function AgentListItem({ agent }: { agent: DaemonAgentInfo }) {
-  const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-  let activity: string;
-  if (!agent.isRunning) {
-    activity = `done (${elapsed}m)`;
-  } else if (agent.lastToolUse) {
-    activity = agent.lastToolUse;
-  } else {
-    activity = "starting...";
-  }
+function PipelineDetail({
+  pipeline,
+  agents,
+  pendingDecisions,
+  logEntries,
+  width,
+  rows,
+}: {
+  pipeline: Pipeline;
+  agents: readonly DaemonAgentInfo[];
+  pendingDecisions: Question[];
+  logEntries?: readonly string[] | undefined;
+  width: number;
+  rows: number;
+}) {
+  const pipelineAgents = agents.filter(
+    (a) => a.repo === pipeline.repo || a.sessionId.length > 0,
+  );
+  const activeAgents = pipelineAgents.filter((a) => a.isRunning);
+  const activeAgent = activeAgents[0];
+  const pipelineDecisions = pendingDecisions.filter(
+    (q) => q.featureId === pipeline.featureId,
+  );
+
+  return (
+    <Box flexDirection="column" paddingLeft={1} width={width}>
+      {/* Title */}
+      <Text bold>{pipeline.title}</Text>
+      <Text> </Text>
+
+      {/* Phase DAG */}
+      <PhaseBar pipeline={pipeline} />
+      <Text> </Text>
+
+      {/* Decision panel (takes priority when blocked) */}
+      {pipelineDecisions.length > 0 ? (
+        <DecisionPanel decisions={pipelineDecisions} />
+      ) : (
+        <>
+          {/* Active Agent Spotlight */}
+          {activeAgent ? (
+            <ActiveAgentCard agent={activeAgent} />
+          ) : pipeline.status === "running" ? (
+            <Text dimColor>  No active agents — daemon will advance to next phase</Text>
+          ) : pipeline.status === "completed" ? (
+            <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />
+          ) : pipeline.status === "paused" ? (
+            <Text color="yellow">  ⏸ Pipeline paused — press x to resume</Text>
+          ) : null}
+
+          <Text> </Text>
+
+          {/* Completed Phases */}
+          <CompletedPhases pipeline={pipeline} agents={pipelineAgents} />
+
+          <Text> </Text>
+
+          {/* Activity Feed */}
+          {logEntries && logEntries.length > 0 ? (
+            <ActivityFeed entries={logEntries} />
+          ) : null}
+
+          <Text> </Text>
+
+          {/* Quality Gates (compact row) */}
+          <QualityGatesRow pipeline={pipeline} />
+        </>
+      )}
+    </Box>
+  );
+}
+
+// ── Phase Bar ──
+
+function PhaseBar({ pipeline }: { pipeline: Pipeline }) {
+  const completed = pipeline.completedBeads ?? 0;
 
   return (
     <Box>
-      <Text color={agent.isRunning ? "yellow" : "green"}>
-        {agent.isRunning ? "  ◐ " : "  ✓ "}
-      </Text>
-      <Text>{agent.phase.padEnd(8)}</Text>
-      <Text dimColor> {activity}</Text>
-      {agent.isRunning ? <Text dimColor> {elapsed}m</Text> : null}
+      <Text>  </Text>
+      {PHASE_ORDER.map((phase, i) => {
+        const label = PHASE_LABELS[phase] ?? phase;
+        const beadKey = phase === "test" ? "tests" : phase;
+        const isCompleted = i < completed;
+        const isActive =
+          phase === pipeline.activePhase ||
+          (phase === "test" && pipeline.activePhase === "test");
+
+        const connector = i < PHASE_ORDER.length - 1 ? " ── " : "";
+
+        if (isCompleted) {
+          return (
+            <Text key={beadKey}>
+              <Text color="green">{label} ✓</Text>
+              <Text dimColor>{connector}</Text>
+            </Text>
+          );
+        }
+        if (isActive) {
+          return (
+            <Text key={beadKey}>
+              <Text color="yellow" bold>{label} ◐</Text>
+              <Text dimColor>{connector}</Text>
+            </Text>
+          );
+        }
+        return (
+          <Text key={beadKey}>
+            <Text dimColor>{label} ·</Text>
+            <Text dimColor>{connector}</Text>
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ── Active Agent Card ──
+
+function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
+  const name = agentName(agent.sessionId);
+  const elapsed = formatElapsed(agent.startedAt);
+  const activity = humanizeTool(agent.lastToolUse);
+  const phaseLabel =
+    agent.phase === "impl"
+      ? "Implementer"
+      : agent.phase === "test"
+        ? "Test Writer"
+        : agent.phase === "redteam"
+          ? "Red Team"
+          : agent.phase === "merge"
+            ? "Merge Gatekeeper"
+            : agent.phase;
+
+  return (
+    <Box flexDirection="column" paddingLeft={2}>
+      <Box>
+        <Text color="cyan" bold>
+          ◐ {name}
+        </Text>
+        <Text> is </Text>
+        <Text bold>{activity}</Text>
+        <Text dimColor>  {elapsed}</Text>
+      </Box>
+      <Box paddingLeft={2}>
+        <Text dimColor>
+          {phaseLabel} phase
+        </Text>
+      </Box>
+    </Box>
+  );
+}
+
+// ── Completed Phases ──
+
+function CompletedPhases({
+  pipeline,
+  agents,
+}: {
+  pipeline: Pipeline;
+  agents: readonly DaemonAgentInfo[];
+}) {
+  const completed = pipeline.completedBeads ?? 0;
+  if (completed === 0) return null;
+
+  const completedPhases = PHASE_ORDER.slice(0, completed);
+
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>  ── Completed ──</Text>
+      {completedPhases.map((phase) => {
+        const label = PHASE_LABELS[phase] ?? phase;
+        const phaseAgents = agents.filter((a) => a.phase === phase);
+        const agentCount = phaseAgents.length;
+        const names = phaseAgents.map((a) => agentName(a.sessionId)).join(", ");
+        const elapsed = phaseAgents[0] ? formatElapsed(phaseAgents[0].startedAt) : "";
+
+        // Get summary from pipeline context
+        const summary = pipeline.context?.phaseSummaries?.[phase];
+        const shortSummary = summary
+          ? summary.split("\n")[0]?.slice(0, 60)
+          : agentCount > 1
+            ? `${agentCount} agents (${names})`
+            : "";
+
+        return (
+          <Box key={phase} paddingLeft={2}>
+            <Text color="green">✓ </Text>
+            <Text>{label.padEnd(12)}</Text>
+            <Text dimColor>
+              {elapsed ? `${elapsed.padEnd(6)}` : "      "}
+              {shortSummary}
+            </Text>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ── Activity Feed ──
+
+function ActivityFeed({ entries }: { entries: readonly string[] }) {
+  // Filter to meaningful events only
+  const meaningful = entries
+    .filter((e) => {
+      // Skip internal conductor noise
+      if (e.includes("preparing:")) return false;
+      if (e.includes("beads-reconciled")) return false;
+      if (e.includes("baseline-captured")) return false;
+      if (e.includes("bead-unstuck")) return false;
+      if (e.includes("context:test-captured")) return false;
+      return true;
+    })
+    .slice(-7);
+
+  if (meaningful.length === 0) return null;
+
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>  ── Activity ──</Text>
+      {meaningful.map((entry, i) => {
+        // Parse "[ISO] action: detail" format
+        const match = entry.match(/^\[([^\]]+)\]\s+(\S+?):\s*(.*)/);
+        const ts = match?.[1] ? formatTime(match[1]) : "";
+        const detail = match?.[3] ?? entry;
+
+        // Humanize the detail
+        const humanDetail = humanizeLogEntry(detail);
+
+        return (
+          <Box key={`${i}`} paddingLeft={2}>
+            <Text dimColor>{ts ? `${ts}  ` : "      "}</Text>
+            <Text>{humanDetail}</Text>
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return iso.slice(11, 16);
+  }
+}
+
+function humanizeLogEntry(detail: string): string {
+  // Clean up common patterns
+  return (
+    detail
+      // Remove session IDs
+      .replace(/\(session:\s*[\w-]+\)/g, "")
+      // Remove bead IDs
+      .replace(/for bead \S+/g, "")
+      // Remove "Spawned X agent" → "X started"
+      .replace(/Spawned (\w[\w ]+) agent\s*/g, "$1 started")
+      // Trim whitespace
+      .replace(/\s{2,}/g, " ")
+      .trim()
+  );
+}
+
+// ── Quality Gates Row ──
+
+function QualityGatesRow({ pipeline }: { pipeline: Pipeline }) {
+  const completed = pipeline.completedBeads ?? 0;
+  const implDone = completed >= 4;
+  const redteamDone = completed >= 5;
+  const mergeDone = completed >= 6;
+
+  const gates = [
+    { name: "lint", done: implDone, after: "impl" },
+    { name: "typecheck", done: implDone, after: "impl" },
+    { name: "security", done: redteamDone, after: "redteam" },
+    { name: "mutation", done: redteamDone, after: "redteam" },
+    { name: "suite", done: mergeDone, after: "merge" },
+  ];
+
+  return (
+    <Box paddingLeft={2}>
+      {gates.map((gate) =>
+        gate.done ? (
+          <Text key={gate.name}>
+            <Text color="green">✓ {gate.name}</Text>
+            <Text>  </Text>
+          </Text>
+        ) : (
+          <Text key={gate.name}>
+            <Text dimColor>○ {gate.name}</Text>
+            <Text>  </Text>
+          </Text>
+        ),
+      )}
     </Box>
   );
 }
 
 // ── Decision Panel ──
 
-function DecisionPanel({ question }: { question: Question }) {
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box marginBottom={1}>
-        <Text color="red" bold>
-          ⚠ DECISION NEEDED
-        </Text>
-      </Box>
-      <Box>
-        <Text dimColor>Pipeline: </Text>
-        <Text>{question.featureId}</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text bold>{question.question}</Text>
-      </Box>
-      {question.options ? (
-        <Box flexDirection="column" marginTop={1}>
-          {question.options.map((opt, i) => (
-            <Box key={opt}>
-              <Text color="cyan" bold>
-                [{i + 1}]{" "}
-              </Text>
-              <Text>{opt}</Text>
-            </Box>
-          ))}
-        </Box>
-      ) : null}
-      <Box marginTop={1}>
-        <Text dimColor>Press number to answer, or D for custom response</Text>
-      </Box>
-    </Box>
-  );
-}
-
-// ── Brainstorm Panel ──
-
-function BrainstormPanel({ pipeline }: { pipeline: Pipeline }) {
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box marginBottom={1}>
-        <Text color="cyan" bold>
-          Ready to brainstorm: {pipeline.title}
-        </Text>
-      </Box>
-      <Box>
-        <Text dimColor>Pipeline: </Text>
-        <Text>{pipeline.featureId}</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text>Press </Text>
-        <Text color="cyan" bold>
-          Z
-        </Text>
-        <Text> to start the brainstorm session</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>
-          You'll brainstorm with Claude to refine the spec into user stories.
-          {"\n"}When done, close the bead and autonomous work begins.
-        </Text>
-      </Box>
-    </Box>
-  );
-}
-
-// ── All Clear Panel ──
-
-function AllClearPanel({ pipelines }: { pipelines: Pipeline[] }) {
-  const runningCount = pipelines.filter((p) => p.status === "running").length;
-  const completedCount = pipelines.filter((p) => p.status === "completed").length;
+function DecisionPanel({ decisions }: { decisions: Question[] }) {
+  const decision = decisions[0];
+  if (!decision) return null;
 
   return (
-    <Box flexDirection="column" justifyContent="center" alignItems="center" paddingY={2}>
-      <Text color="green" bold>
-        ✓ Nothing needs your attention.
+    <Box flexDirection="column" paddingLeft={2} marginTop={1}>
+      <Text color="red" bold>
+        ⚠ DECISION NEEDED
       </Text>
-      {runningCount > 0 ? (
-        <Box marginTop={1}>
-          <Text dimColor>
-            {runningCount} pipeline{runningCount > 1 ? "s" : ""} running autonomously.
+      <Text> </Text>
+      <Text>{decision.question}</Text>
+      <Text> </Text>
+      {(decision.options ?? []).map((option, i) => (
+        <Box key={option}>
+          <Text color="cyan" bold>
+            [{i + 1}]
           </Text>
+          <Text> {option}</Text>
         </Box>
-      ) : null}
-      {completedCount > 0 ? (
-        <Box marginTop={1}>
-          <Text color="green">
-            {completedCount} pipeline{completedCount > 1 ? "s" : ""} completed.
-          </Text>
-        </Box>
-      ) : null}
-      <Box marginTop={1}>
-        <Text dimColor>Go do deep work. Hog will toast when it needs you.</Text>
-      </Box>
+      ))}
+      <Text> </Text>
+      <Text dimColor>Press 1-{(decision.options ?? []).length} to choose</Text>
     </Box>
   );
 }
 
-// ── Pipeline Status Bar ──
+// ── Completion Summary ──
 
-function PipelineStatusBar({
-  pipelines,
+function CompletionSummary({
+  pipeline,
   agents,
-  pendingDecisions,
-  mergeQueue,
 }: {
-  pipelines: Pipeline[];
+  pipeline: Pipeline;
   agents: readonly DaemonAgentInfo[];
-  pendingDecisions: Question[];
-  mergeQueue: readonly MergeQueueEntry[];
 }) {
-  const running = pipelines.filter((p) => p.status === "running").length;
-  const brainstorming = pipelines.filter(
-    (p) => p.status === "running" && p.activePhase === "brainstorm",
-  ).length;
-  const autonomous = running - brainstorming;
-  const blocked = pipelines.filter((p) => p.status === "blocked").length;
-  const agentCount = agents.filter((a) => a.isRunning).length;
-  const decisions = pendingDecisions.length;
-  const queueDepth = mergeQueue.filter((e) => e.status === "pending").length;
-
-  const pipelineLabel =
-    brainstorming > 0 && autonomous > 0
-      ? `${brainstorming} brainstorming, ${autonomous} autonomous`
-      : brainstorming > 0
-        ? `${running} pipeline${running !== 1 ? "s" : ""} (brainstorming)`
-        : `${running} pipeline${running !== 1 ? "s" : ""}`;
+  const elapsed = pipeline.completedAt
+    ? formatElapsed(pipeline.startedAt)
+    : formatElapsed(pipeline.startedAt);
 
   return (
-    <Box>
-      <Text dimColor>{pipelineLabel}</Text>
-      <Text dimColor> · </Text>
-      <Text dimColor>
-        {agentCount} agent{agentCount !== 1 ? "s" : ""}
+    <Box flexDirection="column" paddingLeft={2}>
+      <Text color="green" bold>
+        ✓ Pipeline complete
       </Text>
-      {decisions > 0 ? (
-        <>
-          <Text dimColor> · </Text>
-          <Text color="red" bold>
-            ⚠ {decisions} decision{decisions !== 1 ? "s" : ""}
-          </Text>
-        </>
-      ) : null}
-      {blocked > 0 ? (
-        <>
-          <Text dimColor> · </Text>
-          <Text color="yellow">{blocked} blocked</Text>
-        </>
-      ) : null}
-      {queueDepth > 0 ? (
-        <>
-          <Text dimColor> · </Text>
-          <Text dimColor>queue: {queueDepth}</Text>
-        </>
-      ) : null}
+      <Text dimColor>  {elapsed} total · {agents.length} agents used</Text>
     </Box>
   );
 }
 
 // ── Empty State ──
 
-function EmptyState() {
+function EmptyState({ cols, rows }: { cols: number; rows: number }) {
   return (
-    <Box flexDirection="column" justifyContent="center" alignItems="center" paddingY={3}>
+    <Box
+      flexDirection="column"
+      alignItems="center"
+      justifyContent="center"
+      width={cols}
+      height={rows}
+    >
       <Text bold>What do you want to build?</Text>
-      <Box marginTop={1}>
-        <Text dimColor>Press </Text>
-        <Text color="cyan" bold>
-          P
-        </Text>
-        <Text dimColor> to start a new pipeline</Text>
-      </Box>
-      <Box marginTop={1}>
-        <Text dimColor>Describe a feature and hog will:</Text>
-      </Box>
-      <Text dimColor>brainstorm → write stories → write tests → implement → red team → merge</Text>
-    </Box>
-  );
-}
-
-// ── Pipeline Detail Panel ──
-
-function PipelineDetailPanel({
-  pipeline,
-  agents,
-  logEntries,
-}: {
-  pipeline: Pipeline;
-  agents: readonly DaemonAgentInfo[];
-  logEntries?: readonly string[] | undefined;
-}) {
-  const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
-  // Filter agents belonging to this pipeline (match by repo)
-  const pipelineAgents = agents.filter((a) => a.repo === pipeline.repo);
-
-  return (
-    <Box flexDirection="column" paddingX={1}>
-      <Box marginBottom={1}>
-        <Text bold>{pipeline.title}</Text>
-      </Box>
-
-      {/* DAG visualization with real status */}
-      <Box>
-        {phases.map((phase, i) => {
-          const phaseOrder = phases.indexOf(phase);
-          const completed = pipeline.completedBeads ?? 0;
-          let phaseIcon: string;
-          let phaseColor: string;
-
-          if (phaseOrder < completed) {
-            phaseIcon = "✓";
-            phaseColor = "green";
-          } else if (
-            phase === pipeline.activePhase ||
-            (phase === "tests" && pipeline.activePhase === "test")
-          ) {
-            phaseIcon = "◐";
-            phaseColor = "yellow";
-          } else if (pipeline.status === "failed") {
-            phaseIcon = "✗";
-            phaseColor = "red";
-          } else {
-            phaseIcon = "○";
-            phaseColor = "gray";
-          }
-
-          return (
-            <Text key={phase}>
-              <Text color={phaseColor}>
-                {phase} {phaseIcon}
-              </Text>
-              {i < phases.length - 1 ? <Text dimColor> → </Text> : null}
-            </Text>
-          );
-        })}
-      </Box>
-
-      <Box marginTop={1}>
-        <Text dimColor>Status: </Text>
-        {pipeline.activePhase === "brainstorm" ? (
-          <Text color="cyan">waiting for you — press Z to brainstorm</Text>
-        ) : (
-          <Text color={statusColor(pipeline.status)}>{pipeline.status}</Text>
-        )}
-        <Text dimColor>
-          {" "}
-          · {progressPercent(pipeline)} · started {timeAgo(pipeline.startedAt)}
-        </Text>
-      </Box>
-
-      {/* Current phase description */}
-      {pipeline.activePhase && pipeline.status === "running" ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>── Current Phase ──</Text>
-          <Box>
-            <Text color="yellow" bold>◐ {pipeline.activePhase}</Text>
-            <Text dimColor>  {PHASE_DESCRIPTIONS[pipeline.activePhase] ?? ""}</Text>
-          </Box>
-        </Box>
-      ) : null}
-
-      {/* Active agents for this pipeline */}
-      {pipelineAgents.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>── Agents ──</Text>
-          {pipelineAgents.map((agent) => {
-            const elapsed = Math.floor((Date.now() - new Date(agent.startedAt).getTime()) / 60_000);
-            let activity: string;
-            if (!agent.isRunning) {
-              activity = `done (${elapsed}m)`;
-            } else if (agent.lastToolUse) {
-              activity = `${agent.lastToolUse} · ${elapsed}m`;
-            } else {
-              activity = `starting... · ${elapsed}m`;
-            }
-            return (
-              <Box key={agent.sessionId}>
-                <Text color={agent.isRunning ? "yellow" : "green"}>
-                  {agent.isRunning ? "◐ " : "✓ "}
-                </Text>
-                <Text bold>{agent.phase}</Text>
-                <Text dimColor> {activity}</Text>
-              </Box>
-            );
-          })}
-        </Box>
-      ) : pipeline.status === "running" ? (
-        <Box marginTop={1}>
-          <Text dimColor>No active agents — daemon will advance to next phase</Text>
-        </Box>
-      ) : null}
-
-      {/* Recent log entries (capped to prevent overflow) */}
-      {logEntries && logEntries.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text dimColor>── Log (last {Math.min(logEntries.length, 10)}) ──</Text>
-          {logEntries.slice(-10).map((entry, i) => {
-            // Parse timestamp and message from "[ISO] action: detail" format
-            const match = entry.match(/^\[([^\]]+)\]\s+(\S+?):\s*(.*)/);
-            const ts = match ? timeAgo(match[1]!) : "";
-            const action = match ? match[2]! : "";
-            const detail = match ? match[3]! : entry;
-            const timeCol = (ts || "").padEnd(10);
-            return (
-              <Box key={`${i}`}>
-                <Text dimColor>{` ${timeCol}`}</Text>
-                <Text color="cyan">{action ? `${action}: ` : ""}</Text>
-                <Text>{detail}</Text>
-              </Box>
-            );
-          })}
-        </Box>
-      ) : null}
-
-      {/* Blocked/failed indicator */}
-      {pipeline.status === "blocked" ? (
-        <Box marginTop={1}>
-          <Text color="red" bold>
-            ⚠ Blocked — waiting for your decision (see above or press 1-9)
-          </Text>
-        </Box>
-      ) : null}
-      {pipeline.status === "failed" ? (
-        <Box marginTop={1}>
-          <Text color="red" bold>
-            ✗ Pipeline failed at {pipeline.activePhase ?? "unknown"} phase
-          </Text>
-        </Box>
-      ) : null}
-      {pipeline.status === "completed" ? (
-        <Box marginTop={1}>
-          <Text color="green" bold>
-            ✓ Complete! {pipeline.completedBeads}/6 phases done.
-            {pipeline.completedAt ? ` Finished ${timeAgo(pipeline.completedAt)}` : ""}
-          </Text>
-        </Box>
-      ) : null}
-    </Box>
-  );
-}
-
-// ── Merge Queue Section ──
-
-function MergeQueueSection({ entries }: { entries: readonly MergeQueueEntry[] }) {
-  if (entries.length === 0) return null;
-
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text dimColor>── Merge Queue ({entries.length}) ──</Text>
-      {entries.slice(0, 3).map((entry) => (
-        <Box key={entry.id}>
-          <Text color={entry.status === "merged" ? "green" : "yellow"}>
-            {"  "}
-            {entry.status === "pending" ? "○" : "◐"}{" "}
-          </Text>
-          <Text dimColor>{entry.status.padEnd(10)}</Text>
-          <Text>{entry.branch}</Text>
-        </Box>
-      ))}
-    </Box>
-  );
-}
-
-// ── Main Pipeline View ──
-
-export function PipelineView({ data, cols, rows }: PipelineViewProps) {
-  const { pipelines, agents, pendingDecisions, mergeQueue, selectedIndex, logEntries } = data;
-  const isWide = cols >= 100;
-  const listWidth = isWide ? Math.min(40, Math.floor(cols * 0.35)) : cols - 2;
-  const detailWidth = isWide ? cols - listWidth - 4 : 0;
-
-  // If no pipelines, show empty state
-  if (pipelines.length === 0) {
-    return (
-      <Box flexDirection="column" height={rows}>
-        <EmptyState />
-      </Box>
-    );
-  }
-
-  const selectedPipeline = pipelines[selectedIndex];
-
-  // Determine what the focus panel shows
-  const brainstormPipeline =
-    selectedPipeline?.activePhase === "brainstorm" ? selectedPipeline : undefined;
-  const focusContent = brainstormPipeline ? (
-    <BrainstormPanel pipeline={brainstormPipeline} />
-  ) : pendingDecisions.length > 0 ? (
-    <DecisionPanel question={pendingDecisions[0]!} />
-  ) : selectedPipeline ? (
-    <PipelineDetailPanel pipeline={selectedPipeline} agents={agents} logEntries={logEntries} />
-  ) : (
-    <AllClearPanel pipelines={pipelines} />
-  );
-
-  // Narrow layout: list + inline focus content (decisions/detail)
-  if (!isWide) {
-    return (
-      <Box flexDirection="column" height={rows} overflow="hidden">
-        <Box flexDirection="column" flexGrow={1}>
-          {pipelines.map((p, i) => (
-            <PipelineListItem
-              key={p.featureId}
-              pipeline={p}
-              selected={i === selectedIndex}
-              width={listWidth}
-            />
-          ))}
-
-          {/* Focus content inline in narrow layout */}
-          <Box flexDirection="column" marginTop={1}>
-            {focusContent}
-          </Box>
-
-          {agents.length > 0 && pendingDecisions.length === 0 && !selectedPipeline ? (
-            <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>── Agents ({agents.length}) ──</Text>
-              {agents.slice(0, 5).map((a) => (
-                <AgentListItem key={a.sessionId} agent={a} />
-              ))}
-            </Box>
-          ) : null}
-
-          <MergeQueueSection entries={mergeQueue} />
-        </Box>
-        <PipelineStatusBar
-          pipelines={pipelines}
-          agents={agents}
-          pendingDecisions={pendingDecisions}
-          mergeQueue={mergeQueue}
-        />
-      </Box>
-    );
-  }
-
-  // Wide layout: list + detail
-  return (
-    <Box flexDirection="column" height={rows} overflow="hidden">
-      <Box flexGrow={1}>
-        {/* Left: pipeline list + agents */}
-        <Box flexDirection="column" width={listWidth}>
-          {pipelines.map((p, i) => (
-            <PipelineListItem
-              key={p.featureId}
-              pipeline={p}
-              selected={i === selectedIndex}
-              width={listWidth}
-            />
-          ))}
-
-          {agents.length > 0 ? (
-            <Box flexDirection="column" marginTop={1}>
-              <Text dimColor>── Agents ({agents.length}) ──</Text>
-              {agents.slice(0, 5).map((a) => (
-                <AgentListItem key={a.sessionId} agent={a} />
-              ))}
-            </Box>
-          ) : null}
-
-          <MergeQueueSection entries={mergeQueue} />
-        </Box>
-
-        {/* Right: focus panel */}
-        <Box flexDirection="column" width={detailWidth} borderStyle="single" borderColor="gray">
-          {focusContent}
-        </Box>
-      </Box>
-      <PipelineStatusBar
-        pipelines={pipelines}
-        agents={agents}
-        pendingDecisions={pendingDecisions}
-        mergeQueue={mergeQueue}
-      />
+      <Text> </Text>
+      <Text>
+        Press <Text color="cyan" bold>P</Text> to start a new pipeline
+      </Text>
+      <Text> </Text>
+      <Text dimColor>
+        Describe a feature and hog will:
+      </Text>
+      <Text dimColor>
+        brainstorm → write stories → write tests → implement → red team → merge
+      </Text>
     </Box>
   );
 }

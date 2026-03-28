@@ -2,7 +2,7 @@
 title: "feat: cockpit redesign — from developer dashboard to pilot's cockpit"
 type: plan
 date: 2026-03-28
-status: approved
+status: in_progress
 confidence: high
 ---
 
