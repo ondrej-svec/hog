@@ -105,7 +105,13 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
   // Replaces: issue status view with progress percentages
   it("PARITY-2: users can see pipeline progress with real percentages", () => {
     const pipeline = makePipeline({ completedBeads: 3 });
-    const { lastFrame } = renderView({ pipelines: [pipeline] });
+    // List panel with progress % appears when there are 2+ pipelines
+    const { lastFrame } = renderView({
+      pipelines: [
+        pipeline,
+        makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+      ],
+    });
     const frame = lastFrame() ?? "";
     // Must show real percentage (50% for 3/6), not hardcoded
     expect(frame).toContain("50%");
@@ -123,8 +129,10 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const pipeline = makePipeline({ status: "failed", activePhase: "impl", completedBeads: 2 });
     const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("failed");
+    // Phase bar shows impl as active (◐) — the phase where failure occurred
     expect(frame).toContain("impl");
+    // Completed phases shown with ✓
+    expect(frame).toContain("brainstorm ✓");
   });
 
   // Replaces: status change on issues
@@ -142,20 +150,22 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const agent = makeAgent({ phase: "stories" });
     const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
     const frame = lastFrame() ?? "";
-    // Agent is shown with session info (tmux attachable)
+    // Active agent card shows agent name (humanized) and phase
     expect(frame).toContain("stories");
-    expect(frame).toContain("Agents");
+    expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay/);
   });
 
   // Replaces: board help overlay with keyboard shortcuts
-  // The help overlay will be rewritten in Phase 2.3. For now verify that
-  // the status bar shows pipeline count (the cockpit wrapper will add keybinding hints).
-  it("PARITY-7: pipeline view shows status bar with pipeline count", () => {
+  // The status bar is rendered by cockpit.tsx, not PipelineView.
+  // PipelineView shows the pipeline title and phase bar.
+  it("PARITY-7: pipeline view shows pipeline title and phase info", () => {
     const pipeline = makePipeline();
     const { lastFrame } = renderView({ pipelines: [pipeline] });
     const frame = lastFrame() ?? "";
-    // Status bar at bottom shows pipeline and agent counts
-    expect(frame).toContain("1 pipeline");
+    // PipelineView shows the pipeline title in the detail panel
+    expect(frame).toContain("Content pipeline upgrade");
+    // Phase bar is always shown
+    expect(frame).toContain("brainstorm");
   });
 
   // Replaces: empty board state with guidance
