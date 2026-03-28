@@ -908,7 +908,12 @@ export class Conductor {
 
     // RED verification: before spawning impl agent, verify tests fail
     if (role === "impl") {
-      const redResult = await verifyRedState(pipeline.localPath);
+      const testCwd = pipeline.context?.workingDir
+        ? join(pipeline.localPath, pipeline.context.workingDir)
+        : pipeline.localPath;
+      const redResult = await verifyRedState(testCwd, {
+        testCommand: pipeline.context?.testCommand,
+      });
       if (!redResult.passed) {
         // Only log RED failure once per attempt (not every tick)
         const alreadyLogged = this.decisionLog.some(
@@ -946,8 +951,8 @@ export class Conductor {
         // Traceability check (only once with RED verification)
         try {
           const { checkTraceability } = await import("./tdd-enforcement.js");
-          const storiesPath = join(pipeline.localPath, "tests", "stories");
-          const traceability = await checkTraceability(pipeline.localPath, storiesPath);
+          const traceStoriesPath = pipeline.storiesPath ?? join(pipeline.localPath, "docs", "stories");
+          const traceability = await checkTraceability(testCwd, traceStoriesPath);
           if (traceability.uncoveredStories.length > 0) {
             this.log(
               pipeline.featureId,
@@ -1041,7 +1046,10 @@ export class Conductor {
     if (role === "impl" && !this.testBaselines.has(pipeline.featureId)) {
       try {
         const { captureTestBaseline } = await import("./tdd-enforcement.js");
-        const baseline = await captureTestBaseline(pipeline.localPath);
+        const baselineCwd = pipeline.context?.workingDir
+          ? join(pipeline.localPath, pipeline.context.workingDir)
+          : pipeline.localPath;
+        const baseline = await captureTestBaseline(baselineCwd, pipeline.context?.testCommand);
         this.testBaselines.set(pipeline.featureId, baseline);
         this.log(
           pipeline.featureId,
@@ -1271,7 +1279,10 @@ export class Conductor {
         if (phase === "impl") {
           const { verifyGreenState } = await import("./tdd-enforcement.js");
           const baseline = this.testBaselines.get(pipeline.featureId);
-          const green = await verifyGreenState(pipeline.localPath, { baseline }).catch(() => ({
+          const greenCwd = pipeline.context?.workingDir
+            ? join(pipeline.localPath, pipeline.context.workingDir)
+            : pipeline.localPath;
+          const green = await verifyGreenState(greenCwd, { baseline, testCommand: pipeline.context?.testCommand }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));
@@ -1310,7 +1321,10 @@ export class Conductor {
         if (phase === "redteam") {
           const { verifyGreenState } = await import("./tdd-enforcement.js");
           const baseline = this.testBaselines.get(pipeline.featureId);
-          const green = await verifyGreenState(pipeline.localPath, { baseline }).catch(() => ({
+          const greenCwd = pipeline.context?.workingDir
+            ? join(pipeline.localPath, pipeline.context.workingDir)
+            : pipeline.localPath;
+          const green = await verifyGreenState(greenCwd, { baseline, testCommand: pipeline.context?.testCommand }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));

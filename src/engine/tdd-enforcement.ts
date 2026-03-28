@@ -54,9 +54,9 @@ const DEFAULT_CONFIG: TddConfig = {
  */
 export interface VerifyRedOptions {
   /** Specific test files to check (scoped RED). If omitted, runs full suite. */
-  readonly testFiles?: string[];
+  readonly testFiles?: string[] | undefined;
   /** Override the auto-detected test command. */
-  readonly testCommand?: string;
+  readonly testCommand?: string | undefined;
 }
 
 export async function verifyRedState(
