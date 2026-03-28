@@ -338,7 +338,7 @@ The core insight: hog's quality gates are currently hardcoded in TypeScript. Tea
 customize them without forking. Policy-as-Code turns quality standards into declarative
 config that teams own and version-control.
 
-- [ ] 5.1 **Define policy schema** — YAML-based policy files at `.hog/policies/*.yaml`.
+- [x] 5.1 **Define policy schema** — YAML-based policy files at `.hog/policies/*.yaml`.
   Each policy declares: gate name, severity (error/warning), tool/command to run,
   file patterns to check, threshold, and human-readable failure message.
   ```yaml
@@ -351,17 +351,17 @@ config that teams own and version-control.
   ```
   Files: new `src/engine/policy.ts` (schema + loader)
 
-- [ ] 5.2 **Policy loader** — On pipeline start, scan `.hog/policies/` for YAML files,
+- [x] 5.2 **Policy loader** — On pipeline start, scan `.hog/policies/` for YAML files,
   validate against schema, merge with built-in gates. User policies override built-in
   gates of the same name. Invalid policies warn but don't block.
   Files: `src/engine/policy.ts`, `src/engine/quality-gates.ts`
 
-- [ ] 5.3 **Policy-driven gate execution** — Convert `ALL_GATES` from hardcoded array to
+- [x] 5.3 **Policy-driven gate execution** — Convert `ALL_GATES` from hardcoded array to
   a registry that loads from both built-in definitions and policy files. Gate interface
   stays the same — policies are just a declarative way to define gates.
   Files: `src/engine/quality-gates.ts`
 
-- [ ] 5.4 **Built-in policy presets** — Ship default policies for common stacks:
+- [x] 5.4 **Built-in policy presets** — Ship default policies for common stacks:
   - `typescript` — biome lint, tsc --noEmit, npm audit
   - `python` — ruff, mypy, pip audit
   - `rust` — clippy, cargo audit, cargo-mutants
@@ -369,19 +369,19 @@ config that teams own and version-control.
   `.hog/policies/`.
   Files: new `src/engine/policy-presets/`, `src/init.ts`
 
-- [ ] 5.5 **`hog policy list/add/remove`** — CLI commands to manage policies.
+- [x] 5.5 **`hog policy list/add/remove`** — CLI commands to manage policies.
   `hog policy list` shows active policies with severity. `hog policy add <preset>`
   copies preset YAML. `hog policy remove <name>` deletes the file.
   Files: `src/cli.ts`
 
-- [ ] 5.6 **Policy validation in CI** — `hog policy check` runs all active policies
+- [x] 5.6 **Policy validation in CI** — `hog policy check` runs all active policies
   against the current working directory without a pipeline. Useful as a standalone
   CI step or pre-commit hook.
   Files: `src/cli.ts`, `src/engine/quality-gates.ts`
 
 ### Tasks — Worker Adapter Layer
 
-- [ ] 5.7 **Define worker adapter interface** — Abstract the agent spawning contract:
+- [x] 5.7 **Define worker adapter interface** — Abstract the agent spawning contract:
   `spawn(prompt, options) → AgentHandle`, `AgentHandle.onProgress(callback)`,
   `AgentHandle.onComplete(callback)`, `AgentHandle.kill()`. The current Claude-specific
   spawning in `spawn-agent.ts` becomes the first adapter implementation.
@@ -398,7 +398,7 @@ config that teams own and version-control.
 
 ### Tasks — Polish & Instrumentation
 
-- [ ] 5.10 **Dependency vulnerability gate** — `npm audit` / `pip audit` / `cargo audit`
+- [x] 5.10 **Dependency vulnerability gate** — `npm audit` / `pip audit` / `cargo audit`
   as a built-in warning-severity gate AND as a default policy in the typescript/python/rust
   presets.
   Files: `src/engine/quality-gates.ts`

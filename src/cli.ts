@@ -948,6 +948,93 @@ Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeli
     }
   });
 
+// -- Policy management --
+
+const policyCommand = program.command("policy").description("Manage quality gate policies");
+
+policyCommand
+  .command("list")
+  .description("Show active policies for the current project")
+  .action(async () => {
+    const { loadPolicies } = await import("./engine/policy.js");
+    const policies = loadPolicies(process.cwd());
+    if (policies.length === 0) {
+      console.log("No policies found. Run: hog policy add <preset>");
+      console.log("Available presets: typescript, python, rust");
+      return;
+    }
+    console.log(`Active policies (${policies.length}):\n`);
+    for (const p of policies) {
+      const sev = p.severity === "error" ? "BLOCK" : "WARN ";
+      console.log(`  ${sev}  ${p.name.padEnd(20)}  ${p.command}`);
+    }
+  });
+
+policyCommand
+  .command("add <preset>")
+  .description("Install a policy preset (typescript, python, rust)")
+  .action(async (preset: string) => {
+    const { installPreset, PRESETS } = await import("./engine/policy.js");
+    if (!PRESETS[preset]) {
+      console.error(`Unknown preset: ${preset}. Available: ${Object.keys(PRESETS).join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+    const installed = installPreset(process.cwd(), preset);
+    console.log(`Installed ${installed} policies from "${preset}" preset to .hog/policies/`);
+  });
+
+policyCommand
+  .command("check")
+  .description("Run all active policies against the current project (CI-friendly)")
+  .action(async () => {
+    const { loadPolicies, policyToGate } = await import("./engine/policy.js");
+    const policies = loadPolicies(process.cwd());
+    if (policies.length === 0) {
+      console.log("No policies found. Run: hog policy add <preset>");
+      return;
+    }
+
+    let failed = 0;
+    for (const policy of policies) {
+      const gate = policyToGate(policy);
+      const result = await gate.check(process.cwd(), []);
+      const icon = result.passed ? "PASS" : "FAIL";
+      console.log(`  ${icon}  ${policy.name}`);
+      if (!result.passed) {
+        for (const issue of result.issues) {
+          console.log(`         ${issue.message}`);
+        }
+        if (policy.severity === "error") failed++;
+      }
+    }
+
+    if (failed > 0) {
+      console.log(`\n${failed} blocking policy violation(s).`);
+      process.exitCode = 1;
+    } else {
+      console.log("\nAll policies passed.");
+    }
+  });
+
+policyCommand
+  .command("remove <name>")
+  .description("Remove a policy by name")
+  .action(async (name: string) => {
+    const { existsSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    for (const ext of [".yaml", ".yml"]) {
+      const filepath = join(process.cwd(), ".hog", "policies", `${name}${ext}`);
+      if (existsSync(filepath)) {
+        rmSync(filepath);
+        console.log(`Removed policy: ${name}`);
+        return;
+      }
+    }
+    console.error(`Policy not found: ${name}`);
+    process.exitCode = 1;
+  });
+
 // -- Beads server management --
 
 const beadsCommand = program.command("beads").description("Beads/Dolt server management");
