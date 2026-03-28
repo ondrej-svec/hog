@@ -11,12 +11,21 @@ import { EventBus } from "../engine/event-bus.js";
 const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
 
 const PHASE_LABELS: Record<string, string> = {
-  brainstorm: "Brainstorm",
-  stories: "Stories",
-  test: "Tests",
-  impl: "Implementation",
-  redteam: "Red Team",
-  merge: "Merge",
+  brainstorm: "Zaphod (brainstorm)",
+  stories: "Ford (stories)",
+  test: "Arthur (tests)",
+  impl: "Arthur (impl)",
+  redteam: "Marvin (redteam)",
+  merge: "Vogons (merge)",
+};
+
+const PHASE_MESSAGES: Record<string, string> = {
+  brainstorm: "Zaphod has set the course. Two heads are better than one.",
+  stories: "Ford has filed his research. The Guide entry is ready.",
+  test: "Tests failing. The question is good. Proceeding.",
+  impl: "Arthur has built it. Tests green.",
+  redteam: "Marvin: Nothing found. I find this deeply suspicious.",
+  merge: "The Vogons have approved the paperwork.",
 };
 
 const MOCK_TOOLS: Record<string, string[]> = {
@@ -33,8 +42,9 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
   const beads = new MemoryBeadsClient();
   const eventBus = new EventBus();
 
-  console.log("hog demo — simulated pipeline run\n");
-  console.log("Creating feature DAG...");
+  console.log("DON'T PANIC.\n");
+  console.log("hog — Head of Gold — simulated pipeline run\n");
+  console.log("Firing up the Infinite Improbability Drive...");
 
   const dag = await beads.createFeatureDAG(
     "/tmp/hog-demo",
@@ -51,7 +61,7 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
     merge: dag.merge.id,
   };
 
-  console.log("Pipeline created. Starting phases...\n");
+  console.log('Heart of Gold launched. Course: "Add greeting customization"\n');
 
   // Simulate each phase
   for (const phase of PHASE_ORDER) {
@@ -91,7 +101,8 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
     await sleep(300 / speedMultiplier);
     await beads.close("", beadId, `${phase} completed`);
 
-    process.stdout.write(`  ✓ ${label} completed                    \n`);
+    const message = PHASE_MESSAGES[phase] ?? `${label} completed`;
+    process.stdout.write(`  ✓ ${message}                    \n`);
     eventBus.emit("agent:completed", {
       sessionId,
       repo: "demo/sample-project",
@@ -100,9 +111,10 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
     });
   }
 
-  console.log("\nPipeline complete! All 6 phases finished.");
-  console.log("In a real run, each phase spawns a Claude agent with role-specific prompts.");
-  console.log('\nGet started: hog init && hog pipeline create "My feature"');
+  console.log("\nPan Galactic Gargle Blaster served. Feature ready to merge.");
+  console.log("\nIn a real run, each crew member is a separate Claude agent:");
+  console.log("  Zaphod explores, Ford documents, Arthur builds, Marvin breaks, Vogons approve.");
+  console.log("\nYou know where your towel is? Run: hog init");
 }
 
 function sleep(ms: number): Promise<void> {
