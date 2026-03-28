@@ -870,6 +870,7 @@ pipelineCommand
   .description("Compare two pipeline runs side-by-side")
   .action(async (id1: string, id2: string) => {
     const { readEventLog, summarizeEventLog } = await import("./daemon/event-log.js");
+    const { PipelineStore } = await import("./engine/pipeline-store.js");
     const entries1 = readEventLog({ featureId: id1 });
     const entries2 = readEventLog({ featureId: id2 });
 
@@ -882,17 +883,33 @@ pipelineCommand
     const s1 = summarizeEventLog(entries1);
     const s2 = summarizeEventLog(entries2);
 
+    // Try to load pipeline metadata for richer comparison
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const store = new PipelineStore(cfg);
+    const p1 = store.get(id1);
+    const p2 = store.get(id2);
+
     const fmt = (ms: number) => {
       const s = Math.round(ms / 1000);
       return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
     };
+    const cost = (n: number | undefined) => n !== undefined ? `$${n.toFixed(2)}` : "-";
 
     console.log("Pipeline Comparison\n");
     console.log(`${"Metric".padEnd(20)} ${id1.slice(0, 20).padEnd(22)} ${id2.slice(0, 20)}`);
     console.log("-".repeat(64));
-    console.log(`${"Phases".padEnd(20)} ${String(s1.phaseCount).padEnd(22)} ${s1.phaseCount}`);
+    console.log(`${"Phases".padEnd(20)} ${String(s1.phaseCount).padEnd(22)} ${s2.phaseCount}`);
     console.log(`${"Agents".padEnd(20)} ${String(s1.agentCount).padEnd(22)} ${s2.agentCount}`);
     console.log(`${"Duration".padEnd(20)} ${fmt(s1.totalDurationMs).padEnd(22)} ${fmt(s2.totalDurationMs)}`);
+    console.log(`${"Beads completed".padEnd(20)} ${String(p1?.completedBeads ?? "-").padEnd(22)} ${p2?.completedBeads ?? "-"}`);
+    console.log(`${"Status".padEnd(20)} ${String(p1?.status ?? "-").padEnd(22)} ${p2?.status ?? "-"}`);
+    console.log(`${"Total cost".padEnd(20)} ${cost(p1?.totalCost).padEnd(22)} ${cost(p2?.totalCost)}`);
+
+    // Test file counts from event log
+    const testTools1 = s1.phases.find((p) => p.phase === "test")?.tools.length ?? 0;
+    const testTools2 = s2.phases.find((p) => p.phase === "test")?.tools.length ?? 0;
+    console.log(`${"Test phase tools".padEnd(20)} ${String(testTools1).padEnd(22)} ${testTools2}`);
     console.log("");
 
     // Phase-by-phase comparison
@@ -903,10 +920,14 @@ pipelineCommand
 
     console.log("Per-phase durations:");
     for (const phase of allPhases) {
-      const p1 = s1.phases.find((p) => p.phase === phase);
-      const p2 = s2.phases.find((p) => p.phase === phase);
+      const ph1 = s1.phases.find((p) => p.phase === phase);
+      const ph2 = s2.phases.find((p) => p.phase === phase);
+      const cost1 = p1?.costByPhase?.[phase];
+      const cost2 = p2?.costByPhase?.[phase];
+      const costStr1 = cost1 !== undefined ? ` (${cost(cost1)})` : "";
+      const costStr2 = cost2 !== undefined ? ` (${cost(cost2)})` : "";
       console.log(
-        `  ${phase.padEnd(18)} ${(p1 ? fmt(p1.durationMs) : "-").padEnd(22)} ${p2 ? fmt(p2.durationMs) : "-"}`,
+        `  ${phase.padEnd(18)} ${((ph1 ? fmt(ph1.durationMs) : "-") + costStr1).padEnd(22)} ${(ph2 ? fmt(ph2.durationMs) : "-") + costStr2}`,
       );
     }
   });
