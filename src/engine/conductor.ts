@@ -658,6 +658,13 @@ export class Conductor {
           );
 
           if (chunks.length > 1) {
+            // Claim bead ONCE for all parallel agents
+            try {
+              await this.beads.claim(pipeline.localPath, bead.id);
+            } catch {
+              continue; // Another agent already claimed it
+            }
+
             this.log(
               pipeline.featureId,
               `parallel:${role}`,
@@ -666,7 +673,7 @@ export class Conductor {
             this.pendingParallelAgents.set(bead.id, chunks.length);
 
             for (const chunk of chunks) {
-              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction);
+              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction, true);
             }
             continue; // Don't fall through to single spawn
           }
@@ -686,6 +693,7 @@ export class Conductor {
     bead: Bead,
     role: PipelineRole,
     scopeSuffix?: string,
+    skipClaim?: boolean,
   ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
@@ -784,16 +792,18 @@ export class Conductor {
       }
     }
 
-    // Claim the bead (atomically set assignee + in_progress)
-    try {
-      await this.beads.claim(pipeline.localPath, bead.id);
-    } catch (err) {
-      this.log(
-        pipeline.featureId,
-        `agent:claim-failed:${role}`,
-        `Failed to claim bead ${bead.id}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
+    // Claim the bead (skip if already claimed by parallel block)
+    if (!skipClaim) {
+      try {
+        await this.beads.claim(pipeline.localPath, bead.id);
+      } catch (err) {
+        this.log(
+          pipeline.featureId,
+          `agent:claim-failed:${role}`,
+          `Failed to claim bead ${bead.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
     }
 
     // Build the prompt with variable substitution
