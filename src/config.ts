@@ -44,7 +44,6 @@ export const AUTO_STATUS_SCHEMA = z
 export const WORKFLOW_CONFIG_SCHEMA = z
   .object({
     mode: z.enum(["suggested", "freeform"]).default("suggested"),
-    phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
     phasePrompts: z.record(z.string(), z.string()).optional(),
     phaseDefaults: z
       .record(
@@ -61,8 +60,8 @@ export const WORKFLOW_CONFIG_SCHEMA = z
 const REPO_CONFIG_SCHEMA = z.object({
   name: z.string().regex(REPO_NAME_PATTERN, "Must be owner/repo format"),
   shortName: z.string().min(1),
-  projectNumber: z.number().int().positive(),
-  statusFieldId: z.string().min(1),
+  projectNumber: z.number().int().positive().optional(),
+  statusFieldId: z.string().min(1).optional(),
   dueDateFieldId: z.string().optional(),
   completionAction: COMPLETION_ACTION_SCHEMA,
   statusGroups: z.array(z.string()).optional(),
@@ -121,7 +120,6 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
   tddEnforcement: z.boolean().default(true),
-  phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
   phasePrompts: z.record(z.string(), z.string()).optional(),
   qualityGates: z
     .object({

@@ -685,7 +685,7 @@ pipelineCommand
   });
 
 pipelineCommand
-  .command("watch <featureId>", { hidden: true })
+  .command("watch <featureId>")
   .description("Stream pipeline events from the daemon until completion")
   .option("--repo <name>", "Target repo (ignored — kept for backward compat)")
   .action(async (featureId: string) => {
@@ -1935,8 +1935,8 @@ issueCommand
     const { fetchProjectStatusOptions } = await import("./github.js");
     const statuses = fetchProjectStatusOptions(
       repoConfig.name,
-      repoConfig.projectNumber,
-      repoConfig.statusFieldId,
+      repoConfig.projectNumber ?? 0,
+      repoConfig.statusFieldId ?? "",
     );
     if (useJson()) {
       jsonOut({ ok: true, data: { repo, statuses: statuses.map((s) => s.name) } });
@@ -2559,7 +2559,8 @@ workflowCommand
         console.log("Template validated successfully:\n");
         console.log(`  Name: ${result.name}`);
         if (result.description) console.log(`  Description: ${result.description}`);
-        console.log(`  Phases: ${result.workflow.phases.join(", ")}`);
+        const phases = ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
+        console.log(`  Phases: ${phases.join(", ")}`);
         console.log(`  Mode: ${result.workflow.mode}`);
         if (result.staleness) {
           console.log(

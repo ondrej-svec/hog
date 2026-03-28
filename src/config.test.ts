@@ -253,7 +253,6 @@ describe("config migration", () => {
     expect(result.pipeline.launchMode).toBe("tmux");
     expect(result.pipeline.terminalApp).toBe("Ghostty");
     expect(result.pipeline.maxConcurrentAgents).toBe(5);
-    expect(result.pipeline.phases).toEqual(["brainstorm", "plan", "implement"]);
     expect(result.pipeline.tddEnforcement).toBe(true); // default
     // Repos preserved
     expect(result.repos).toHaveLength(1);
@@ -308,7 +307,6 @@ describe("config migration", () => {
     expect(result.pipeline.owner).toBe("dev-user");
     expect(result.pipeline.claudePrompt).toBe("You are a helpful assistant");
     expect(result.pipeline.maxConcurrentAgents).toBe(2);
-    expect(result.pipeline.phases).toEqual(["implement", "review"]);
     expect(result.pipeline.phasePrompts).toEqual({
       implement: "Write code",
       review: "Review carefully",
@@ -389,7 +387,6 @@ describe("resolveProfile", () => {
         owner: "ondrej",
         maxConcurrentAgents: 3,
         tddEnforcement: true,
-        phases: ["brainstorm", "plan", "implement", "review"],
       },
       profiles: {
         work: {
@@ -632,7 +629,7 @@ describe("findRepo", () => {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "user", focusDuration: 1500 },
-    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, phases: [] },
+    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true },
     profiles: {},
   };
 

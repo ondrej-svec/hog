@@ -22,6 +22,7 @@ import {
   isRpcRequest,
   RPC_ERRORS,
   type RpcEvent,
+  PROTOCOL_VERSION,
   type RpcMethods,
   type RpcRequest,
 } from "./protocol.js";
@@ -323,7 +324,8 @@ export class HogDaemon {
           uptime: Math.round((Date.now() - this.startedAt) / 1000),
           pipelines: this.conductor.getPipelines().length,
           agents: this.engine.agents.runningCount,
-          version: "2.0.0",
+          version: "2.1.0",
+          protocolVersion: PROTOCOL_VERSION,
         });
         break;
 

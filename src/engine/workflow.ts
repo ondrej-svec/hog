@@ -25,14 +25,8 @@ export interface IssueWorkflowState {
 
 // ── Pure helpers ──
 
-export function resolvePhases(config: HogConfig, repoConfig?: RepoConfig): string[] {
-  const repoPhases = repoConfig?.workflow?.phases;
-  if (repoPhases && repoPhases.length > 0) return repoPhases;
-
-  const boardPhases = config.pipeline.phases;
-  if (boardPhases && boardPhases.length > 0) return boardPhases;
-
-  return ["brainstorm", "plan", "implement", "review"];
+export function resolvePhases(_config: HogConfig, _repoConfig?: RepoConfig): string[] {
+  return ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
 }
 
 export function derivePhaseStatus(phaseName: string, sessions: AgentSession[]): PhaseStatus {

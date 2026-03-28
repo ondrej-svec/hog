@@ -289,38 +289,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
     default: true,
   });
 
-  // Step 4: Pipeline phases
-  const pipelineMode = await select<string>({
-    message: "Pipeline phase configuration:",
-    choices: [
-      {
-        name: "Full TDD pipeline — brainstorm, stories, tests, impl, redteam, merge",
-        value: "full-tdd",
-      },
-      {
-        name: "Fast pipeline — stories, tests, impl, merge (skip brainstorm + redteam)",
-        value: "fast",
-      },
-      { name: "Custom — configure manually later", value: "custom" },
-    ],
-  });
-
-  let phases: string[];
-  switch (pipelineMode) {
-    case "full-tdd":
-      phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"];
-      console.log("  Using full TDD pipeline with adversarial red team.");
-      break;
-    case "fast":
-      phases = ["stories", "tests", "impl", "merge"];
-      console.log("  Using fast pipeline (no brainstorm or red team).");
-      break;
-    default:
-      phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"];
-      console.log("  Using defaults. Edit ~/.config/hog/config.json to customize.");
-  }
-
-  // Step 5: GitHub integration (optional, de-emphasized)
+  // Step 4: GitHub integration (optional, de-emphasized)
   let shouldSetupGithub = false;
   if (connectGithub && isGhAuthenticated()) {
     shouldSetupGithub = await confirm({
@@ -398,7 +367,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
       owner: login,
       maxConcurrentAgents: Number.parseInt(maxAgents, 10) || 3,
       tddEnforcement,
-      phases,
     },
     profiles: existingConfig?.profiles ?? {},
   };

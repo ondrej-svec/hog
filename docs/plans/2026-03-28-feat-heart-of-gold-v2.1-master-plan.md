@@ -273,7 +273,7 @@ This phase adds personality without compromising rigor.
 
 ### Tasks
 
-- [ ] 4.1 **Remove dead `pipeline.phases` config** — Delete `phases` from
+- [x] 4.1 **Remove dead `pipeline.phases` config** — Delete `phases` from
   `PIPELINE_CONFIG_SCHEMA`. It accepts values but the conductor ignores them, and the
   defaults (`plan`, `implement`) don't match actual phase names.
   Files: `src/config.ts`
@@ -284,7 +284,7 @@ This phase adds personality without compromising rigor.
   (Remaining work from drop-github-board plan)
   Files: `src/config.ts`
 
-- [ ] 4.3 **Make GitHub fields optional in RepoConfig** — `projectNumber` and `statusFieldId`
+- [x] 4.3 **Make GitHub fields optional in RepoConfig** — `projectNumber` and `statusFieldId`
   should be optional for GitHub-free setups. Currently schema validation fails without them.
   (Remaining work from drop-github-board plan)
   Files: `src/config.ts`
@@ -294,19 +294,19 @@ This phase adds personality without compromising rigor.
   Single source of truth prevents drift.
   Files: `src/engine/role-context.ts`, `src/engine/roles.ts`
 
-- [ ] 4.5 **Unhide `pipeline watch`** — Remove `{ hidden: true }` from the watch command.
+- [x] 4.5 **Unhide `pipeline watch`** — Remove `{ hidden: true }` from the watch command.
   It's the primary way for non-TUI users to observe a pipeline.
   Files: `src/cli.ts`
 
-- [ ] 4.6 **Add daemon RPC version** — Add `protocolVersion` field to the initial handshake.
+- [x] 4.6 **Add daemon RPC version** — Add `protocolVersion` field to the initial handshake.
   If CLI and daemon versions mismatch, warn the user to restart the daemon.
   Files: `src/daemon/protocol.ts`, `src/daemon/hogd.ts`, `src/daemon/client.ts`
 
-- [ ] 4.7 **Remove Orchestrator if vestigial** — Verify `engine/orchestrator.ts` is not used
+- [x] 4.7 **Remove Orchestrator if vestigial** — Verify `engine/orchestrator.ts` is not used
   in any active code path. If confirmed vestigial, delete it.
   Files: `src/engine/orchestrator.ts`, `src/engine/engine.ts`
 
-- [ ] 4.8 **Complete `hog beads` CLI surface** — Add `hog beads status`, `hog beads start`,
+- [x] 4.8 **Complete `hog beads` CLI surface** — Add `hog beads status`, `hog beads start`,
   `hog beads stop [--all]` commands using the engine methods that already exist.
   (Remaining work from beads-server-lifecycle plan)
   Files: `src/cli.ts`

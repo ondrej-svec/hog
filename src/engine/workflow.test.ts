@@ -7,32 +7,19 @@ import { derivePhaseStatus, resolvePhases } from "./workflow.js";
 const minConfig = {
   repos: [],
   board: { assignee: "test" },
-  pipeline: { owner: "test", phases: ["brainstorm", "plan", "implement", "review"] },
-} as unknown as HogConfig;
-
-const configWithBoardPhases = {
-  repos: [],
-  board: { assignee: "test" },
-  pipeline: { owner: "test", phases: ["design", "code", "ship"] },
+  pipeline: { owner: "test" },
 } as unknown as HogConfig;
 
 describe("resolvePhases", () => {
-  it("returns default phases when no config", () => {
-    expect(resolvePhases(minConfig)).toEqual(["brainstorm", "plan", "implement", "review"]);
-  });
-
-  it("uses board-level phases when configured", () => {
-    expect(resolvePhases(configWithBoardPhases)).toEqual(["design", "code", "ship"]);
-  });
-
-  it("repo phases override board phases", () => {
-    const repoConfig = { workflow: { phases: ["a", "b"] } } as never;
-    expect(resolvePhases(configWithBoardPhases, repoConfig)).toEqual(["a", "b"]);
-  });
-
-  it("falls back to board phases if repo phases is empty", () => {
-    const repoConfig = { workflow: { phases: [] } } as never;
-    expect(resolvePhases(configWithBoardPhases, repoConfig)).toEqual(["design", "code", "ship"]);
+  it("returns hardcoded pipeline phases", () => {
+    expect(resolvePhases(minConfig)).toEqual([
+      "brainstorm",
+      "stories",
+      "test",
+      "impl",
+      "redteam",
+      "merge",
+    ]);
   });
 });
 

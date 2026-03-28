@@ -90,7 +90,6 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
-    mockSelect.mockResolvedValueOnce("full-tdd"); // pipeline mode
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
@@ -113,7 +112,6 @@ describe("hog init wizard", () => {
     expect(saved.pipeline.owner).toBe("test-user");
     expect(saved.pipeline.maxConcurrentAgents).toBe(3);
     expect(saved.pipeline.tddEnforcement).toBe(true);
-    expect(saved.pipeline.phases).toEqual(["brainstorm", "stories", "tests", "impl", "redteam", "merge"]);
     expect(saved.repos).toHaveLength(1);
     expect(saved.repos[0].name).toBe("org/repo-one");
     expect(saved.repos[0].shortName).toBe("repo-one");
@@ -178,7 +176,6 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("5"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(false); // TDD enforcement off
-    mockSelect.mockResolvedValueOnce("fast"); // fast pipeline mode
 
     // "Connect to GitHub?" → no
     mockConfirm.mockResolvedValueOnce(false);
@@ -190,7 +187,6 @@ describe("hog init wizard", () => {
 
     expect(saved.pipeline.maxConcurrentAgents).toBe(5);
     expect(saved.pipeline.tddEnforcement).toBe(false);
-    expect(saved.pipeline.phases).toEqual(["stories", "tests", "impl", "merge"]);
     expect(saved.repos).toHaveLength(0);
   });
 
@@ -200,7 +196,6 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
-    mockSelect.mockResolvedValueOnce("full-tdd"); // pipeline mode
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
@@ -224,7 +219,6 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
-    mockSelect.mockResolvedValueOnce("full-tdd"); // pipeline mode
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);

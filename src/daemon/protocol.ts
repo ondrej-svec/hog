@@ -76,6 +76,7 @@ export interface RpcMethods {
       pipelines: number;
       agents: number;
       version: string;
+      protocolVersion: number;
     };
   };
   subscribe: { params: Record<string, never>; result: { ok: boolean } };
@@ -117,6 +118,9 @@ export function isRpcRequest(msg: unknown): msg is RpcRequest {
 export function isRpcEvent(msg: unknown): msg is RpcEvent {
   return typeof msg === "object" && msg !== null && "event" in msg && !("id" in msg);
 }
+
+/** Protocol version — bump when breaking changes are made to the RPC interface. */
+export const PROTOCOL_VERSION = 1;
 
 /** Standard error codes (JSON-RPC 2.0 inspired). */
 export const RPC_ERRORS = {
