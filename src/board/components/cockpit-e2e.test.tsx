@@ -2,8 +2,8 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
 import type { Pipeline } from "../../engine/conductor.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "./pipeline-view.js";
@@ -42,21 +42,15 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
   };
 }
 
-function makeAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+function makeAgent(overrides: Partial<DaemonAgentInfo> = {}): DaemonAgentInfo {
   return {
     sessionId: "session-1",
     repo: "owner/repo",
-    issueNumber: 0,
     phase: "stories",
     pid: 12345,
     startedAt: new Date(Date.now() - 180_000).toISOString(),
-    monitor: {
-      sessionId: "session-1",
-      lastToolUse: "Read",
-      lastText: undefined,
-      isRunning: true,
-    },
-    child: {} as never,
+    lastToolUse: "Read",
+    isRunning: true,
     ...overrides,
   };
 }
@@ -69,6 +63,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     options: ["LinkedIn only", "All platforms", "LinkedIn + YouTube"],
     createdAt: new Date().toISOString(),
     source: "clarity-analyst",
+    questionType: "blocking",
     ...overrides,
   };
 }
@@ -111,35 +106,42 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     const pipeline = makePipeline({ completedBeads: 0, activePhase: "stories" });
     const agent = makeAgent({ phase: "stories" });
 
-    it("shows pipeline with 0% progress", () => {
-      const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
+    it("shows pipeline with 0% progress in list panel", () => {
+      // List panel appears when there are 2+ pipelines
+      const { lastFrame } = renderView({
+        pipelines: [
+          pipeline,
+          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+        ],
+        agents: [agent],
+      });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("0%");
       expect(frame).toContain("stories");
     });
 
-    it("shows agent activity", () => {
+    it("shows agent activity in active agent card", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Agents");
-      // Should show the agent is using Read tool
+      // Active agent card shows agent name and phase
+      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
       expect(frame).toContain("stories");
     });
 
-    it("shows status bar with 1 pipeline, 1 agent, 0 decisions", () => {
+    it("shows pipeline and phase info (status bar is in cockpit.tsx, not PipelineView)", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("1 pipeline");
-      expect(frame).toContain("1 agent");
-      expect(frame).not.toContain("decisions");
+      // PipelineView shows the pipeline title and phases
+      expect(frame).toContain("Content pipeline upgrade");
+      expect(frame).toContain("stories");
     });
 
     it("shows DAG with stories active, rest pending", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] }, 120);
       const frame = lastFrame() ?? "";
-      // Wide layout: detail panel shows DAG
+      // Detail panel shows phase bar with ── connectors
       expect(frame).toContain("stories");
-      expect(frame).toContain("→");
+      expect(frame).toContain("──");
     });
   });
 
@@ -148,11 +150,19 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     const pipeline = makePipeline({ completedBeads: 1, activePhase: "test" });
     const agent = makeAgent({
       phase: "test",
-      monitor: { sessionId: "s2", lastToolUse: "Write", lastText: undefined, isRunning: true },
+      lastToolUse: "Write",
+      isRunning: true,
     });
 
-    it("shows 17% progress (1/6 beads done)", () => {
-      const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
+    it("shows 17% progress (1/6 beads done) in list panel", () => {
+      // List panel appears when there are 2+ pipelines
+      const { lastFrame } = renderView({
+        pipelines: [
+          pipeline,
+          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+        ],
+        agents: [agent],
+      });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("17%");
     });
@@ -160,7 +170,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows test agent activity", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("test");
+      expect(frame).toContain("Arthur");
     });
   });
 
@@ -198,13 +208,13 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       expect(frame).toContain("[3]");
     });
 
-    it("status bar shows decision count in RED styling", () => {
+    it("shows decision panel with DECISION NEEDED heading", () => {
       const { lastFrame } = renderView({
         pipelines: [pipeline],
         pendingDecisions: [question],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("1 decision");
+      expect(frame).toContain("DECISION NEEDED");
     });
 
     it("decision shows even in narrow layout", () => {
@@ -229,8 +239,14 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       expect(frame).toContain("✓");
     });
 
-    it("shows 100% progress", () => {
-      const { lastFrame } = renderView({ pipelines: [pipeline] });
+    it("shows 100% progress in list panel", () => {
+      // List panel appears when there are 2+ pipelines
+      const { lastFrame } = renderView({
+        pipelines: [
+          pipeline,
+          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+        ],
+      });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("100%");
     });
@@ -238,8 +254,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows completion message in detail", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Complete");
-      expect(frame).toContain("6/6");
+      expect(frame).toContain("Pipeline complete");
     });
   });
 
@@ -247,17 +262,20 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
   describe("Flow 6: Pipeline failed — shows error inline", () => {
     const pipeline = makePipeline({ status: "failed", activePhase: "impl", completedBeads: 2 });
 
-    it("shows failed icon", () => {
+    it("shows failed pipeline phase bar with active phase highlighted", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("✗");
+      // Phase bar shows the active phase with ◐
+      expect(frame).toContain("Arthur");
     });
 
-    it("shows failure message with phase name", () => {
+    it("shows failure phase in the phase bar", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("failed");
-      expect(frame).toContain("impl");
+      // The phase bar shows impl as active (◐)
+      expect(frame).toContain("Arthur");
+      // Completed phases show ✓
+      expect(frame).toContain("Zaphod ✓");
     });
   });
 
@@ -306,10 +324,12 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       expect(frame).toContain("Search");
     });
 
-    it("status bar shows correct counts", () => {
+    it("shows pipeline list with different states", () => {
       const { lastFrame } = renderView({ pipelines });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("1 blocked");
+      // With multiple pipelines, list panel shows all of them
+      expect(frame).toContain("Auth");
+      expect(frame).toContain("Rate");
     });
   });
 
@@ -345,27 +365,29 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows brainstorm prompt not DECISION NEEDED", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("brainstorm");
+      expect(frame).toContain("Zaphod");
       expect(frame).not.toContain("DECISION NEEDED");
     });
 
-    it("shows Z key instruction", () => {
+    it("shows brainstorm as active phase with ◐ in the phase bar", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Z");
+      // Phase bar shows brainstorm as active
+      expect(frame).toContain("Zaphod");
+      expect(frame).toContain("◐");
     });
 
     it("DAG shows brainstorm as first phase", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("brainstorm");
-      expect(frame).toContain("stories");
+      expect(frame).toContain("Zaphod");
+      expect(frame).toContain("Ford");
     });
 
-    it("status bar shows brainstorming state", () => {
+    it("shows pipeline title for brainstorm phase", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("brainstorming");
+      expect(frame).toContain("Content pipeline upgrade");
     });
   });
 

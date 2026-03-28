@@ -25,6 +25,10 @@ export interface SpawnAgentOptions {
   readonly promptTemplate?: string | undefined;
   readonly promptVariables?: PromptVariables | undefined;
   readonly startCommand?: { command: string; extraArgs: readonly string[] } | undefined;
+  /** Claude model to use (e.g., "claude-sonnet-4-6"). Passed as --model flag. */
+  readonly model?: string | undefined;
+  /** Permission mode: "auto", "acceptEdits", "bypassPermissions", etc. Defaults to "auto". */
+  readonly permissionMode?: string | undefined;
 }
 
 export interface SpawnAgentResult {
@@ -53,8 +57,44 @@ function parseSessionId(raw: unknown): string | undefined {
 export interface StreamEvent {
   readonly type: "tool_use" | "result" | "text" | "system" | "error" | "unknown";
   readonly toolName?: string | undefined;
+  /** Short context for the tool use (e.g., file path, pattern). */
+  readonly toolDetail?: string | undefined;
   readonly sessionId?: string | undefined;
   readonly text?: string | undefined;
+}
+
+/** Extract a short human-readable detail from tool input. */
+function extractToolDetail(
+  toolName: string,
+  input: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!input) return undefined;
+  switch (toolName) {
+    case "Read":
+      return shortenPath(input["file_path"] as string | undefined);
+    case "Edit":
+    case "MultiEdit":
+      return shortenPath(input["file_path"] as string | undefined);
+    case "Write":
+      return shortenPath(input["file_path"] as string | undefined);
+    case "Grep":
+      return input["pattern"] as string | undefined;
+    case "Glob":
+      return input["pattern"] as string | undefined;
+    case "Bash": {
+      const cmd = input["command"] as string | undefined;
+      return cmd ? cmd.slice(0, 60) : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function shortenPath(path: string | undefined): string | undefined {
+  if (!path) return undefined;
+  // Show last 2 path segments: "src/engine/conductor.ts"
+  const parts = path.split("/");
+  return parts.length > 2 ? parts.slice(-2).join("/") : path;
 }
 
 /** Parse a single line of stream-json output from claude CLI. */
@@ -75,7 +115,10 @@ export function parseStreamLine(line: string): StreamEvent | undefined {
       if (content) {
         for (const block of content) {
           if (block["type"] === "tool_use") {
-            return { type: "tool_use", toolName: block["name"] as string };
+            const toolName = block["name"] as string;
+            const toolInput = block["input"] as Record<string, unknown> | undefined;
+            const toolDetail = extractToolDetail(toolName, toolInput);
+            return { type: "tool_use", toolName, toolDetail };
           }
           if (block["type"] === "text") {
             return { type: "text", text: block["text"] as string };
@@ -174,6 +217,20 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
 
   const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json", "--verbose"];
 
+  // Permission mode: auto (classifier-backed) with acceptEdits fallback
+  // Auto mode uses a classifier to allow safe operations and block risky ones.
+  // If auto mode isn't available, acceptEdits allows file changes without prompting.
+  if (opts.permissionMode) {
+    args.push("--permission-mode", opts.permissionMode);
+  } else {
+    args.push("--permission-mode", "auto");
+  }
+
+  // Pass --model flag if specified
+  if (opts.model) {
+    args.push("--model", opts.model);
+  }
+
   const child = spawn(command, args, {
     cwd: opts.localPath,
     stdio: ["ignore", "pipe", "pipe"],
@@ -245,7 +302,9 @@ export function attachStreamMonitor(
       state.sessionId = event.sessionId;
     }
     if (event.type === "tool_use" && event.toolName) {
-      state.lastToolUse = event.toolName;
+      state.lastToolUse = event.toolDetail
+        ? `${event.toolName} (${event.toolDetail})`
+        : event.toolName;
     }
     if (event.type === "text" && event.text) {
       state.lastText = event.text;

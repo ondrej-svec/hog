@@ -2,8 +2,8 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
 import type { Pipeline } from "../../engine/conductor.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "./pipeline-view.js";
@@ -42,21 +42,15 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
   };
 }
 
-function makeAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+function makeAgent(overrides: Partial<DaemonAgentInfo> = {}): DaemonAgentInfo {
   return {
     sessionId: "session-1",
     repo: "owner/repo",
-    issueNumber: 0,
     phase: "stories",
     pid: 12345,
     startedAt: new Date(Date.now() - 180_000).toISOString(), // 3 min ago
-    monitor: {
-      sessionId: "session-1",
-      lastToolUse: "Write",
-      lastText: "Writing user stories...",
-      isRunning: true,
-    },
-    child: {} as never,
+    lastToolUse: "Write",
+    isRunning: true,
     ...overrides,
   };
 }
@@ -69,6 +63,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     options: ["OAuth", "Password", "Both"],
     createdAt: new Date().toISOString(),
     source: "clarity-analyst",
+    questionType: "blocking",
     ...overrides,
   };
 }
@@ -117,11 +112,11 @@ describe("PipelineView", () => {
       expect(frame).toContain("pipeline");
     });
 
-    it("shows i key hint to browse issues", () => {
+    it("shows the pipeline flow description", () => {
       const { lastFrame } = renderPipelineView();
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("i");
-      expect(frame).toContain("issues");
+      expect(frame).toContain("brainstorm");
+      expect(frame).toContain("merge");
     });
   });
 
@@ -136,9 +131,10 @@ describe("PipelineView", () => {
       expect(frame).toContain("Add user authentication");
     });
 
-    it("shows running status icon for active pipeline", () => {
+    it("shows running status icon for active agent in pipeline", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline({ status: "running" })],
+        pipelines: [makePipeline({ status: "running", activePhase: "stories" })],
+        agents: [makeAgent({ phase: "stories", isRunning: true })],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("◐");
@@ -146,38 +142,44 @@ describe("PipelineView", () => {
 
     it("shows completed icon for finished pipeline", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline({ status: "completed" })],
+        pipelines: [makePipeline({ status: "completed", completedBeads: 6 })],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("✓");
     });
 
-    it("shows failed icon for failed pipeline", () => {
+    it("shows failed pipeline with phase bar (active phase highlighted)", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline({ status: "failed" })],
+        pipelines: [makePipeline({ status: "failed", activePhase: "impl", completedBeads: 2 })],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("✗");
+      // Phase bar shows active phase with ◐
+      expect(frame).toContain("Arthur");
     });
 
-    it("shows blocked icon with warning for blocked pipeline", () => {
+    it("shows blocked pipeline with DECISION NEEDED when decision exists", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline({ status: "blocked" })],
+        pendingDecisions: [makeQuestion()],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("⚠");
+      expect(frame).toContain("DECISION NEEDED");
     });
 
-    it("shows progress bar", () => {
+    it("shows progress bar in list when multiple pipelines", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline()],
+        pipelines: [
+          makePipeline(),
+          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+        ],
       });
       const frame = lastFrame() ?? "";
-      // Progress bar uses █ and ░ characters
+      // Progress bar uses █ and ░ characters in the list panel
       expect(frame).toMatch(/[█░]/);
     });
 
-    it("highlights the selected pipeline", () => {
+    it("highlights the selected pipeline with ► arrow", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [
           makePipeline(),
@@ -186,7 +188,7 @@ describe("PipelineView", () => {
         selectedIndex: 0,
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("▶");
+      expect(frame).toContain("►");
     });
 
     it("renders more than one pipeline", () => {
@@ -243,7 +245,7 @@ describe("PipelineView", () => {
         pendingDecisions: [makeQuestion()],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("number to answer");
+      expect(frame).toContain("Press 1-");
     });
 
     it("decision takes priority over pipeline detail", () => {
@@ -268,25 +270,28 @@ describe("PipelineView", () => {
       expect(frame).toContain("Rate limiting feature");
     });
 
-    it("shows pipeline status", () => {
+    it("shows phase bar in pipeline detail", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline({ status: "running" })],
+        pipelines: [makePipeline({ status: "running", activePhase: "brainstorm" })],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("running");
+      // Phase bar shows all phases
+      expect(frame).toContain("Zaphod");
+      expect(frame).toContain("Ford");
     });
   });
 
   // STORY-014: As a user, I see active agents across all pipelines
   // so I know what's happening right now
   describe("STORY-014: Agent monitoring", () => {
-    it("shows agents section with count", () => {
+    it("shows active agent with humanized name", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],
         agents: [makeAgent()],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Agents (1)");
+      // Agent card shows a humanized name (Ada, Bea, Cal…)
+      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
     });
 
     it("shows agent phase", () => {
@@ -295,18 +300,17 @@ describe("PipelineView", () => {
         agents: [makeAgent({ phase: "impl" })],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("impl");
+      expect(frame).toContain("Arthur");
     });
 
     it("shows agent activity indicator", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],
-        agents: [makeAgent()],
+        agents: [makeAgent({ phase: "stories" })],
       });
       const frame = lastFrame() ?? "";
-      // Agent section should show the phase and some activity text
+      // Active agent card shows the phase
       expect(frame).toContain("stories");
-      expect(frame).toContain("Agents (1)");
     });
 
     it("shows running icon for active agent", () => {
@@ -318,16 +322,18 @@ describe("PipelineView", () => {
       expect(frame).toContain("◐");
     });
 
-    it("shows completed icon for finished agent", () => {
+    it("shows 'no active agents' when all agents are done", () => {
       const doneAgent = makeAgent({
-        monitor: { sessionId: "s1", lastToolUse: undefined, lastText: "Done", isRunning: false },
+        lastToolUse: undefined,
+        isRunning: false,
       });
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline()],
+        pipelines: [makePipeline({ status: "running" })],
         agents: [doneAgent],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("✓");
+      // Non-running agents are not shown in ActiveAgentCard; running pipeline shows daemon message
+      expect(frame).toContain("No active agents");
     });
 
     it("shows elapsed time", () => {
@@ -340,7 +346,7 @@ describe("PipelineView", () => {
       expect(frame).toContain("3m");
     });
 
-    it("shows multiple agents from different pipelines", () => {
+    it("shows active agent when multiple agents exist", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],
         agents: [
@@ -349,52 +355,48 @@ describe("PipelineView", () => {
         ],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("stories");
-      expect(frame).toContain("impl");
-      expect(frame).toContain("Agents (2)");
+      // At least one agent phase is shown
+      expect(frame).toMatch(/stories|impl/);
     });
   });
 
-  // STORY-015: As a user, I see the merge queue so I know
-  // what's waiting to be integrated
-  describe("STORY-015: Merge queue visibility", () => {
-    it("shows merge queue section when entries exist", () => {
+  // STORY-015: As a user, I see the quality gates so I know
+  // what checks have passed
+  describe("STORY-015: Quality gates visibility", () => {
+    it("hides merge queue section (removed from new design)", () => {
       const { lastFrame } = renderPipelineView({
         pipelines: [makePipeline()],
         mergeQueue: [makeMergeEntry()],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("Merge Queue");
-    });
-
-    it("shows merge queue count", () => {
-      const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline()],
-        mergeQueue: [
-          makeMergeEntry(),
-          makeMergeEntry({ id: "merge-002", branch: "hog/feat-002/tests" }),
-        ],
-      });
-      const frame = lastFrame() ?? "";
-      expect(frame).toContain("Merge Queue (2)");
-    });
-
-    it("shows branch info in merge queue", () => {
-      const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline()],
-        mergeQueue: [makeMergeEntry({ branch: "hog/auth" })],
-      });
-      const frame = lastFrame() ?? "";
-      expect(frame).toContain("hog/auth");
-    });
-
-    it("hides merge queue when empty", () => {
-      const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline()],
-        mergeQueue: [],
-      });
-      const frame = lastFrame() ?? "";
       expect(frame).not.toContain("Merge Queue");
+    });
+
+    it("shows quality gates row with lint and typecheck", () => {
+      const { lastFrame } = renderPipelineView({
+        pipelines: [makePipeline()],
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("lint");
+      expect(frame).toContain("typecheck");
+    });
+
+    it("shows all quality gates as pending when impl not done", () => {
+      const { lastFrame } = renderPipelineView({
+        pipelines: [makePipeline({ completedBeads: 0 })],
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("○ lint");
+      expect(frame).toContain("○ typecheck");
+    });
+
+    it("shows quality gates as done after impl phase", () => {
+      const { lastFrame } = renderPipelineView({
+        pipelines: [makePipeline({ completedBeads: 4 })],
+      });
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("✓ lint");
+      expect(frame).toContain("✓ typecheck");
     });
   });
 

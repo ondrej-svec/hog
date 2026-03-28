@@ -75,8 +75,8 @@ export class ActionExecutor {
 
     try {
       const projectConfig: RepoProjectConfig = {
-        projectNumber: repoConfig.projectNumber,
-        statusFieldId: repoConfig.statusFieldId,
+        projectNumber: repoConfig.projectNumber ?? 0,
+        statusFieldId: repoConfig.statusFieldId ?? "",
         optionId,
       };
       await updateProjectItemStatusAsync(repoName, issueNumber, projectConfig);
@@ -169,7 +169,7 @@ export class ActionExecutor {
 
       if (issueNumber > 0 && dueDate && repoConfig?.dueDateFieldId) {
         const dueDateConfig: RepoDueDateConfig = {
-          projectNumber: repoConfig.projectNumber,
+          projectNumber: repoConfig.projectNumber ?? 0,
           dueDateFieldId: repoConfig.dueDateFieldId,
         };
         updateProjectItemDateAsync(repo, issueNumber, dueDateConfig, dueDate).catch(() => {

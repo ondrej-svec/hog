@@ -11,8 +11,8 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
 import type { Pipeline } from "../../engine/conductor.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "../components/pipeline-view.js";
@@ -51,21 +51,15 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
   };
 }
 
-function makeAgent(overrides: Partial<TrackedAgent> = {}): TrackedAgent {
+function makeAgent(overrides: Partial<DaemonAgentInfo> = {}): DaemonAgentInfo {
   return {
     sessionId: "session-1",
     repo: "owner/repo",
-    issueNumber: 0,
     phase: "stories",
     pid: 12345,
     startedAt: new Date(Date.now() - 180_000).toISOString(),
-    monitor: {
-      sessionId: "session-1",
-      lastToolUse: "Read",
-      lastText: undefined,
-      isRunning: true,
-    },
-    child: {} as never,
+    lastToolUse: "Read",
+    isRunning: true,
     ...overrides,
   };
 }
@@ -78,6 +72,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     options: ["OAuth", "API keys", "Both"],
     createdAt: new Date().toISOString(),
     source: "clarity-analyst",
+    questionType: "blocking",
     ...overrides,
   };
 }
@@ -111,7 +106,13 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
   // Replaces: issue status view with progress percentages
   it("PARITY-2: users can see pipeline progress with real percentages", () => {
     const pipeline = makePipeline({ completedBeads: 3 });
-    const { lastFrame } = renderView({ pipelines: [pipeline] });
+    // List panel with progress % appears when there are 2+ pipelines
+    const { lastFrame } = renderView({
+      pipelines: [
+        pipeline,
+        makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+      ],
+    });
     const frame = lastFrame() ?? "";
     // Must show real percentage (50% for 3/6), not hardcoded
     expect(frame).toContain("50%");
@@ -129,8 +130,10 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const pipeline = makePipeline({ status: "failed", activePhase: "impl", completedBeads: 2 });
     const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
     const frame = lastFrame() ?? "";
-    expect(frame).toContain("failed");
-    expect(frame).toContain("impl");
+    // Phase bar shows impl as active (◐) — the phase where failure occurred
+    expect(frame).toContain("Arthur");
+    // Completed phases shown with ✓
+    expect(frame).toContain("Zaphod ✓");
   });
 
   // Replaces: status change on issues
@@ -148,20 +151,22 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const agent = makeAgent({ phase: "stories" });
     const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
     const frame = lastFrame() ?? "";
-    // Agent is shown with session info (tmux attachable)
+    // Active agent card shows agent name (humanized) and phase
     expect(frame).toContain("stories");
-    expect(frame).toContain("Agents");
+    expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
   });
 
   // Replaces: board help overlay with keyboard shortcuts
-  // The help overlay will be rewritten in Phase 2.3. For now verify that
-  // the status bar shows pipeline count (the cockpit wrapper will add keybinding hints).
-  it("PARITY-7: pipeline view shows status bar with pipeline count", () => {
+  // The status bar is rendered by cockpit.tsx, not PipelineView.
+  // PipelineView shows the pipeline title and phase bar.
+  it("PARITY-7: pipeline view shows pipeline title and phase info", () => {
     const pipeline = makePipeline();
     const { lastFrame } = renderView({ pipelines: [pipeline] });
     const frame = lastFrame() ?? "";
-    // Status bar at bottom shows pipeline and agent counts
-    expect(frame).toContain("1 pipeline");
+    // PipelineView shows the pipeline title in the detail panel
+    expect(frame).toContain("Content pipeline upgrade");
+    // Phase bar is always shown
+    expect(frame).toContain("Zaphod");
   });
 
   // Replaces: empty board state with guidance

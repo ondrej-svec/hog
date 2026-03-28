@@ -44,7 +44,6 @@ export const AUTO_STATUS_SCHEMA = z
 export const WORKFLOW_CONFIG_SCHEMA = z
   .object({
     mode: z.enum(["suggested", "freeform"]).default("suggested"),
-    phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
     phasePrompts: z.record(z.string(), z.string()).optional(),
     phaseDefaults: z
       .record(
@@ -61,8 +60,8 @@ export const WORKFLOW_CONFIG_SCHEMA = z
 const REPO_CONFIG_SCHEMA = z.object({
   name: z.string().regex(REPO_NAME_PATTERN, "Must be owner/repo format"),
   shortName: z.string().min(1),
-  projectNumber: z.number().int().positive(),
-  statusFieldId: z.string().min(1),
+  projectNumber: z.number().int().positive().optional(),
+  statusFieldId: z.string().min(1).optional(),
   dueDateFieldId: z.string().optional(),
   completionAction: COMPLETION_ACTION_SCHEMA,
   statusGroups: z.array(z.string()).optional(),
@@ -121,7 +120,8 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
   tddEnforcement: z.boolean().default(true),
-  phases: z.array(z.string()).default(["brainstorm", "plan", "implement", "review"]),
+  /** Worker adapter for agent spawning. Default: "claude". */
+  worker: z.enum(["claude", "codex", "custom"]).default("claude"),
   phasePrompts: z.record(z.string(), z.string()).optional(),
   qualityGates: z
     .object({
@@ -137,17 +137,39 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
       sound: z.boolean().default(false),
     })
     .optional(),
+  models: z
+    .object({
+      brainstorm: z.string().optional(),
+      stories: z.string().optional(),
+      test: z.string().optional(),
+      impl: z.string().optional(),
+      redteam: z.string().optional(),
+      merge: z.string().optional(),
+    })
+    .optional(),
+  permissionMode: z
+    .enum(["auto", "acceptEdits", "bypassPermissions"])
+    .optional()
+    .describe("Claude Code permission mode for pipeline agents. Default: 'auto' (classifier-backed safety). 'bypassPermissions' only in isolated environments."),
+  budget: z
+    .object({
+      perPipeline: z.number().optional(),
+      perPhase: z.number().optional(),
+    })
+    .optional(),
 });
 
 const PROFILE_SCHEMA = z.object({
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
-  board: BOARD_CONFIG_SCHEMA,
+  /** @deprecated — vestigial v1 board config. Use pipeline instead. */
+  board: BOARD_CONFIG_SCHEMA.optional(),
 });
 
 const HOG_CONFIG_SCHEMA = z.object({
   version: z.number().int().default(5),
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
-  board: BOARD_CONFIG_SCHEMA,
+  /** @deprecated — vestigial v1 board config. Use pipeline instead. */
+  board: BOARD_CONFIG_SCHEMA.optional(),
   pipeline: PIPELINE_CONFIG_SCHEMA,
   profiles: z.record(z.string(), PROFILE_SCHEMA).default({}),
   defaultProfile: z.string().optional(),

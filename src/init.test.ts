@@ -39,7 +39,7 @@ const { runInit } = await import("./init.js");
 
 describe("hog init wizard", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     // Default: no existing config, no auth.json
     mockedExistsSync.mockReturnValue(false);
   });
@@ -87,23 +87,17 @@ describe("hog init wizard", () => {
   it("should create config from wizard answers", async () => {
     mockGhCalls();
 
+    // Pipeline settings
+    mockInput.mockResolvedValueOnce("3"); // max concurrent agents
+    mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
     // Select repos
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
-    // For repo config: project, completion action, short name
-    mockSelect
-      .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("closeIssue"); // completion action
-    mockInput
-      .mockResolvedValueOnce("repo-one") // short name
-      .mockResolvedValueOnce("60") // refresh interval
-      .mockResolvedValueOnce("20") // backlog limit
-      .mockResolvedValueOnce("1500"); // focus duration
-    // LLM setup → no
-    mockConfirm.mockResolvedValueOnce(false);
-    // Workflow template → none
-    mockSelect.mockResolvedValueOnce("none");
+    // For repo config: project number, short name
+    mockSelect.mockResolvedValueOnce(1); // project number
+    mockInput.mockResolvedValueOnce("repo-one"); // short name
 
     await runInit({ force: true });
 
@@ -116,15 +110,17 @@ describe("hog init wizard", () => {
     expect(saved.version).toBe(5);
     expect(saved.pipeline).toBeDefined();
     expect(saved.pipeline.owner).toBe("test-user");
+    expect(saved.pipeline.maxConcurrentAgents).toBe(3);
+    expect(saved.pipeline.tddEnforcement).toBe(true);
     expect(saved.repos).toHaveLength(1);
     expect(saved.repos[0].name).toBe("org/repo-one");
     expect(saved.repos[0].shortName).toBe("repo-one");
     expect(saved.repos[0].projectNumber).toBe(1);
     expect(saved.repos[0].statusFieldId).toBe("SF_auto");
     expect(saved.repos[0].completionAction).toEqual({ type: "closeIssue" });
-    expect(saved.board.assignee).toBe("test-user");
-    expect(saved.board.refreshInterval).toBe(60);
-    expect(saved.board.focusDuration).toBe(1500);
+    // board is no longer written to new configs — pipeline.owner replaces board.assignee
+    expect(saved.board).toBeUndefined();
+    expect(saved.pipeline.owner).toBe("test-user");
   });
 
   it("should prompt for overwrite when config exists and force not set", async () => {
@@ -174,91 +170,65 @@ describe("hog init wizard", () => {
     expect(writeFileSync).not.toHaveBeenCalled();
   });
 
-  it("should handle addLabel completion action", async () => {
+  it("should save fast pipeline mode without brainstorm or redteam", async () => {
     mockGhCalls();
 
-    mockConfirm
-      .mockResolvedValueOnce(true) // Connect to GitHub?
-      .mockResolvedValueOnce(false) // auto-status for repo
-      .mockResolvedValueOnce(false) // use due date field
-      .mockResolvedValueOnce(false); // LLM setup
-    mockCheckbox.mockResolvedValue(["org/repo-one"]);
-    mockSelect
-      .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("addLabel") // completion action
-      .mockResolvedValueOnce("none"); // workflow template
-    mockInput
-      .mockResolvedValueOnce("review:pending") // label name
-      .mockResolvedValueOnce("r1") // short name
-      .mockResolvedValueOnce("60")
-      .mockResolvedValueOnce("20")
-      .mockResolvedValueOnce("1500");
+    // Pipeline settings
+    mockInput.mockResolvedValueOnce("5"); // max concurrent agents
+    mockConfirm.mockResolvedValueOnce(false); // TDD enforcement off
+
+    // "Connect to GitHub?" → no
+    mockConfirm.mockResolvedValueOnce(false);
 
     await runInit({ force: true });
 
     const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
     const saved = JSON.parse(savedJson);
 
-    expect(saved.repos[0].completionAction).toEqual({ type: "addLabel", label: "review:pending" });
+    expect(saved.pipeline.maxConcurrentAgents).toBe(5);
+    expect(saved.pipeline.tddEnforcement).toBe(false);
+    expect(saved.repos).toHaveLength(0);
   });
 
-  it("should show status option selector for updateProjectStatus", async () => {
+  it("should default to closeIssue completion action for repos", async () => {
     mockGhCalls();
 
-    mockConfirm
-      .mockResolvedValueOnce(true) // Connect to GitHub?
-      .mockResolvedValueOnce(false) // auto-status
-      .mockResolvedValueOnce(false) // use due date field
-      .mockResolvedValueOnce(false); // LLM setup
+    // Pipeline settings
+    mockInput.mockResolvedValueOnce("3"); // max concurrent agents
+    mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+
+    // "Connect to GitHub?" → yes
+    mockConfirm.mockResolvedValueOnce(true);
     mockCheckbox.mockResolvedValue(["org/repo-one"]);
-    mockSelect
-      .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("updateProjectStatus") // completion action
-      .mockResolvedValueOnce("opt-done") // status option selector
-      .mockResolvedValueOnce("none"); // workflow template
-    mockInput
-      .mockResolvedValueOnce("r1") // short name
-      .mockResolvedValueOnce("60")
-      .mockResolvedValueOnce("20")
-      .mockResolvedValueOnce("1500");
+    mockSelect.mockResolvedValueOnce(1); // project number
+    mockInput.mockResolvedValueOnce("r1"); // short name
 
     await runInit({ force: true });
 
     const savedJson = (writeFileSync as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as string;
     const saved = JSON.parse(savedJson);
 
-    expect(saved.repos[0].completionAction).toEqual({
-      type: "updateProjectStatus",
-      optionId: "opt-done",
-    });
+    expect(saved.repos).toHaveLength(1);
+    expect(saved.repos[0].completionAction).toEqual({ type: "closeIssue" });
+    expect(saved.repos[0].statusFieldId).toBe("SF_auto");
   });
 
   it("should configure multiple repos", async () => {
     mockGhCalls();
 
-    mockConfirm
-      .mockResolvedValueOnce(true) // Connect to GitHub?
-      .mockResolvedValueOnce(false) // auto-status repo 1
-      .mockResolvedValueOnce(false) // use due date repo 1
-      .mockResolvedValueOnce(false) // auto-status repo 2
-      .mockResolvedValueOnce(false) // use due date repo 2
-      .mockResolvedValueOnce(false); // LLM setup
+    // Pipeline settings
+    mockInput.mockResolvedValueOnce("3"); // max concurrent agents
+    mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+
+    // "Connect to GitHub?" → yes
+    mockConfirm.mockResolvedValueOnce(true);
     mockCheckbox.mockResolvedValue(["org/repo-one", "org/repo-two"]);
     // Repo 1
-    mockSelect
-      .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("closeIssue"); // completion action
+    mockSelect.mockResolvedValueOnce(1); // project number
     mockInput.mockResolvedValueOnce("r1"); // short name
     // Repo 2
-    mockSelect
-      .mockResolvedValueOnce(1) // project number
-      .mockResolvedValueOnce("closeIssue"); // completion action
-    mockInput
-      .mockResolvedValueOnce("r2") // short name
-      .mockResolvedValueOnce("30") // refresh interval
-      .mockResolvedValueOnce("10") // backlog limit
-      .mockResolvedValueOnce("900"); // focus duration
-    mockSelect.mockResolvedValueOnce("none"); // workflow template
+    mockSelect.mockResolvedValueOnce(1); // project number
+    mockInput.mockResolvedValueOnce("r2"); // short name
 
     await runInit({ force: true });
 

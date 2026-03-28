@@ -1,34 +1,39 @@
-import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import { CONFIG_DIR } from "../../config.js";
-import type { TrackedAgent } from "../../engine/agent-manager.js";
-import { AgentManager } from "../../engine/agent-manager.js";
-import { BeadsClient } from "../../engine/beads.js";
 import type { Pipeline } from "../../engine/conductor.js";
-import { Conductor } from "../../engine/conductor.js";
-import { EventBus } from "../../engine/event-bus.js";
 import type { Question } from "../../engine/question-queue.js";
-import { getPendingQuestions, loadQuestionQueue } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
-import { WorkflowEngine } from "../../engine/workflow.js";
+import type { DaemonClient } from "../../daemon/client.js";
+import type { RpcEvent } from "../../daemon/protocol.js";
 
 // ── Types ──
+
+/** Agent info from daemon — replaces TrackedAgent for TUI consumers. */
+export interface DaemonAgentInfo {
+  readonly sessionId: string;
+  readonly repo: string;
+  readonly phase: string;
+  readonly pid: number;
+  readonly startedAt: string;
+  readonly lastToolUse?: string | undefined;
+  readonly isRunning: boolean;
+  readonly featureId?: string | undefined;
+}
 
 export interface UsePipelineDataResult {
   /** All active pipelines. */
   readonly pipelines: Pipeline[];
-  /** Tracked background agents. */
-  readonly agents: readonly TrackedAgent[];
+  /** Tracked background agents (from daemon). */
+  readonly agents: readonly DaemonAgentInfo[];
   /** Pending human decisions. */
   readonly pendingDecisions: Question[];
   /** Merge queue entries. */
   readonly mergeQueue: readonly MergeQueueEntry[];
   /** Whether Beads CLI is available. */
   readonly beadsAvailable: boolean;
+  /** Whether connected to daemon. */
+  readonly daemonConnected: boolean;
   /** Start a new pipeline. Returns pipeline or error. */
   readonly startPipeline: (
     repo: string,
@@ -37,11 +42,11 @@ export interface UsePipelineDataResult {
     description: string,
   ) => Promise<Pipeline | { error: string }>;
   /** Pause a pipeline. */
-  readonly pausePipeline: (featureId: string) => boolean;
+  readonly pausePipeline: (featureId: string) => Promise<boolean>;
   /** Resume a pipeline. */
-  readonly resumePipeline: (featureId: string) => boolean;
+  readonly resumePipeline: (featureId: string) => Promise<boolean>;
   /** Cancel and remove a pipeline. */
-  readonly cancelPipeline: (featureId: string) => boolean;
+  readonly cancelPipeline: (featureId: string) => Promise<boolean>;
   /** Resolve a pending question. */
   readonly resolveDecision: (questionId: string, answer: string) => void;
 }
@@ -60,144 +65,162 @@ export function usePipelineData(
     error: (msg: string) => void;
   },
 ): UsePipelineDataResult {
-  // Conductor and its dependencies — created once, stable across renders
-  const conductorRef = useRef<Conductor | null>(null);
-  const agentManagerRef = useRef<AgentManager | null>(null);
-
+  const clientRef = useRef<DaemonClient | null>(null);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [agents, setAgents] = useState<readonly TrackedAgent[]>([]);
+  const [agents, setAgents] = useState<readonly DaemonAgentInfo[]>([]);
   const [pendingDecisions, setPendingDecisions] = useState<Question[]>([]);
-  const [mergeQueue] = useState<readonly MergeQueueEntry[]>([]);
+  const [mergeQueue, setMergeQueue] = useState<readonly MergeQueueEntry[]>([]);
   const [beadsAvailable, setBeadsAvailable] = useState(false);
+  const [daemonConnected, setDaemonConnected] = useState(false);
 
-  // Initialize conductor for creation only (no tick loop)
+  // Connect to daemon and subscribe to events
   useEffect(() => {
-    const eventBus = new EventBus();
-    const beads = new BeadsClient(config.pipeline.owner);
-    const workflow = new WorkflowEngine(config, eventBus);
-    const agentManager = new AgentManager(config, eventBus, workflow);
-    const conductor = new Conductor(config, eventBus, agentManager, beads);
+    const isTest = process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true";
+    if (isTest) return;
 
-    agentManagerRef.current = agentManager;
-    conductorRef.current = conductor;
+    let cancelled = false;
 
-    setBeadsAvailable(beads.isInstalled());
+    const connect = async () => {
+      try {
+        const { tryConnectDaemon } = await import("../../daemon/client.js");
+        const client = await tryConnectDaemon();
+        if (!client || cancelled) return;
 
-    // Start agent manager for PID polling (tracks running agents)
-    agentManager.start();
-    // NOTE: conductor.start() is NOT called — cockpit does not tick.
-    // The watcher process is the engine that advances pipelines.
+        clientRef.current = client;
+        setDaemonConnected(true);
+
+        // Initial data load
+        const [pipelineData, agentData, decisionData, statusData, mergeQueueData] = await Promise.all([
+          client.call("pipeline.list", {}),
+          client.call("agent.list", {}),
+          client.call("decision.list", {}),
+          client.call("daemon.status", {}),
+          client.call("mergeQueue.list", {}),
+        ]);
+
+        if (cancelled) {
+          client.close();
+          return;
+        }
+
+        setPipelines(pipelineData);
+        setAgents(agentData.map((a) => ({ ...a, isRunning: true })));
+        setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
+        setBeadsAvailable(statusData.pipelines >= 0); // daemon running = beads available
+        setMergeQueue(mergeQueueData);
+
+        // Subscribe to push events for real-time updates
+        client.subscribe((event: RpcEvent) => {
+          if (cancelled) return;
+          handleEvent(event);
+        });
+      } catch {
+        // Daemon not available — will retry on poll
+        setDaemonConnected(false);
+      }
+    };
+
+    const handleEvent = (event: RpcEvent) => {
+      const data = event.data as Record<string, unknown>;
+
+      switch (event.event) {
+        case "agent:spawned":
+          setAgents((prev) => [
+            ...prev,
+            {
+              sessionId: data["sessionId"] as string,
+              repo: data["repo"] as string,
+              phase: data["phase"] as string,
+              pid: 0,
+              startedAt: new Date().toISOString(),
+              isRunning: true,
+            },
+          ]);
+          break;
+
+        case "agent:progress":
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.sessionId === data["sessionId"]
+                ? { ...a, lastToolUse: (data["toolName"] as string) ?? a.lastToolUse }
+                : a,
+            ),
+          );
+          break;
+
+        case "agent:completed":
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.sessionId === data["sessionId"] ? { ...a, isRunning: false } : a,
+            ),
+          );
+          break;
+
+        case "agent:failed":
+          setAgents((prev) =>
+            prev.map((a) =>
+              a.sessionId === data["sessionId"] ? { ...a, isRunning: false } : a,
+            ),
+          );
+          break;
+      }
+    };
+
+    connect();
+
+    // Poll for pipeline/decision state (events may miss some transitions)
+    const pollInterval = setInterval(async () => {
+      const client = clientRef.current;
+      if (!client?.isConnected) {
+        setDaemonConnected(false);
+        // Try reconnecting
+        connect();
+        return;
+      }
+
+      try {
+        const [pipelineData, decisionData, mergeQueueData] = await Promise.all([
+          client.call("pipeline.list", {}),
+          client.call("decision.list", {}),
+          client.call("mergeQueue.list", {}),
+        ]);
+        setPipelines(pipelineData);
+        setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
+        setMergeQueue(mergeQueueData);
+      } catch {
+        setDaemonConnected(false);
+      }
+    }, POLL_INTERVAL_MS);
 
     return () => {
-      agentManager.stop();
-      eventBus.removeAllListeners();
+      cancelled = true;
+      clearInterval(pollInterval);
+      const client = clientRef.current;
+      if (client) {
+        client.close();
+        clientRef.current = null;
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps — config is stable
-
-  // Poll pipelines.json + question-queue.json for display (cockpit is read-only for state)
-  useEffect(() => {
-    const pipelinesFile = join(CONFIG_DIR, "pipelines.json");
-
-    const isTest = process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true";
-
-    const poll = () => {
-      // In test environment, don't read from real filesystem
-      if (isTest) return;
-
-      // Read pipelines from disk (written by watcher processes)
-      try {
-        if (existsSync(pipelinesFile)) {
-          const raw: unknown = JSON.parse(readFileSync(pipelinesFile, "utf-8"));
-          if (Array.isArray(raw)) {
-            const loaded: Pipeline[] = [];
-            for (const e of raw) {
-              if (typeof e !== "object" || e === null) continue;
-              const entry = e as Record<string, unknown>;
-              if (typeof entry["featureId"] !== "string") continue;
-              // Skip completed/failed
-              if (entry["status"] === "completed" || entry["status"] === "failed") continue;
-
-              const repoConfig =
-                config.repos.find((r) => r.name === entry["repo"]) ??
-                ({
-                  name: (entry["repo"] as string) ?? "",
-                  shortName: (entry["repo"] as string) ?? "",
-                  projectNumber: 0,
-                  statusFieldId: "",
-                  localPath: (entry["localPath"] as string) ?? "",
-                  completionAction: { type: "closeIssue" },
-                } as RepoConfig);
-
-              loaded.push({
-                featureId: entry["featureId"] as string,
-                title: (entry["title"] as string) ?? "",
-                repo: (entry["repo"] as string) ?? "",
-                localPath: (entry["localPath"] as string) ?? "",
-                repoConfig,
-                beadIds: entry["beadIds"] as Pipeline["beadIds"],
-                status: (entry["status"] as Pipeline["status"]) ?? "running",
-                completedBeads: (entry["completedBeads"] as number) ?? 0,
-                activePhase: entry["activePhase"] as string | undefined,
-                startedAt: (entry["startedAt"] as string) ?? "",
-                ...(typeof entry["completedAt"] === "string"
-                  ? { completedAt: entry["completedAt"] }
-                  : {}),
-              });
-            }
-            setPipelines(loaded);
-          }
-        } else {
-          setPipelines([]);
-        }
-      } catch {
-        // best-effort
-      }
-
-      // Read question queue from disk
-      try {
-        const queue = loadQuestionQueue();
-        setPendingDecisions(getPendingQuestions(queue));
-      } catch {
-        // best-effort
-      }
-
-      // Read agent state from agent manager
-      const agentManager = agentManagerRef.current;
-      if (agentManager) {
-        setAgents(agentManager.getAgents());
-      }
-    };
-
-    poll(); // immediate
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [config.repos]);
 
   const startPipeline = useCallback(
     async (
       repo: string,
-      repoConfig: RepoConfig,
+      _repoConfig: RepoConfig,
       title: string,
       description: string,
     ): Promise<Pipeline | { error: string }> => {
-      const conductor = conductorRef.current;
-      if (!conductor) return { error: "Conductor not initialized" };
+      const client = clientRef.current;
+      if (!client?.isConnected) return { error: "Not connected to daemon" };
 
       try {
-        const result = await conductor.startPipeline(repo, repoConfig, title, description);
+        const result = await client.call("pipeline.create", {
+          repo,
+          title,
+          description,
+          localPath: process.cwd(),
+        });
         if (!("error" in result)) {
-          // Spawn a watcher process to advance the pipeline (cockpit doesn't tick)
-          try {
-            const cliPath = join(fileURLToPath(import.meta.url), "..", "..", "..", "cli.js");
-            const watchArgs = ["pipeline", "watch", result.featureId, "--repo", repo];
-            const child = spawn(process.execPath, [cliPath, ...watchArgs], {
-              detached: true,
-              stdio: "ignore",
-            });
-            child.unref();
-          } catch {
-            // watcher spawn failed — pipeline won't advance automatically
-          }
           toast.info(`Pipeline started: ${title}`);
         }
         return result;
@@ -209,37 +232,57 @@ export function usePipelineData(
     [toast],
   );
 
-  const pausePipeline = useCallback((featureId: string): boolean => {
-    const conductor = conductorRef.current;
-    if (!conductor) return false;
-    const ok = conductor.pausePipeline(featureId);
-    if (ok) setPipelines(conductor.getPipelines());
+  const pausePipeline = useCallback(async (featureId: string): Promise<boolean> => {
+    const client = clientRef.current;
+    if (!client?.isConnected) return false;
+    const { ok } = await client.call("pipeline.pause", { featureId });
     return ok;
   }, []);
 
-  const resumePipeline = useCallback((featureId: string): boolean => {
-    const conductor = conductorRef.current;
-    if (!conductor) return false;
-    const ok = conductor.resumePipeline(featureId);
-    if (ok) setPipelines(conductor.getPipelines());
+  const resumePipeline = useCallback(async (featureId: string): Promise<boolean> => {
+    const client = clientRef.current;
+    if (!client?.isConnected) return false;
+    const { ok } = await client.call("pipeline.resume", { featureId });
     return ok;
   }, []);
 
-  const cancelPipeline = useCallback((featureId: string): boolean => {
-    const conductor = conductorRef.current;
-    if (!conductor) return false;
-    const ok = conductor.cancelPipeline(featureId);
-    if (ok) setPipelines(conductor.getPipelines());
-    return ok;
+  const cancelPipeline = useCallback(async (featureId: string): Promise<boolean> => {
+    const client = clientRef.current;
+    if (client?.isConnected) {
+      try {
+        const { ok } = await client.call("pipeline.cancel", { featureId });
+        if (ok) return true;
+      } catch {
+        // Daemon call failed — fall through to direct file removal
+      }
+    }
+
+    // Fallback: remove directly from pipelines.json
+    try {
+      const { existsSync, readFileSync, writeFileSync } = await import("node:fs");
+      const { join } = await import("node:path");
+      const file = join(CONFIG_DIR, "pipelines.json");
+      if (existsSync(file)) {
+        const raw: unknown = JSON.parse(readFileSync(file, "utf-8"));
+        if (Array.isArray(raw)) {
+          const filtered = raw.filter(
+            (p: Record<string, unknown>) => p["featureId"] !== featureId,
+          );
+          writeFileSync(file, `${JSON.stringify(filtered, null, 2)}\n`, { mode: 0o600 });
+          return true;
+        }
+      }
+    } catch {
+      // best-effort
+    }
+    return false;
   }, []);
 
   const resolveDecision = useCallback(
     (questionId: string, answer: string) => {
-      const conductor = conductorRef.current;
-      if (!conductor) return;
-      // Use conductor's method to update its in-memory queue AND persist
-      conductor.resolveQuestion(questionId, answer);
-      setPendingDecisions(getPendingQuestions(conductor.getQuestionQueue()));
+      const client = clientRef.current;
+      if (!client?.isConnected) return;
+      client.call("decision.resolve", { questionId, answer }).catch(() => {});
       toast.info(`Decision resolved: ${answer}`);
     },
     [toast],
@@ -251,6 +294,7 @@ export function usePipelineData(
     pendingDecisions,
     mergeQueue,
     beadsAvailable,
+    daemonConnected,
     startPipeline,
     pausePipeline,
     resumePipeline,

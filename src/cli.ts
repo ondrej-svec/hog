@@ -10,7 +10,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
-import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
+import type { BoardConfig, CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
   CONFIG_DIR,
   clearLlmAuth,
@@ -69,7 +69,7 @@ const program = new Command();
 
 program
   .name("hog")
-  .description("TDD-enforced AI development pipelines with structural role separation")
+  .description("Don't Panic. TDD-enforced AI development pipelines — mostly harmless.")
   .version("2.0.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
@@ -99,6 +99,17 @@ program
     const config = loadFullConfig();
     const { runCockpit } = await import("./board/live.js");
     await runCockpit(config);
+  });
+
+// -- Demo command --
+
+program
+  .command("demo")
+  .description("Run a simulated pipeline to see hog in action (no external deps)")
+  .option("--speed <multiplier>", "Speed multiplier (default: 2)", "2")
+  .action(async (opts: { speed: string }) => {
+    const { runDemo } = await import("./demo/demo.js");
+    await runDemo(Number.parseFloat(opts.speed));
   });
 
 // -- Board command (tombstone — removed in v2) --
@@ -145,9 +156,9 @@ program
       );
     }
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
-    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
-    const terminalApp = cfg.board.claudeTerminalApp;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
+    const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
     if (opts.dryRun) {
       if (useJson()) {
@@ -208,6 +219,7 @@ pipelineCommand
   .description("Create an autonomous development pipeline")
   .option("--description <text>", "Feature description (defaults to title)")
   .option("--stories <path>", "Path to stories file")
+  .option("--architecture <path>", "Path to architecture doc")
   .option("--brainstorm-done", "Skip brainstorm phase (mark as already completed)")
   .option("--repo <name>", "Target repo (short name or full)")
   .option("--issue <ref>", "Link to existing GitHub issue (owner/repo#123)")
@@ -218,6 +230,7 @@ pipelineCommand
       opts: {
         description?: string;
         stories?: string;
+        architecture?: string;
         brainstormDone?: true;
         repo?: string;
         issue?: string;
@@ -226,26 +239,15 @@ pipelineCommand
     ) => {
       const rawCfg = loadFullConfig();
       const { resolved: cfg } = resolveProfile(rawCfg);
-      const { Engine } = await import("./engine/engine.js");
-      const { Conductor } = await import("./engine/conductor.js");
-
-      const engine = new Engine(cfg);
-
-      if (!engine.beadsAvailable) {
-        console.error(
-          "Beads (bd) is not installed. Install it first: https://github.com/steveyegge/beads",
-        );
-        process.exitCode = 1;
-        return;
-      }
 
       // Resolve target repo: explicit --repo > match cwd > ad-hoc from cwd
       const cwd = process.cwd();
-      let targetRepo: RepoConfig | undefined;
       let repoName: string;
 
       if (opts.repo) {
-        targetRepo = cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo);
+        const targetRepo = cfg.repos.find(
+          (r) => r.shortName === opts.repo || r.name === opts.repo,
+        );
         if (!targetRepo) {
           console.error(`Repo not found: ${opts.repo}`);
           process.exitCode = 1;
@@ -253,72 +255,48 @@ pipelineCommand
         }
         repoName = targetRepo.name;
       } else {
-        // Try to match cwd to a configured repo
-        targetRepo = cfg.repos.find((r) => r.localPath && cwd.startsWith(r.localPath));
-
+        const targetRepo = cfg.repos.find((r) => r.localPath && cwd.startsWith(r.localPath));
         if (targetRepo) {
           repoName = targetRepo.name;
         } else {
-          // No configured repo — create minimal config from cwd
-          // All GitHub-specific fields get safe defaults
           const { basename } = await import("node:path");
           repoName = basename(cwd);
-          targetRepo = {
-            name: repoName,
-            shortName: repoName,
-            projectNumber: 0,
-            statusFieldId: "",
-            localPath: cwd,
-            completionAction: { type: "closeIssue" },
-          } as RepoConfig;
         }
       }
 
-      if (!targetRepo) {
-        console.error("No repo configured. Run `hog init` first.");
+      // Ensure daemon is running (auto-start if needed)
+      const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+      if (!(await ensureDaemonRunning())) {
+        console.error("Failed to start daemon. Try: hog daemon start --foreground");
         process.exitCode = 1;
         return;
       }
 
-      const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-      engine.agents.start();
-      conductor.start();
+      // Create pipeline via daemon RPC
+      const { connectDaemon } = await import("./daemon/client.js");
+      const client = await connectDaemon();
 
-      const result = await conductor.startPipeline(
-        targetRepo.name,
-        targetRepo,
+      const result = await client.call("pipeline.create", {
+        repo: repoName,
         title,
-        opts.description ?? title,
-      );
+        description: opts.description,
+        brainstormDone: opts.brainstormDone,
+        localPath: cwd,
+        storiesPath: opts.stories,
+        architecturePath: opts.architecture,
+      });
 
       if ("error" in result) {
         console.error(`Failed: ${result.error}`);
-        conductor.stop();
-        engine.agents.stop();
+        client.close();
         process.exitCode = 1;
         return;
-      }
-
-      // Close brainstorm bead if --brainstorm-done (fire-and-forget mode)
-      if (opts.brainstormDone) {
-        try {
-          await engine.beads.close(
-            targetRepo.localPath ?? cwd,
-            result.beadIds.brainstorm,
-            "Brainstorm completed in session",
-          );
-        } catch (err) {
-          console.error(
-            `Warning: failed to close brainstorm bead: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
       }
 
       // Link to GitHub issue if --issue or --create-issue
       let linkedIssueNumber = 0;
       let linkedRepo = "";
       if (opts.issue) {
-        // Parse owner/repo#123 format
         const issueMatch = opts.issue.match(/^(.+)#(\d+)$/);
         if (issueMatch?.[1] && issueMatch[2]) {
           linkedRepo = issueMatch[1];
@@ -344,7 +322,6 @@ pipelineCommand
         try {
           const { createIssueAsync } = await import("./github.js");
           const issueUrl = await createIssueAsync(repoName, title, opts.description ?? title);
-          // Parse issue number from URL (gh returns the URL)
           const numMatch = issueUrl.match(/\/(\d+)$/);
           if (numMatch?.[1]) {
             linkedIssueNumber = Number.parseInt(numMatch[1], 10);
@@ -371,6 +348,8 @@ pipelineCommand
         }
       }
 
+      client.close();
+
       if (useJson()) {
         jsonOut({
           ok: true,
@@ -386,37 +365,17 @@ pipelineCommand
         });
       } else {
         console.log(`Pipeline started: ${result.featureId}`);
-        console.log(`  Repo:    ${targetRepo.shortName ?? targetRepo.name}`);
+        console.log(`  Repo:    ${repoName}`);
         console.log(
           `  Beads:   brainstorm${opts.brainstormDone ? " ✓" : ""} → stories → tests → impl → redteam → merge`,
         );
         if (opts.brainstormDone) {
           console.log("  Mode:    brainstorm skipped — stories agent starts next");
         }
-        console.log("  Watch:   background conductor advancing phases automatically");
-        console.log(`  Log:     ~/.config/hog/pipelines/${result.featureId}.log`);
+        console.log("  Daemon:  hogd advancing phases automatically");
         console.log("");
-        console.log("You'll get system notifications as phases complete.");
-        console.log(
-          "Run `hog cockpit` for visual progress, or `hog pipeline list` to check status.",
-        );
+        console.log("Run `hog cockpit` for visual progress, or `hog pipeline list` to check status.");
       }
-
-      // Spawn a background conductor to advance the pipeline through all phases.
-      // Without this, the pipeline stalls after the first agent completes.
-      const { spawn: spawnProcess } = await import("node:child_process");
-      const { fileURLToPath } = await import("node:url");
-      const cliPath = fileURLToPath(import.meta.url).replace(/\.js$/, ".js");
-      const watchArgs = ["pipeline", "watch", result.featureId, "--repo", targetRepo.name];
-      const child = spawnProcess(process.execPath, [cliPath, ...watchArgs], {
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-
-      // Stop the conductor in THIS process — the background watcher takes over
-      conductor.stop();
-      engine.agents.stop();
     },
   );
 
@@ -424,14 +383,32 @@ pipelineCommand
   .command("list")
   .description("Show active pipelines")
   .action(async () => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+    const { tryConnectDaemon } = await import("./daemon/client.js");
+    const client = await tryConnectDaemon();
 
-    const engine = new Engine(cfg);
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    const pipelines = conductor.getPipelines();
+    if (!client) {
+      // Fallback: read pipelines.json directly when daemon isn't running
+      const rawCfg = loadFullConfig();
+      const { resolved: cfg } = resolveProfile(rawCfg);
+      const { Engine } = await import("./engine/engine.js");
+      const { Conductor } = await import("./engine/conductor.js");
+      const engine = new Engine(cfg);
+      const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
+      const pipelines = conductor.getPipelines();
+      if (useJson()) {
+        jsonOut({ ok: true, data: { pipelines } });
+      } else if (pipelines.length === 0) {
+        console.log("No active pipelines.");
+      } else {
+        for (const p of pipelines) {
+          console.log(`${p.featureId}  ${p.status.padEnd(10)}  ${p.title}`);
+        }
+      }
+      return;
+    }
+
+    const pipelines = await client.call("pipeline.list", {});
+    client.close();
 
     if (useJson()) {
       jsonOut({ ok: true, data: { pipelines } });
@@ -520,14 +497,18 @@ pipelineCommand
   .command("pause <featureId>")
   .description("Pause a running pipeline")
   .action(async (featureId: string) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
 
-    const engine = new Engine(cfg);
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    const ok = conductor.pausePipeline(featureId);
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const client = await connectDaemon();
+    const { ok } = await client.call("pipeline.pause", { featureId });
+    client.close();
     console.log(ok ? `Paused: ${featureId}` : `Pipeline not found or not running: ${featureId}`);
   });
 
@@ -535,14 +516,18 @@ pipelineCommand
   .command("resume <featureId>")
   .description("Resume a paused pipeline")
   .action(async (featureId: string) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
 
-    const engine = new Engine(cfg);
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    const ok = conductor.resumePipeline(featureId);
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const client = await connectDaemon();
+    const { ok } = await client.call("pipeline.resume", { featureId });
+    client.close();
     console.log(ok ? `Resumed: ${featureId}` : `Pipeline not found or not paused: ${featureId}`);
   });
 
@@ -550,9 +535,20 @@ pipelineCommand
   .command("clear")
   .description("Remove all pipelines")
   .action(async () => {
+    // Cancel all pipelines via daemon if running
+    const { tryConnectDaemon } = await import("./daemon/client.js");
+    const client = await tryConnectDaemon();
+    if (client) {
+      const pipelines = await client.call("pipeline.list", {});
+      for (const p of pipelines) {
+        await client.call("pipeline.cancel", { featureId: p.featureId });
+      }
+      client.close();
+    }
+
+    // Also clear the file directly (in case daemon had stale state)
     const { writeFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-
     const pipelinesFile = join(CONFIG_DIR, "pipelines.json");
     writeFileSync(pipelinesFile, "[]\n", { mode: 0o600 });
     console.log("All pipelines cleared.");
@@ -562,58 +558,24 @@ pipelineCommand
   .command("done <featureId>")
   .description("Complete the current phase of a pipeline (closes the active bead)")
   .action(async (featureId: string) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
 
-    const engine = new Engine(cfg);
-    if (!engine.beadsAvailable) {
-      console.error("Beads (bd) is not installed.");
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
       process.exitCode = 1;
       return;
     }
 
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    const pipelines = conductor.getPipelines();
-    const pipeline = pipelines.find((p) => p.featureId === featureId);
+    const client = await connectDaemon();
+    const result = await client.call("pipeline.done", { featureId });
+    client.close();
 
-    if (!pipeline) {
-      console.error(`Pipeline not found: ${featureId}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    // Find the active phase's bead ID
-    const phase = pipeline.activePhase;
-    if (!phase) {
-      console.error("No active phase to complete.");
-      process.exitCode = 1;
-      return;
-    }
-
-    const beadIdMap: Record<string, string> = {
-      brainstorm: pipeline.beadIds.brainstorm,
-      stories: pipeline.beadIds.stories,
-      test: pipeline.beadIds.tests,
-      impl: pipeline.beadIds.impl,
-      redteam: pipeline.beadIds.redteam,
-      merge: pipeline.beadIds.merge,
-    };
-
-    const beadId = beadIdMap[phase];
-    if (!beadId) {
-      console.error(`Unknown phase: ${phase}`);
-      process.exitCode = 1;
-      return;
-    }
-
-    try {
-      await engine.beads.close(pipeline.localPath, beadId, `${phase} completed by user`);
-      console.log(`Phase "${phase}" completed for pipeline ${featureId}.`);
-      console.log("The conductor will advance to the next phase automatically.");
-    } catch (err) {
-      console.error(`Failed to close bead: ${err instanceof Error ? err.message : String(err)}`);
+    if (result.ok) {
+      console.log(`Phase completed for pipeline ${featureId}.`);
+      console.log("The daemon will advance to the next phase automatically.");
+    } else {
+      console.error(result.error ?? "Failed to complete phase.");
       process.exitCode = 1;
     }
   });
@@ -707,55 +669,48 @@ pipelineCommand
   .command("cancel <featureId>")
   .description("Cancel and remove a pipeline")
   .action(async (featureId: string) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
 
-    const engine = new Engine(cfg);
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    const ok = conductor.cancelPipeline(featureId);
-    console.log(ok ? `Cancelled: ${featureId}` : `Pipeline not found: ${featureId}`);
-  });
-
-pipelineCommand
-  .command("watch <featureId>", { hidden: true })
-  .description("Internal: keep conductor alive until a pipeline completes")
-  .option("--repo <name>", "Target repo")
-  .action(async (featureId: string, opts: { repo?: string }) => {
-    const rawCfg = loadFullConfig();
-    const { resolved: cfg } = resolveProfile(rawCfg);
-    const { Engine } = await import("./engine/engine.js");
-    const { Conductor } = await import("./engine/conductor.js");
-    const { sendOsNotification } = await import("./notify.js");
-    const { mkdirSync, appendFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-
-    const engine = new Engine(cfg);
-    if (!engine.beadsAvailable) {
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
       process.exitCode = 1;
       return;
     }
 
-    // Set up progress log
-    const logDir = join(CONFIG_DIR, "pipelines");
-    mkdirSync(logDir, { recursive: true });
-    const logFile = join(logDir, `${featureId}.log`);
+    const client = await connectDaemon();
+    const { ok } = await client.call("pipeline.cancel", { featureId });
+    client.close();
+    console.log(ok ? `Cancelled: ${featureId}` : `Pipeline not found: ${featureId}`);
+  });
 
-    const log = (msg: string) => {
-      const line = `[${new Date().toISOString()}] ${msg}\n`;
-      appendFileSync(logFile, line, "utf-8");
-    };
+pipelineCommand
+  .command("watch <featureId>")
+  .description("Stream pipeline events from the daemon until completion")
+  .option("--repo <name>", "Target repo (ignored — kept for backward compat)")
+  .action(async (featureId: string) => {
+    const { ensureDaemonRunning } = await import("./daemon/ensure-daemon.js");
+    const { connectDaemon } = await import("./daemon/client.js");
+    const { sendOsNotification } = await import("./notify.js");
 
-    log(`Watcher started for pipeline ${featureId}`);
+    if (!(await ensureDaemonRunning())) {
+      console.error("Daemon not running.");
+      process.exitCode = 1;
+      return;
+    }
 
-    const conductor = new Conductor(cfg, engine.eventBus, engine.agents, engine.beads);
-    engine.agents.start();
-    conductor.start();
+    const client = await connectDaemon();
 
-    // Track phase transitions for notifications
-    let lastPhase: string | undefined;
-    let lastCompletedBeads = 0;
+    // Verify pipeline exists
+    const statusResult = await client.call("pipeline.status", { featureId });
+    if ("error" in statusResult) {
+      console.error(`Pipeline not found: ${featureId}`);
+      client.close();
+      process.exitCode = 1;
+      return;
+    }
+
+    console.log(`Watching pipeline ${featureId} (streaming from daemon)...`);
 
     const PHASE_LABELS: Record<string, string> = {
       brainstorm: "Brainstorm",
@@ -766,92 +721,215 @@ pipelineCommand
       merge: "Merge",
     };
 
-    // Poll until the pipeline completes, fails, or disappears
-    const checkInterval = setInterval(() => {
-      const pipelines = conductor.getPipelines();
-      const pipeline = pipelines.find((p) => p.featureId === featureId);
+    // Subscribe to events
+    client.subscribe((event) => {
+      const data = event.data as Record<string, unknown>;
 
-      if (!pipeline) {
-        log("Pipeline not found — watcher exiting");
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(0);
-        return;
-      }
-
-      // Detect phase transitions
-      if (pipeline.activePhase && pipeline.activePhase !== lastPhase) {
-        const label = PHASE_LABELS[pipeline.activePhase] ?? pipeline.activePhase;
-        log(`Phase: ${label} started (${pipeline.completedBeads}/6 complete)`);
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: `${label} phase started (${pipeline.completedBeads}/6)`,
-        });
-        lastPhase = pipeline.activePhase;
-      }
-
-      // Detect bead completions
-      if (pipeline.completedBeads > lastCompletedBeads) {
-        log(`Progress: ${pipeline.completedBeads}/6 beads completed`);
-        lastCompletedBeads = pipeline.completedBeads;
-      }
-
-      // Terminal states
-      if (pipeline.status === "completed") {
-        log("Pipeline completed successfully!");
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: "Pipeline complete! All 6 phases done.",
-        });
-        // Auto-stop Dolt server — no longer needed
-        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
-        log("Dolt server stopped (auto-cleanup)");
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(0);
-      }
-
-      if (pipeline.status === "failed") {
-        const phase = pipeline.activePhase ?? "unknown";
-        log(`Pipeline FAILED at ${phase} phase`);
-        sendOsNotification({
-          title: `hog: ${pipeline.title}`,
-          body: `Pipeline failed at ${phase}. Run: hog pipeline list`,
-        });
-        // Auto-stop Dolt server on failure too
-        engine.beads.stopDolt(pipeline.localPath).catch(() => {});
-        clearInterval(checkInterval);
-        conductor.stop();
-        engine.agents.stop();
-        process.exit(1);
-      }
-
-      if (pipeline.status === "blocked") {
-        // Only notify once per block
-        if (lastPhase !== `blocked:${pipeline.activePhase}`) {
-          const phase = pipeline.activePhase ?? "unknown";
-          log(`Pipeline BLOCKED at ${phase} — needs human decision`);
+      switch (event.event) {
+        case "agent:spawned":
+          console.log(`  Agent spawned: ${data["phase"]} (session: ${data["sessionId"]})`);
+          break;
+        case "agent:progress":
+          if (data["toolName"]) {
+            console.log(`  ${data["sessionId"]}: using ${data["toolName"]}`);
+          }
+          break;
+        case "agent:completed": {
+          const label = PHASE_LABELS[data["phase"] as string] ?? data["phase"];
+          console.log(`  ${label} completed`);
           sendOsNotification({
-            title: `hog: ${pipeline.title}`,
-            body: `Blocked at ${phase} — needs your decision. Run: hog board --live`,
+            title: "hog pipeline",
+            body: `${label} phase completed`,
           });
-          lastPhase = `blocked:${pipeline.activePhase}`;
+          break;
         }
+        case "agent:failed":
+          console.log(`  Agent FAILED: ${data["phase"]} (exit: ${data["exitCode"]})`);
+          break;
+        case "workflow:phase-changed":
+          console.log(`  Phase: ${data["phase"]} → ${data["state"]}`);
+          break;
+      }
+    });
+
+    // Poll daemon for pipeline terminal state
+    const checkInterval = setInterval(async () => {
+      try {
+        const result = await client.call("pipeline.status", { featureId });
+        if ("error" in result) {
+          console.log("Pipeline removed.");
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(0);
+          return;
+        }
+
+        if (result.status === "completed") {
+          console.log("Pipeline completed successfully!");
+          sendOsNotification({
+            title: "hog pipeline",
+            body: "Pipeline complete! All 6 phases done.",
+          });
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(0);
+        }
+
+        if (result.status === "failed") {
+          console.log(`Pipeline FAILED at ${result.activePhase ?? "unknown"} phase`);
+          clearInterval(checkInterval);
+          client.close();
+          process.exit(1);
+        }
+      } catch {
+        // Connection lost — daemon may have stopped
+        console.log("Lost connection to daemon.");
+        clearInterval(checkInterval);
+        process.exit(1);
       }
     }, 5_000);
 
-    // Clean shutdown on SIGINT/SIGTERM
+    // Clean shutdown
     const shutdown = () => {
-      log("Watcher stopped (signal received)");
       clearInterval(checkInterval);
-      conductor.stop();
-      engine.agents.stop();
+      client.close();
       process.exit(0);
     };
     process.on("SIGINT", shutdown);
     process.on("SIGTERM", shutdown);
+  });
+
+pipelineCommand
+  .command("replay <featureId>")
+  .description("Replay a recorded pipeline run from the event log")
+  .option("--speed <multiplier>", "Playback speed multiplier (default: 10)", "10")
+  .action(async (featureId: string, opts: { speed: string }) => {
+    const { readEventLog, summarizeEventLog } = await import("./daemon/event-log.js");
+    const entries = readEventLog({ featureId });
+
+    if (entries.length === 0) {
+      console.error(`No event log found for pipeline ${featureId}.`);
+      console.error("Events are only recorded when the daemon is running.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const speed = Number.parseFloat(opts.speed);
+    const summary = summarizeEventLog(entries);
+    const PHASE_LABELS: Record<string, string> = {
+      brainstorm: "Brainstorm",
+      stories: "Stories",
+      test: "Tests",
+      impl: "Implementation",
+      redteam: "Red Team",
+      merge: "Merge",
+    };
+
+    console.log(`Replaying pipeline ${featureId} at ${speed}x speed...\n`);
+
+    let lastTs = new Date(entries[0]!.timestamp).getTime();
+
+    for (const entry of entries) {
+      const ts = new Date(entry.timestamp).getTime();
+      const delay = (ts - lastTs) / speed;
+      if (delay > 0 && delay < 10_000) {
+        await new Promise((r) => setTimeout(r, delay));
+      }
+      lastTs = ts;
+
+      const phase = entry.data["phase"] as string | undefined;
+      const label = phase ? (PHASE_LABELS[phase] ?? phase) : "";
+
+      switch (entry.event) {
+        case "agent:spawned":
+          console.log(`  ◐ ${label} started`);
+          break;
+        case "agent:progress": {
+          const tool = entry.data["toolName"] as string | undefined;
+          if (tool) process.stdout.write(`    using ${tool}...\r`);
+          break;
+        }
+        case "agent:completed":
+          console.log(`  ✓ ${label} completed                    `);
+          break;
+        case "agent:failed":
+          console.log(`  ✗ ${label} FAILED (exit: ${entry.data["exitCode"]})`);
+          break;
+        case "workflow:phase-changed":
+          console.log(`  Phase: ${label} → ${entry.data["state"]}`);
+          break;
+      }
+    }
+
+    console.log(`\nReplay complete. ${summary.agentCount} agents across ${summary.phaseCount} phases.`);
+    console.log(`Total duration: ${Math.round(summary.totalDurationMs / 1000)}s`);
+  });
+
+pipelineCommand
+  .command("compare <id1> <id2>")
+  .description("Compare two pipeline runs side-by-side")
+  .action(async (id1: string, id2: string) => {
+    const { readEventLog, summarizeEventLog } = await import("./daemon/event-log.js");
+    const { PipelineStore } = await import("./engine/pipeline-store.js");
+    const entries1 = readEventLog({ featureId: id1 });
+    const entries2 = readEventLog({ featureId: id2 });
+
+    if (entries1.length === 0 || entries2.length === 0) {
+      console.error("Event log not found for one or both pipelines.");
+      process.exitCode = 1;
+      return;
+    }
+
+    const s1 = summarizeEventLog(entries1);
+    const s2 = summarizeEventLog(entries2);
+
+    // Try to load pipeline metadata for richer comparison
+    const rawCfg = loadFullConfig();
+    const { resolved: cfg } = resolveProfile(rawCfg);
+    const store = new PipelineStore(cfg);
+    const p1 = store.get(id1);
+    const p2 = store.get(id2);
+
+    const fmt = (ms: number) => {
+      const s = Math.round(ms / 1000);
+      return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+    };
+    const cost = (n: number | undefined) => n !== undefined ? `$${n.toFixed(2)}` : "-";
+
+    console.log("Pipeline Comparison\n");
+    console.log(`${"Metric".padEnd(20)} ${id1.slice(0, 20).padEnd(22)} ${id2.slice(0, 20)}`);
+    console.log("-".repeat(64));
+    console.log(`${"Phases".padEnd(20)} ${String(s1.phaseCount).padEnd(22)} ${s2.phaseCount}`);
+    console.log(`${"Agents".padEnd(20)} ${String(s1.agentCount).padEnd(22)} ${s2.agentCount}`);
+    console.log(`${"Duration".padEnd(20)} ${fmt(s1.totalDurationMs).padEnd(22)} ${fmt(s2.totalDurationMs)}`);
+    console.log(`${"Beads completed".padEnd(20)} ${String(p1?.completedBeads ?? "-").padEnd(22)} ${p2?.completedBeads ?? "-"}`);
+    console.log(`${"Status".padEnd(20)} ${String(p1?.status ?? "-").padEnd(22)} ${p2?.status ?? "-"}`);
+    console.log(`${"Total cost".padEnd(20)} ${cost(p1?.totalCost).padEnd(22)} ${cost(p2?.totalCost)}`);
+
+    // Test file counts from event log
+    const testTools1 = s1.phases.find((p) => p.phase === "test")?.tools.length ?? 0;
+    const testTools2 = s2.phases.find((p) => p.phase === "test")?.tools.length ?? 0;
+    console.log(`${"Test phase tools".padEnd(20)} ${String(testTools1).padEnd(22)} ${testTools2}`);
+    console.log("");
+
+    // Phase-by-phase comparison
+    const allPhases = new Set([
+      ...s1.phases.map((p) => p.phase),
+      ...s2.phases.map((p) => p.phase),
+    ]);
+
+    console.log("Per-phase durations:");
+    for (const phase of allPhases) {
+      const ph1 = s1.phases.find((p) => p.phase === phase);
+      const ph2 = s2.phases.find((p) => p.phase === phase);
+      const cost1 = p1?.costByPhase?.[phase];
+      const cost2 = p2?.costByPhase?.[phase];
+      const costStr1 = cost1 !== undefined ? ` (${cost(cost1)})` : "";
+      const costStr2 = cost2 !== undefined ? ` (${cost(cost2)})` : "";
+      console.log(
+        `  ${phase.padEnd(18)} ${((ph1 ? fmt(ph1.durationMs) : "-") + costStr1).padEnd(22)} ${(ph2 ? fmt(ph2.durationMs) : "-") + costStr2}`,
+      );
+    }
   });
 
 pipelineCommand
@@ -868,8 +946,8 @@ pipelineCommand
 This project uses [hog](https://github.com/ondrejsvec/hog) for autonomous development pipelines.
 
 When the user wants to turn a feature into autonomous work ("ship it", "build this", "/pipeline"):
-1. Write user stories to \`tests/stories/{slug}.md\` using STORY-001 format with acceptance criteria
-2. Run: \`hog pipeline create "Feature title" --brainstorm-done --stories tests/stories/{slug}.md\`
+1. Write user stories to \`docs/stories/{slug}.md\` using STORY-001 format with acceptance criteria
+2. Run: \`hog pipeline create "Feature title" --brainstorm-done --stories docs/stories/{slug}.md\`
 3. The pipeline runs autonomously: stories → tests → impl → redteam → merge
 
 Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeline resume <id>\`
@@ -889,6 +967,93 @@ Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeli
       writeFileSync(claudeMdPath, `# CLAUDE.md\n${section}`, "utf-8");
       console.log("Created CLAUDE.md with Hog Pipelines section");
     }
+  });
+
+// -- Policy management --
+
+const policyCommand = program.command("policy").description("Manage quality gate policies");
+
+policyCommand
+  .command("list")
+  .description("Show active policies for the current project")
+  .action(async () => {
+    const { loadPolicies } = await import("./engine/policy.js");
+    const policies = loadPolicies(process.cwd());
+    if (policies.length === 0) {
+      console.log("No policies found. Run: hog policy add <preset>");
+      console.log("Available presets: typescript, python, rust");
+      return;
+    }
+    console.log(`Active policies (${policies.length}):\n`);
+    for (const p of policies) {
+      const sev = p.severity === "error" ? "BLOCK" : "WARN ";
+      console.log(`  ${sev}  ${p.name.padEnd(20)}  ${p.command}`);
+    }
+  });
+
+policyCommand
+  .command("add <preset>")
+  .description("Install a policy preset (typescript, python, rust)")
+  .action(async (preset: string) => {
+    const { installPreset, PRESETS } = await import("./engine/policy.js");
+    if (!PRESETS[preset]) {
+      console.error(`Unknown preset: ${preset}. Available: ${Object.keys(PRESETS).join(", ")}`);
+      process.exitCode = 1;
+      return;
+    }
+    const installed = installPreset(process.cwd(), preset);
+    console.log(`Installed ${installed} policies from "${preset}" preset to .hog/policies/`);
+  });
+
+policyCommand
+  .command("check")
+  .description("Run all active policies against the current project (CI-friendly)")
+  .action(async () => {
+    const { loadPolicies, policyToGate } = await import("./engine/policy.js");
+    const policies = loadPolicies(process.cwd());
+    if (policies.length === 0) {
+      console.log("No policies found. Run: hog policy add <preset>");
+      return;
+    }
+
+    let failed = 0;
+    for (const policy of policies) {
+      const gate = policyToGate(policy);
+      const result = await gate.check(process.cwd(), []);
+      const icon = result.passed ? "PASS" : "FAIL";
+      console.log(`  ${icon}  ${policy.name}`);
+      if (!result.passed) {
+        for (const issue of result.issues) {
+          console.log(`         ${issue.message}`);
+        }
+        if (policy.severity === "error") failed++;
+      }
+    }
+
+    if (failed > 0) {
+      console.log(`\n${failed} blocking policy violation(s).`);
+      process.exitCode = 1;
+    } else {
+      console.log("\nAll policies passed.");
+    }
+  });
+
+policyCommand
+  .command("remove <name>")
+  .description("Remove a policy by name")
+  .action(async (name: string) => {
+    const { existsSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    for (const ext of [".yaml", ".yml"]) {
+      const filepath = join(process.cwd(), ".hog", "policies", `${name}${ext}`);
+      if (existsSync(filepath)) {
+        rmSync(filepath);
+        console.log(`Removed policy: ${name}`);
+        return;
+      }
+    }
+    console.error(`Policy not found: ${name}`);
+    process.exitCode = 1;
   });
 
 // -- Beads server management --
@@ -1018,7 +1183,7 @@ program
     console.error("");
     console.error("Usage:");
     console.error('  hog pipeline create "Add user authentication"');
-    console.error("  hog pipeline create --brainstorm-done --stories tests/stories/auth.md");
+    console.error("  hog pipeline create --brainstorm-done --stories docs/stories/auth.md");
     console.error("  hog pipeline list");
     console.error("  hog pipeline pause <featureId>");
     console.error("  hog pipeline resume <featureId>");
@@ -1091,9 +1256,9 @@ config
       jsonOut({ ok: true, data: cfg });
     } else {
       console.log("Version:", cfg.version);
-      console.log("Assignee:", cfg.board.assignee);
-      console.log("Refresh interval:", `${cfg.board.refreshInterval}s`);
-      console.log("Backlog limit:", cfg.board.backlogLimit);
+      console.log("Assignee:", cfg.board?.assignee ?? cfg.pipeline.owner);
+      console.log("Refresh interval:", `${cfg.board?.refreshInterval ?? 60}s`);
+      console.log("Backlog limit:", cfg.board?.backlogLimit ?? 20);
       console.log("\nRepos:");
       for (const repo of cfg.repos) {
         console.log(`  ${repo.shortName} → ${repo.name} (project #${repo.projectNumber})`);
@@ -1353,7 +1518,7 @@ config
 
     cfg.profiles[name] = {
       repos: [...cfg.repos],
-      board: { ...cfg.board },
+      ...(cfg.board !== undefined ? { board: { ...cfg.board } } : {}),
     };
     saveFullConfig(cfg);
 
@@ -1660,7 +1825,7 @@ issueCommand
   .action(async (issueRef: string, opts: IssueAssignOptions) => {
     const cfg = loadFullConfig();
     const ref = await resolveRef(issueRef, cfg);
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
       process.exit(1);
@@ -1694,7 +1859,7 @@ issueCommand
   .action(async (issueRef: string, opts: IssueUnassignOptions) => {
     const cfg = loadFullConfig();
     const ref = await resolveRef(issueRef, cfg);
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
       process.exit(1);
@@ -1878,8 +2043,8 @@ issueCommand
     const { fetchProjectStatusOptions } = await import("./github.js");
     const statuses = fetchProjectStatusOptions(
       repoConfig.name,
-      repoConfig.projectNumber,
-      repoConfig.statusFieldId,
+      repoConfig.projectNumber ?? 0,
+      repoConfig.statusFieldId ?? "",
     );
     if (useJson()) {
       jsonOut({ ok: true, data: { repo, statuses: statuses.map((s) => s.name) } });
@@ -1955,7 +2120,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (refs: string[], opts: IssueBulkAssignOptions) => {
     const cfg = loadFullConfig();
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       errorOut("no user specified. Use --user or configure board.assignee in hog init");
     }
@@ -1999,7 +2164,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (refs: string[], opts: IssueBulkUnassignOptions) => {
     const cfg = loadFullConfig();
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       errorOut("no user specified. Use --user or configure board.assignee in hog init");
     }
@@ -2288,7 +2453,7 @@ workflowCommand
 
     const phaseTemplate = DEFAULT_PHASE_PROMPTS[opts.phase];
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
 
     const result = spawnBackgroundAgent({
       localPath: rc.localPath,
@@ -2372,9 +2537,9 @@ workflowCommand
     const { fetchIssueAsync } = await import("./github.js");
 
     const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
-    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
-    const terminalApp = cfg.board.claudeTerminalApp;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
+    const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
     const result = launchClaude({
       localPath: rc.localPath,
@@ -2421,7 +2586,7 @@ workflowCommand
             repo: repo.name,
             workflow: repo.workflow,
             autoStatus: repo.autoStatus,
-            boardWorkflow: cfg.board.workflow,
+            boardWorkflow: cfg.board?.workflow,
           },
         });
       } else {
@@ -2434,15 +2599,15 @@ workflowCommand
         );
         console.log(`\n  Board-level workflow:`);
         console.log(
-          `    ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+          `    ${JSON.stringify(cfg.board?.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
         );
       }
     } else if (useJson()) {
       // Show board-level workflow config
-      jsonOut({ ok: true, data: { boardWorkflow: cfg.board.workflow } });
+      jsonOut({ ok: true, data: { boardWorkflow: cfg.board?.workflow } });
     } else {
       console.log("Board-level workflow config:\n");
-      console.log(`  ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
+      console.log(`  ${JSON.stringify(cfg.board?.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
     }
   });
 
@@ -2502,7 +2667,8 @@ workflowCommand
         console.log("Template validated successfully:\n");
         console.log(`  Name: ${result.name}`);
         if (result.description) console.log(`  Description: ${result.description}`);
-        console.log(`  Phases: ${result.workflow.phases.join(", ")}`);
+        const phases = ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
+        console.log(`  Phases: ${phases.join(", ")}`);
         console.log(`  Mode: ${result.workflow.mode}`);
         if (result.staleness) {
           console.log(
@@ -2518,7 +2684,13 @@ workflowCommand
     }
 
     // Apply to board config
-    const updatedBoard = applyTemplateToBoard(result, cfg.board);
+    const boardForTemplate: BoardConfig = cfg.board ?? {
+      refreshInterval: 60,
+      backlogLimit: 20,
+      assignee: cfg.pipeline.owner,
+      focusDuration: 1500,
+    };
+    const updatedBoard = applyTemplateToBoard(result, boardForTemplate);
     const updatedConfig = { ...cfg, board: updatedBoard };
 
     // Optionally apply to a specific repo
@@ -2571,6 +2743,194 @@ program
     console.log("hog task was removed in v2.0.");
     console.log("Task management (TickTick) was dropped. Use pipelines instead.");
     console.log("See: hog pipeline create --help");
+  });
+
+// -- Daemon commands --
+
+const daemonCommand = program.command("daemon").description("Manage the hogd daemon process");
+
+daemonCommand
+  .command("start")
+  .description("Start the hogd daemon")
+  .option("--foreground", "Run in the foreground (don't detach)")
+  .action(async (opts: { foreground?: true }) => {
+    const { isDaemonRunning } = await import("./daemon/hogd.js");
+
+    if (isDaemonRunning()) {
+      console.log("Daemon is already running.");
+      return;
+    }
+
+    if (opts.foreground) {
+      const { startForeground } = await import("./daemon/hogd.js");
+      await startForeground();
+    } else {
+      // Spawn daemon as a detached background process
+      const { spawn: spawnProcess } = await import("node:child_process");
+      const { fileURLToPath } = await import("node:url");
+      const cliPath = fileURLToPath(import.meta.url).replace(/\.js$/, ".js");
+      const child = spawnProcess(process.execPath, [cliPath, "daemon", "start", "--foreground"], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+
+      // Wait briefly for daemon to start, then verify
+      await new Promise((r) => setTimeout(r, 500));
+      if (isDaemonRunning()) {
+        const { readDaemonPid } = await import("./daemon/hogd.js");
+        console.log(`Daemon started (pid: ${readDaemonPid()}).`);
+      } else {
+        console.error("Daemon failed to start. Try: hog daemon start --foreground");
+        process.exitCode = 1;
+      }
+    }
+  });
+
+daemonCommand
+  .command("stop")
+  .description("Stop the hogd daemon")
+  .action(async () => {
+    const { isDaemonRunning, readDaemonPid } = await import("./daemon/hogd.js");
+
+    if (!isDaemonRunning()) {
+      console.log("Daemon is not running.");
+      return;
+    }
+
+    const pid = readDaemonPid();
+    if (pid) {
+      process.kill(pid, "SIGTERM");
+
+      // Wait for the process to actually die (up to 5 seconds)
+      const { SOCKET_PATH, PID_FILE } = await import("./daemon/hogd.js");
+      const { existsSync, rmSync } = await import("node:fs");
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        try {
+          process.kill(pid, 0);
+        } catch {
+          // Process is dead
+          break;
+        }
+      }
+
+      // Force-clean PID file and socket in case shutdown handler didn't run
+      try {
+        if (existsSync(PID_FILE)) rmSync(PID_FILE);
+      } catch { /* best-effort */ }
+      try {
+        if (existsSync(SOCKET_PATH)) rmSync(SOCKET_PATH);
+      } catch { /* best-effort */ }
+
+      console.log(`Daemon stopped (pid: ${pid}).`);
+    } else {
+      console.error("Could not read daemon PID.");
+      process.exitCode = 1;
+    }
+  });
+
+daemonCommand
+  .command("logs")
+  .description("Show daemon event log")
+  .option("-n, --lines <count>", "Number of lines to show", "30")
+  .option("--follow", "Follow log output (tail -f)")
+  .action(async (opts: { lines: string; follow?: true }) => {
+    const { join } = await import("node:path");
+    const { existsSync, readFileSync } = await import("node:fs");
+    const logFile = join(CONFIG_DIR, "pipelines", "events.jsonl");
+
+    if (!existsSync(logFile)) {
+      console.log("No event log found. Start a pipeline first.");
+      return;
+    }
+
+    const showEntries = () => {
+      const content = readFileSync(logFile, "utf-8");
+      const lines = content.trim().split("\n").filter(Boolean);
+      const limit = Number.parseInt(opts.lines, 10) || 30;
+      const recent = lines.slice(-limit);
+
+      for (const line of recent) {
+        try {
+          const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+          const time = entry.timestamp.slice(11, 19);
+          const phase = entry.data["phase"] as string ?? "";
+          const tool = entry.data["toolName"] as string ?? "";
+          const text = entry.data["text"] as string ?? "";
+          const summary = tool || (text ? text.slice(0, 100) : "");
+
+          console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
+        } catch {
+          // skip malformed
+        }
+      }
+    };
+
+    showEntries();
+
+    if (opts.follow) {
+      const { watchFile } = await import("node:fs");
+      console.log("\n  --- following (Ctrl+C to stop) ---\n");
+      let lastSize = readFileSync(logFile, "utf-8").length;
+      watchFile(logFile, { interval: 1000 }, () => {
+        const content = readFileSync(logFile, "utf-8");
+        if (content.length > lastSize) {
+          const newContent = content.slice(lastSize);
+          for (const line of newContent.trim().split("\n").filter(Boolean)) {
+            try {
+              const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+              const time = entry.timestamp.slice(11, 19);
+              const phase = entry.data["phase"] as string ?? "";
+              const tool = entry.data["toolName"] as string ?? "";
+              const text = entry.data["text"] as string ?? "";
+              const summary = tool || (text ? text.slice(0, 80) : "");
+              console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
+            } catch { /* skip */ }
+          }
+        }
+        lastSize = content.length;
+      });
+      // Keep process alive
+      await new Promise(() => {});
+    }
+  });
+
+daemonCommand
+  .command("status")
+  .description("Show daemon status")
+  .action(async () => {
+    const { isDaemonRunning } = await import("./daemon/hogd.js");
+
+    if (!isDaemonRunning()) {
+      if (useJson()) {
+        jsonOut({ ok: true, data: { running: false } });
+      } else {
+        console.log("Daemon is not running.");
+      }
+      return;
+    }
+
+    // Connect and get status
+    const { connectDaemon } = await import("./daemon/client.js");
+    try {
+      const client = await connectDaemon();
+      const status = await client.call("daemon.status", {});
+      client.close();
+
+      if (useJson()) {
+        jsonOut({ ok: true, data: { running: true, ...status } });
+      } else {
+        console.log(`Daemon running (pid: ${status.pid})`);
+        console.log(`  Uptime:    ${Math.floor(status.uptime / 60)}m ${status.uptime % 60}s`);
+        console.log(`  Pipelines: ${status.pipelines}`);
+        console.log(`  Agents:    ${status.agents}`);
+        console.log(`  Version:   ${status.version}`);
+      }
+    } catch (err) {
+      console.error(`Failed to connect: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
   });
 
 // -- Run --

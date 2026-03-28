@@ -129,10 +129,10 @@ describe("config migration", () => {
     expect(result.version).toBe(5);
     expect(result.repos).toHaveLength(1);
     expect(result.repos[0]?.name).toBe("owner/repo");
-    expect(result.board.refreshInterval).toBe(30);
-    expect(result.board.backlogLimit).toBe(10);
-    expect(result.board.assignee).toBe("test-user");
-    expect(result.board.focusDuration).toBe(900);
+    expect(result.board?.refreshInterval).toBe(30);
+    expect(result.board?.backlogLimit).toBe(10);
+    expect(result.board?.assignee).toBe("test-user");
+    expect(result.board?.focusDuration).toBe(900);
     expect(result).not.toHaveProperty("ticktick");
     expect(result).not.toHaveProperty("defaultProjectId");
     expect(result).not.toHaveProperty("defaultProjectName");
@@ -155,7 +155,7 @@ describe("config migration", () => {
 
     expect(result.version).toBe(5);
     expect(result.repos).toEqual([]); // no legacy repos
-    expect(result.board.assignee).toBe("unknown"); // placeholder default
+    expect(result.board?.assignee).toBe("unknown"); // placeholder default
     expect(result).not.toHaveProperty("ticktick");
   });
 
@@ -253,7 +253,6 @@ describe("config migration", () => {
     expect(result.pipeline.launchMode).toBe("tmux");
     expect(result.pipeline.terminalApp).toBe("Ghostty");
     expect(result.pipeline.maxConcurrentAgents).toBe(5);
-    expect(result.pipeline.phases).toEqual(["brainstorm", "plan", "implement"]);
     expect(result.pipeline.tddEnforcement).toBe(true); // default
     // Repos preserved
     expect(result.repos).toHaveLength(1);
@@ -308,7 +307,6 @@ describe("config migration", () => {
     expect(result.pipeline.owner).toBe("dev-user");
     expect(result.pipeline.claudePrompt).toBe("You are a helpful assistant");
     expect(result.pipeline.maxConcurrentAgents).toBe(2);
-    expect(result.pipeline.phases).toEqual(["implement", "review"]);
     expect(result.pipeline.phasePrompts).toEqual({
       implement: "Write code",
       review: "Review carefully",
@@ -389,7 +387,7 @@ describe("resolveProfile", () => {
         owner: "ondrej",
         maxConcurrentAgents: 3,
         tddEnforcement: true,
-        phases: ["brainstorm", "plan", "implement", "review"],
+        worker: "claude",
       },
       profiles: {
         work: {
@@ -438,7 +436,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config);
 
     expect(activeProfile).toBeNull();
-    expect(resolved.board.assignee).toBe("ondrej");
+    expect(resolved.board?.assignee).toBe("ondrej");
     expect(resolved.repos[0]?.shortName).toBe("main-repo");
   });
 
@@ -448,7 +446,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config);
 
     expect(activeProfile).toBe("work");
-    expect(resolved.board.assignee).toBe("ondrej-work");
+    expect(resolved.board?.assignee).toBe("ondrej-work");
     expect(resolved.repos[0]?.shortName).toBe("work-repo");
   });
 
@@ -458,7 +456,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config, "personal");
 
     expect(activeProfile).toBe("personal");
-    expect(resolved.board.assignee).toBe("ondrej-personal");
+    expect(resolved.board?.assignee).toBe("ondrej-personal");
     expect(resolved.repos[0]?.shortName).toBe("personal-repo");
   });
 
@@ -503,7 +501,7 @@ describe("loadFullConfig with no config file", () => {
 
     expect(result.version).toBe(5);
     expect(result.repos).toEqual([]);
-    expect(result.board.assignee).toBe("unknown");
+    expect(result.board?.assignee).toBe("unknown");
     expect(result).not.toHaveProperty("ticktick");
     // Should have saved to disk
     expect(mkdirSync).toHaveBeenCalled();
@@ -555,7 +553,7 @@ describe("claudePrompt config field", () => {
 
     const result = loadFullConfig();
 
-    expect(result.board.claudePrompt).toBeUndefined();
+    expect(result.board?.claudePrompt).toBeUndefined();
     expect(result.repos[0]?.claudePrompt).toBeUndefined();
   });
 
@@ -580,7 +578,7 @@ describe("claudePrompt config field", () => {
 
     const result = loadFullConfig();
 
-    expect(result.board.claudePrompt).toBe("Work on #{number}: {title}");
+    expect(result.board?.claudePrompt).toBe("Work on #{number}: {title}");
   });
 
   it("claudePrompt is parsed when present in repo config", () => {
@@ -632,7 +630,7 @@ describe("findRepo", () => {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "user", focusDuration: 1500 },
-    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, phases: [] },
+    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, worker: "claude" },
     profiles: {},
   };
 

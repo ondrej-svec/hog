@@ -32,6 +32,31 @@ const PIPELINE_SCHEMA = z.object({
   activePhase: z.string().optional(),
   startedAt: z.string().default(() => new Date().toISOString()),
   completedAt: z.string().optional(),
+  storiesPath: z.string().optional(),
+  architecturePath: z.string().optional(),
+  context: z
+    .object({
+      testCommand: z.string().optional(),
+      testDir: z.string().optional(),
+      testFiles: z.array(z.string()).optional(),
+      workingDir: z.string().optional(),
+      phaseSummaries: z.record(z.string(), z.string()).optional(),
+      retryFeedback: z
+        .record(
+          z.string(),
+          z.object({
+            reason: z.string(),
+            missing: z.array(z.string()),
+            previousSummary: z.string(),
+            attempt: z.number(),
+          }),
+        )
+        .optional(),
+      skippedStories: z.array(z.string()).optional(),
+    })
+    .optional(),
+  costByPhase: z.record(z.string(), z.number()).optional(),
+  totalCost: z.number().optional(),
 });
 
 export type PipelineData = z.infer<typeof PIPELINE_SCHEMA>;
@@ -57,14 +82,26 @@ export interface PipelineSnapshot {
   readonly activePhase?: string | undefined;
   readonly startedAt: string;
   readonly completedAt?: string;
+  readonly costByPhase?: Record<string, number>;
+  readonly totalCost?: number;
 }
 
 // ── PipelineStore ──
 
 const PIPELINES_FILE = `${CONFIG_DIR}/pipelines.json`;
+const SESSION_MAP_FILE = `${CONFIG_DIR}/session-map.json`;
 
 const isTest = (): boolean =>
   process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true";
+
+/** Persisted session → pipeline/worktree mapping for crash recovery. */
+export interface SessionMapEntry {
+  readonly sessionId: string;
+  readonly featureId: string;
+  readonly worktreePath?: string | undefined;
+  readonly branch?: string | undefined;
+  readonly repoPath?: string | undefined;
+}
 
 export class PipelineStore {
   private readonly config: HogConfig;
@@ -125,6 +162,11 @@ export class PipelineStore {
         activePhase: p.activePhase,
         startedAt: p.startedAt,
         completedAt: p.completedAt,
+        storiesPath: p.storiesPath,
+        architecturePath: p.architecturePath,
+        context: p.context,
+        costByPhase: p.costByPhase,
+        totalCost: p.totalCost,
       }));
       mkdirSync(CONFIG_DIR, { recursive: true });
       const tmp = `${PIPELINES_FILE}.tmp`;
@@ -178,11 +220,42 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
+          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.context !== undefined ? { context: data.context } : {}),
+          ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
+          ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         };
         this.pipelines.set(pipeline.featureId, pipeline);
       }
     } catch {
       // Corrupted file — start fresh
+    }
+  }
+
+  /** Save session → pipeline/worktree mappings for crash recovery. */
+  saveSessionMap(entries: SessionMapEntry[]): void {
+    if (isTest()) return;
+    try {
+      mkdirSync(CONFIG_DIR, { recursive: true });
+      const tmp = `${SESSION_MAP_FILE}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
+      renameSync(tmp, SESSION_MAP_FILE);
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Load session → pipeline/worktree mappings (for daemon restart recovery). */
+  loadSessionMap(): SessionMapEntry[] {
+    if (isTest()) return [];
+    if (!existsSync(SESSION_MAP_FILE)) return [];
+    try {
+      const raw: unknown = JSON.parse(readFileSync(SESSION_MAP_FILE, "utf-8"));
+      if (!Array.isArray(raw)) return [];
+      return raw as SessionMapEntry[];
+    } catch {
+      return [];
     }
   }
 
@@ -225,6 +298,11 @@ export class PipelineStore {
           ...(data.activePhase !== undefined ? { activePhase: data.activePhase } : {}),
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
+          ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
+          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.context !== undefined ? { context: data.context } : {}),
+          ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
+          ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         });
       }
     } catch {

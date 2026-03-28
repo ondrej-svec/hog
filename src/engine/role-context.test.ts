@@ -39,29 +39,32 @@ describe("role-context", () => {
       });
     }
 
-    it("impl CLAUDE.md forbids reading stories and spec documents", () => {
+    it("impl CLAUDE.md allows stories but forbids spec documents", () => {
       writeRoleClaudeMd(tempDir, "impl");
       const content = readFileSync(join(tempDir, "CLAUDE.md"), "utf-8");
 
-      expect(content).toContain("do NOT have access to the original feature specification");
-      expect(content).toContain("Do NOT read `tests/stories/`");
+      expect(content).toContain("Read user stories");
+      expect(content).toContain("Read architecture docs");
+      expect(content).toContain("REAL, production-quality code");
       expect(content).toContain("Do NOT read `docs/brainstorms/`");
     });
 
-    it("test CLAUDE.md forbids reading spec documents", () => {
+    it("test CLAUDE.md allows stories and architecture", () => {
       writeRoleClaudeMd(tempDir, "test");
       const content = readFileSync(join(tempDir, "CLAUDE.md"), "utf-8");
 
-      expect(content).toContain("do NOT have access to the original feature specification");
-      expect(content).toContain("ONLY read the user stories");
+      expect(content).toContain("User stories");
+      expect(content).toContain("Architecture doc");
+      expect(content).toContain("catch scaffolding");
     });
 
-    it("stories CLAUDE.md forbids writing code", () => {
+    it("stories CLAUDE.md forbids writing code and mentions architecture doc", () => {
       writeRoleClaudeMd(tempDir, "stories");
       const content = readFileSync(join(tempDir, "CLAUDE.md"), "utf-8");
 
       expect(content).toContain("Do NOT write any code");
-      expect(content).toContain("Do NOT modify any source files");
+      expect(content).toContain("architecture doc");
+      expect(content).toContain("[INTEGRATION]");
     });
 
     it("redteam CLAUDE.md forbids modifying implementation", () => {

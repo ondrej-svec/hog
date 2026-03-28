@@ -3,7 +3,6 @@ import { ActionExecutor } from "./actions.js";
 import { AgentManager } from "./agent-manager.js";
 import { BeadsClient } from "./beads.js";
 import { EventBus } from "./event-bus.js";
-import { Orchestrator } from "./orchestrator.js";
 import { WorkflowEngine } from "./workflow.js";
 
 // ── Engine ──
@@ -19,7 +18,6 @@ export class Engine {
   readonly workflow: WorkflowEngine;
   readonly agents: AgentManager;
   readonly actions: ActionExecutor;
-  readonly orchestrator: Orchestrator;
   readonly beads: BeadsClient;
   readonly beadsAvailable: boolean;
 
@@ -30,7 +28,6 @@ export class Engine {
     this.workflow = new WorkflowEngine(config, this.eventBus);
     this.agents = new AgentManager(config, this.eventBus, this.workflow);
     this.actions = new ActionExecutor(config, this.eventBus);
-    this.orchestrator = new Orchestrator(config, this.eventBus, this.agents, this.workflow);
     this.beads = new BeadsClient(config.pipeline.owner);
     this.beadsAvailable = this.beads.isInstalled();
   }

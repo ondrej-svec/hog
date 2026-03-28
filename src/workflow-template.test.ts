@@ -26,7 +26,6 @@ const REPO_WITH_WORKFLOW: RepoConfig = {
   ...MINIMAL_REPO,
   workflow: {
     mode: "suggested",
-    phases: ["brainstorm", "plan", "implement"],
     phasePrompts: { brainstorm: "Think about it" },
   },
   autoStatus: {
@@ -134,7 +133,6 @@ describe("exportTemplate", () => {
 
     expect(template.name).toBe("My Template");
     expect(template.workflow.mode).toBe("suggested");
-    expect(template.workflow.phases).toEqual(["brainstorm", "plan", "implement"]);
     expect(template.staleness).toEqual({ warningDays: 5, criticalDays: 10 });
     expect(template.autoStatus?.branchCreated).toBe("In Progress");
   });
@@ -142,7 +140,6 @@ describe("exportTemplate", () => {
   it("should use defaults for a repo without workflow", () => {
     const template = exportTemplate("Default", MINIMAL_REPO);
     expect(template.workflow.mode).toBe("suggested");
-    expect(template.workflow.phases).toEqual(["brainstorm", "plan", "implement", "review"]);
     expect(template.staleness).toBeUndefined();
     expect(template.autoStatus).toBeUndefined();
   });
@@ -246,7 +243,6 @@ describe("applyTemplateToBoard", () => {
 
     const updated = applyTemplateToBoard(template, MINIMAL_BOARD);
     expect(updated.workflow?.defaultMode).toBe("suggested");
-    expect(updated.workflow?.defaultPhases).toEqual(template.workflow.phases);
     expect(updated.workflow?.staleness).toEqual(template.staleness);
   });
 

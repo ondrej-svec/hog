@@ -100,27 +100,22 @@ export class AgentManager {
 
   /** Poll for PID liveness of background sessions without tracked child. */
   pollLiveness(): void {
-    const enrichment = this.workflow.getEnrichment();
-    const activeBgSessions = enrichment.sessions.filter(
-      (s) => s.mode === "background" && !s.exitedAt && s.pid,
-    );
-
-    for (const session of activeBgSessions) {
-      const isTracked = this.agents.some((a) => a.sessionId === session.id);
-      if (isTracked) continue;
-
-      if (!isProcessAlive(session.pid as number)) {
-        this.workflow.markSessionExited(session.id, 1);
+    // Only check agents that THIS daemon instance launched (tracked and then lost)
+    // Skip sessions from enrichment store — those are stale history from previous runs
+    // and would cause false agent:failed events for already-completed phases
+    const trackedPids = new Set(this.agents.map((a) => a.pid));
+    for (const agent of this.agents) {
+      if (!agent.monitor.isRunning) continue;
+      if (!isProcessAlive(agent.pid)) {
+        // Agent process died without going through normal exit handler
+        this.workflow.markSessionExited(agent.sessionId, 1);
         this.eventBus.emit("agent:failed", {
-          sessionId: session.id,
-          repo: session.repo,
-          issueNumber: session.issueNumber,
-          phase: session.phase,
+          sessionId: agent.sessionId,
+          repo: agent.repo,
+          issueNumber: agent.issueNumber,
+          phase: agent.phase,
           exitCode: 1,
-        });
-        notify(this.config.pipeline.notifications, {
-          title: "Agent exited",
-          body: `${session.phase} for #${session.issueNumber} exited`,
+          errorMessage: "Agent process died unexpectedly",
         });
       }
     }
@@ -189,27 +184,31 @@ export class AgentManager {
       this.agents = this.agents.filter((a) => a.sessionId !== session.id);
 
       if (exitCode === 0) {
+        const summary = monitor.lastText?.slice(0, 500);
         this.eventBus.emit("agent:completed", {
           sessionId: session.id,
           repo: opts.repoFullName,
           issueNumber: opts.issueNumber,
           phase: opts.phase,
+          summary,
         });
         notify(this.config.pipeline.notifications, {
           title: "Agent completed",
-          body: `${opts.phase} for #${opts.issueNumber} completed successfully`,
+          body: summary ? `${opts.phase}: ${summary.slice(0, 100)}` : `${opts.phase} completed`,
         });
       } else {
+        const errorMessage = monitor.lastText ?? `Process exited with code ${exitCode}`;
         this.eventBus.emit("agent:failed", {
           sessionId: session.id,
           repo: opts.repoFullName,
           issueNumber: opts.issueNumber,
           phase: opts.phase,
           exitCode,
+          errorMessage,
         });
         notify(this.config.pipeline.notifications, {
           title: "Agent failed",
-          body: `${opts.phase} for #${opts.issueNumber} failed (exit ${exitCode})`,
+          body: `${opts.phase}: ${errorMessage.slice(0, 100)}`,
         });
       }
     };
@@ -218,9 +217,12 @@ export class AgentManager {
       child,
       (event) => {
         if (event.toolName ?? event.text) {
+          const toolDisplay = event.toolDetail
+            ? `${event.toolName} (${event.toolDetail})`
+            : event.toolName;
           this.eventBus.emit("agent:progress", {
             sessionId: session.id,
-            ...(event.toolName ? { toolName: event.toolName } : {}),
+            ...(toolDisplay ? { toolName: toolDisplay } : {}),
             ...(event.text ? { text: event.text } : {}),
           });
         }

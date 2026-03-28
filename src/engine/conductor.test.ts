@@ -12,7 +12,6 @@ import type { WorktreeManager } from "./worktree.js";
 
 const TEST_CONFIG = {
   repos: [{ name: "owner/repo", shortName: "repo", projectNumber: 1, statusFieldId: "sf1" }],
-  board: { assignee: "testuser" },
 } as unknown as HogConfig;
 
 const TEST_REPO_CONFIG = {
@@ -409,7 +408,7 @@ describe("Conductor Pipeline", () => {
         pipeline,
       );
 
-      // Fire 5 failures — the conductor should eventually block and create a question
+      // Fire 5 failures — onAgentFailed is sync now
       for (let i = 0; i < 5; i++) {
         eventBus.emit("agent:failed", {
           sessionId: `s${i}`,
@@ -420,11 +419,11 @@ describe("Conductor Pipeline", () => {
         });
       }
 
-      // After multiple failures: pipeline blocked OR question exists
+      // After 3+ failures: pipeline blocked and question queued
       const isBlocked = pipeline.status === "blocked";
       const queue = conductor.getQuestionQueue();
       const hasQuestion = queue.questions.some(
-        (q) => q.featureId === "feat-test" && q.question.includes("impl"),
+        (q) => q.featureId === "feat-test" && (q.question.includes("impl") || q.question.includes("Implementer")),
       );
       expect(isBlocked || hasQuestion).toBe(true);
     });

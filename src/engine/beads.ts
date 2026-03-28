@@ -358,10 +358,7 @@ export class BeadsClient {
 
   /** Get all beads that are ready to work on (unblocked). */
   async ready(cwd: string, limit?: number): Promise<Bead[]> {
-    const args = ["ready"];
-    if (limit) {
-      args.push("--limit", String(limit));
-    }
+    const args = ["ready", "-n", String(limit ?? 999)];
     const raw = await runBdJsonAsync<unknown[]>(args, cwd);
     return raw.map((b) => BEAD_SCHEMA.parse(b));
   }
@@ -397,6 +394,17 @@ export class BeadsClient {
   /** Close a bead with a reason. */
   async close(cwd: string, beadId: string, reason: string): Promise<void> {
     await runBdAsync(["close", beadId, "--reason", reason], cwd);
+  }
+
+  /** Store structured metadata on a bead (JSON). */
+  async updateMetadata(cwd: string, beadId: string, metadata: Record<string, unknown>): Promise<void> {
+    await runBdAsync(["update", beadId, "--notes", JSON.stringify(metadata)], cwd);
+  }
+
+  /** Read notes/metadata from a bead. */
+  async readNotes(cwd: string, beadId: string): Promise<string | undefined> {
+    const bead = await this.show(cwd, beadId);
+    return (bead as Record<string, unknown>)["description"] as string | undefined;
   }
 
   /** Add a dependency between two beads. */

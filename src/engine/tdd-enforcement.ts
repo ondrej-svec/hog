@@ -54,9 +54,9 @@ const DEFAULT_CONFIG: TddConfig = {
  */
 export interface VerifyRedOptions {
   /** Specific test files to check (scoped RED). If omitted, runs full suite. */
-  readonly testFiles?: string[];
+  readonly testFiles?: string[] | undefined;
   /** Override the auto-detected test command. */
-  readonly testCommand?: string;
+  readonly testCommand?: string | undefined;
 }
 
 export async function verifyRedState(
@@ -117,32 +117,144 @@ export async function verifyRedState(
 }
 
 /**
- * Verify that tests are in GREEN state (all passing) after implementation.
- * This catches impl agents that exit 0 without actually making tests pass.
+ * Capture a baseline of currently failing tests BEFORE implementation.
+ * Returns a set of failing test names/counts for later comparison.
+ */
+export async function captureTestBaseline(
+  cwd: string,
+  testCommand?: string,
+): Promise<TestBaseline> {
+  const cmd = testCommand ?? detectTestCommand(cwd);
+  if (!cmd) return { totalFailing: 0, failingFiles: new Set(), output: "" };
+
+  const [bin, ...args] = cmd.split(" ");
+  if (!bin) return { totalFailing: 0, failingFiles: new Set(), output: "" };
+
+  try {
+    await execFileAsync(bin, args, { cwd, encoding: "utf-8", timeout: 120_000 });
+    return { totalFailing: 0, failingFiles: new Set(), output: "" };
+  } catch (err: unknown) {
+    const output = getErrorOutput(err);
+    return {
+      totalFailing: countFailingTests(output),
+      failingFiles: extractFailingFiles(output),
+      output,
+    };
+  }
+}
+
+export interface TestBaseline {
+  readonly totalFailing: number;
+  readonly failingFiles: Set<string>;
+  readonly output: string;
+}
+
+/**
+ * Verify GREEN state by comparing against a pre-impl baseline.
+ *
+ * Smart verification:
+ * 1. If baseline exists: only NEW failures count (pre-existing failures are ignored)
+ * 2. If scoped test files provided: only check those specific tests
+ * 3. Falls back to full suite check if no baseline
  */
 export async function verifyGreenState(
   cwd: string,
-  testCommand?: string,
+  options?: {
+    testCommand?: string | undefined;
+    baseline?: TestBaseline | undefined;
+    scopedTestFiles?: string[] | undefined;
+  },
 ): Promise<{ passed: boolean; detail: string }> {
-  const cmd = testCommand ?? detectTestCommand(cwd);
+  const cmd = options?.testCommand ?? detectTestCommand(cwd);
   if (!cmd) {
     return { passed: true, detail: "No test command detected — skipping GREEN verification." };
   }
 
+  // If we have scoped test files (from the pipeline's test agent), check only those
+  if (options?.scopedTestFiles?.length) {
+    const scopedCmd = scopeTestCommand(cmd, options.scopedTestFiles);
+    const scopedResult = await runTestCommand(cwd, scopedCmd);
+    if (scopedResult.passed) {
+      return {
+        passed: true,
+        detail: `GREEN verified: all ${scopedResult.passingTests} scoped tests pass.`,
+      };
+    }
+    return {
+      passed: false,
+      detail: `GREEN failed: ${scopedResult.failingTests} scoped test(s) still failing.`,
+    };
+  }
+
+  // Run full suite
+  const result = await runTestCommand(cwd, cmd);
+
+  if (result.passed) {
+    return { passed: true, detail: "GREEN verified: all tests pass." };
+  }
+
+  // Compare against baseline — only NEW failures matter
+  const baseline = options?.baseline;
+  if (baseline) {
+    const newFailures = result.failingTests - baseline.totalFailing;
+    const newFailingFiles = [...result.failingFiles].filter(
+      (f) => !baseline.failingFiles.has(f),
+    );
+
+    if (newFailures <= 0 && newFailingFiles.length === 0) {
+      return {
+        passed: true,
+        detail: `GREEN verified: ${result.failingTests} pre-existing failures (unchanged from baseline of ${baseline.totalFailing}). No new failures introduced.`,
+      };
+    }
+
+    return {
+      passed: false,
+      detail: `GREEN failed: ${newFailingFiles.length} new failing test file(s) after implementation: ${newFailingFiles.slice(0, 5).join(", ")}${newFailingFiles.length > 5 ? ` (+${newFailingFiles.length - 5} more)` : ""}`,
+    };
+  }
+
+  // No baseline — report raw failures
+  return {
+    passed: false,
+    detail: `GREEN failed: ${result.failingTests} test(s) still failing (no baseline to compare against).`,
+  };
+}
+
+async function runTestCommand(
+  cwd: string,
+  cmd: string,
+): Promise<{
+  passed: boolean;
+  failingTests: number;
+  passingTests: number;
+  failingFiles: Set<string>;
+}> {
   const [bin, ...args] = cmd.split(" ");
   if (!bin) {
-    return { passed: true, detail: "Empty test command — skipping GREEN verification." };
+    return { passed: true, failingTests: 0, passingTests: 0, failingFiles: new Set() };
   }
 
   try {
-    await execFileAsync(bin, args, { cwd, encoding: "utf-8", timeout: 120_000 });
-    return { passed: true, detail: "GREEN state verified: all tests pass." };
+    const { stdout, stderr } = await execFileAsync(bin, args, {
+      cwd,
+      encoding: "utf-8",
+      timeout: 120_000,
+    });
+    const output = stdout + stderr;
+    return {
+      passed: true,
+      failingTests: 0,
+      passingTests: countTests(output),
+      failingFiles: new Set(),
+    };
   } catch (err: unknown) {
     const output = getErrorOutput(err);
-    const failing = countFailingTests(output);
     return {
       passed: false,
-      detail: `GREEN state NOT verified: ${failing} test(s) still failing after implementation.`,
+      failingTests: countFailingTests(output),
+      passingTests: countTests(output),
+      failingFiles: extractFailingFiles(output),
     };
   }
 }
@@ -363,6 +475,27 @@ async function findTestStoryReferences(
   }
 
   return refs;
+}
+
+/** Extract failing test file paths from test runner output. */
+function extractFailingFiles(output: string): Set<string> {
+  const files = new Set<string>();
+  // Vitest: "FAIL src/foo.test.ts" or "❯ src/foo.test.ts"
+  const vitestMatches = output.matchAll(/(?:FAIL|❯)\s+(\S+\.test\.\S+)/g);
+  for (const m of vitestMatches) {
+    if (m[1]) files.add(m[1]);
+  }
+  // Jest: "FAIL ./src/foo.test.ts"
+  const jestMatches = output.matchAll(/FAIL\s+(\S+\.test\.\S+)/g);
+  for (const m of jestMatches) {
+    if (m[1]) files.add(m[1]);
+  }
+  // pytest: "FAILED tests/test_foo.py"
+  const pytestMatches = output.matchAll(/FAILED\s+(\S+\.py)/g);
+  for (const m of pytestMatches) {
+    if (m[1]) files.add(m[1]);
+  }
+  return files;
 }
 
 function countTests(output: string): number {

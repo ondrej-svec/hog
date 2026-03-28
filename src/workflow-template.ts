@@ -36,7 +36,6 @@ export const BUILTIN_TEMPLATES: Record<string, WorkflowTemplate> = {
     version: "1.0.0",
     workflow: {
       mode: "suggested",
-      phases: ["research", "brainstorm", "plan", "implement", "review", "compound"],
       phaseDefaults: {
         research: { mode: "background" },
         brainstorm: { mode: "interactive" },
@@ -85,7 +84,6 @@ export function exportTemplate(
     version: "1.0.0",
     workflow: repoConfig.workflow ?? {
       mode: "suggested",
-      phases: ["brainstorm", "plan", "implement", "review"],
     },
   };
 
@@ -161,7 +159,7 @@ export function applyTemplateToBoard(template: WorkflowTemplate, board: BoardCon
     workflow: {
       ...board.workflow,
       defaultMode: template.workflow.mode,
-      defaultPhases: template.workflow.phases,
+      defaultPhases: board.workflow?.defaultPhases ?? ["brainstorm", "plan", "implement", "review"],
       phasePrompts: template.workflow.phasePrompts ?? board.workflow?.phasePrompts,
       staleness: template.staleness ?? board.workflow?.staleness,
       maxConcurrentAgents: board.workflow?.maxConcurrentAgents ?? 3,
