@@ -159,13 +159,15 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
 
 const PROFILE_SCHEMA = z.object({
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
-  board: BOARD_CONFIG_SCHEMA,
+  /** @deprecated — vestigial v1 board config. Use pipeline instead. */
+  board: BOARD_CONFIG_SCHEMA.optional(),
 });
 
 const HOG_CONFIG_SCHEMA = z.object({
   version: z.number().int().default(5),
   repos: z.array(REPO_CONFIG_SCHEMA).default([]),
-  board: BOARD_CONFIG_SCHEMA,
+  /** @deprecated — vestigial v1 board config. Use pipeline instead. */
+  board: BOARD_CONFIG_SCHEMA.optional(),
   pipeline: PIPELINE_CONFIG_SCHEMA,
   profiles: z.record(z.string(), PROFILE_SCHEMA).default({}),
   defaultProfile: z.string().optional(),

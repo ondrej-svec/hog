@@ -357,12 +357,6 @@ async function runWizard(opts: InitOptions): Promise<void> {
   const config: HogConfig = {
     version: 5,
     repos,
-    board: {
-      refreshInterval: 60,
-      backlogLimit: 20,
-      assignee: login,
-      focusDuration: 1500,
-    },
     pipeline: {
       owner: login,
       maxConcurrentAgents: Number.parseInt(maxAgents, 10) || 3,

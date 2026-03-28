@@ -10,7 +10,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import { extractIssueFields, hasLlmApiKey } from "./ai.js";
-import type { CompletionAction, HogConfig, RepoConfig } from "./config.js";
+import type { BoardConfig, CompletionAction, HogConfig, RepoConfig } from "./config.js";
 import {
   CONFIG_DIR,
   clearLlmAuth,
@@ -156,9 +156,9 @@ program
       );
     }
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
-    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
-    const terminalApp = cfg.board.claudeTerminalApp;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
+    const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
     if (opts.dryRun) {
       if (useJson()) {
@@ -1235,9 +1235,9 @@ config
       jsonOut({ ok: true, data: cfg });
     } else {
       console.log("Version:", cfg.version);
-      console.log("Assignee:", cfg.board.assignee);
-      console.log("Refresh interval:", `${cfg.board.refreshInterval}s`);
-      console.log("Backlog limit:", cfg.board.backlogLimit);
+      console.log("Assignee:", cfg.board?.assignee ?? cfg.pipeline.owner);
+      console.log("Refresh interval:", `${cfg.board?.refreshInterval ?? 60}s`);
+      console.log("Backlog limit:", cfg.board?.backlogLimit ?? 20);
       console.log("\nRepos:");
       for (const repo of cfg.repos) {
         console.log(`  ${repo.shortName} → ${repo.name} (project #${repo.projectNumber})`);
@@ -1497,7 +1497,7 @@ config
 
     cfg.profiles[name] = {
       repos: [...cfg.repos],
-      board: { ...cfg.board },
+      ...(cfg.board !== undefined ? { board: { ...cfg.board } } : {}),
     };
     saveFullConfig(cfg);
 
@@ -1804,7 +1804,7 @@ issueCommand
   .action(async (issueRef: string, opts: IssueAssignOptions) => {
     const cfg = loadFullConfig();
     const ref = await resolveRef(issueRef, cfg);
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
       process.exit(1);
@@ -1838,7 +1838,7 @@ issueCommand
   .action(async (issueRef: string, opts: IssueUnassignOptions) => {
     const cfg = loadFullConfig();
     const ref = await resolveRef(issueRef, cfg);
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       console.error("Error: no user specified. Use --user or configure board.assignee in hog init");
       process.exit(1);
@@ -2099,7 +2099,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (refs: string[], opts: IssueBulkAssignOptions) => {
     const cfg = loadFullConfig();
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       errorOut("no user specified. Use --user or configure board.assignee in hog init");
     }
@@ -2143,7 +2143,7 @@ issueCommand
   .option("--dry-run", "Print what would change without mutating")
   .action(async (refs: string[], opts: IssueBulkUnassignOptions) => {
     const cfg = loadFullConfig();
-    const user = opts.user ?? cfg.board.assignee;
+    const user = opts.user ?? cfg.board?.assignee ?? cfg.pipeline.owner;
     if (!user) {
       errorOut("no user specified. Use --user or configure board.assignee in hog init");
     }
@@ -2432,7 +2432,7 @@ workflowCommand
 
     const phaseTemplate = DEFAULT_PHASE_PROMPTS[opts.phase];
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
 
     const result = spawnBackgroundAgent({
       localPath: rc.localPath,
@@ -2516,9 +2516,9 @@ workflowCommand
     const { fetchIssueAsync } = await import("./github.js");
 
     const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
-    const startCommand = rc.claudeStartCommand ?? cfg.board.claudeStartCommand;
-    const launchMode = cfg.board.claudeLaunchMode ?? "auto";
-    const terminalApp = cfg.board.claudeTerminalApp;
+    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
+    const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
     const result = launchClaude({
       localPath: rc.localPath,
@@ -2565,7 +2565,7 @@ workflowCommand
             repo: repo.name,
             workflow: repo.workflow,
             autoStatus: repo.autoStatus,
-            boardWorkflow: cfg.board.workflow,
+            boardWorkflow: cfg.board?.workflow,
           },
         });
       } else {
@@ -2578,15 +2578,15 @@ workflowCommand
         );
         console.log(`\n  Board-level workflow:`);
         console.log(
-          `    ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
+          `    ${JSON.stringify(cfg.board?.workflow ?? {}, null, 2).replace(/\n/g, "\n    ")}`,
         );
       }
     } else if (useJson()) {
       // Show board-level workflow config
-      jsonOut({ ok: true, data: { boardWorkflow: cfg.board.workflow } });
+      jsonOut({ ok: true, data: { boardWorkflow: cfg.board?.workflow } });
     } else {
       console.log("Board-level workflow config:\n");
-      console.log(`  ${JSON.stringify(cfg.board.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
+      console.log(`  ${JSON.stringify(cfg.board?.workflow ?? {}, null, 2).replace(/\n/g, "\n  ")}`);
     }
   });
 
@@ -2663,7 +2663,13 @@ workflowCommand
     }
 
     // Apply to board config
-    const updatedBoard = applyTemplateToBoard(result, cfg.board);
+    const boardForTemplate: BoardConfig = cfg.board ?? {
+      refreshInterval: 60,
+      backlogLimit: 20,
+      assignee: cfg.pipeline.owner,
+      focusDuration: 1500,
+    };
+    const updatedBoard = applyTemplateToBoard(result, boardForTemplate);
     const updatedConfig = { ...cfg, board: updatedBoard };
 
     // Optionally apply to a specific repo

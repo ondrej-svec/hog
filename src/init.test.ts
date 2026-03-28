@@ -118,9 +118,9 @@ describe("hog init wizard", () => {
     expect(saved.repos[0].projectNumber).toBe(1);
     expect(saved.repos[0].statusFieldId).toBe("SF_auto");
     expect(saved.repos[0].completionAction).toEqual({ type: "closeIssue" });
-    expect(saved.board.assignee).toBe("test-user");
-    expect(saved.board.refreshInterval).toBe(60);
-    expect(saved.board.focusDuration).toBe(1500);
+    // board is no longer written to new configs — pipeline.owner replaces board.assignee
+    expect(saved.board).toBeUndefined();
+    expect(saved.pipeline.owner).toBe("test-user");
   });
 
   it("should prompt for overwrite when config exists and force not set", async () => {

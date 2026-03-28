@@ -12,7 +12,6 @@ import type { WorktreeManager } from "./worktree.js";
 
 const TEST_CONFIG = {
   repos: [{ name: "owner/repo", shortName: "repo", projectNumber: 1, statusFieldId: "sf1" }],
-  board: { assignee: "testuser" },
 } as unknown as HogConfig;
 
 const TEST_REPO_CONFIG = {

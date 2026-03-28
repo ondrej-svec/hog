@@ -129,10 +129,10 @@ describe("config migration", () => {
     expect(result.version).toBe(5);
     expect(result.repos).toHaveLength(1);
     expect(result.repos[0]?.name).toBe("owner/repo");
-    expect(result.board.refreshInterval).toBe(30);
-    expect(result.board.backlogLimit).toBe(10);
-    expect(result.board.assignee).toBe("test-user");
-    expect(result.board.focusDuration).toBe(900);
+    expect(result.board?.refreshInterval).toBe(30);
+    expect(result.board?.backlogLimit).toBe(10);
+    expect(result.board?.assignee).toBe("test-user");
+    expect(result.board?.focusDuration).toBe(900);
     expect(result).not.toHaveProperty("ticktick");
     expect(result).not.toHaveProperty("defaultProjectId");
     expect(result).not.toHaveProperty("defaultProjectName");
@@ -155,7 +155,7 @@ describe("config migration", () => {
 
     expect(result.version).toBe(5);
     expect(result.repos).toEqual([]); // no legacy repos
-    expect(result.board.assignee).toBe("unknown"); // placeholder default
+    expect(result.board?.assignee).toBe("unknown"); // placeholder default
     expect(result).not.toHaveProperty("ticktick");
   });
 
@@ -435,7 +435,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config);
 
     expect(activeProfile).toBeNull();
-    expect(resolved.board.assignee).toBe("ondrej");
+    expect(resolved.board?.assignee).toBe("ondrej");
     expect(resolved.repos[0]?.shortName).toBe("main-repo");
   });
 
@@ -445,7 +445,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config);
 
     expect(activeProfile).toBe("work");
-    expect(resolved.board.assignee).toBe("ondrej-work");
+    expect(resolved.board?.assignee).toBe("ondrej-work");
     expect(resolved.repos[0]?.shortName).toBe("work-repo");
   });
 
@@ -455,7 +455,7 @@ describe("resolveProfile", () => {
     const { resolved, activeProfile } = resolveProfile(config, "personal");
 
     expect(activeProfile).toBe("personal");
-    expect(resolved.board.assignee).toBe("ondrej-personal");
+    expect(resolved.board?.assignee).toBe("ondrej-personal");
     expect(resolved.repos[0]?.shortName).toBe("personal-repo");
   });
 
@@ -500,7 +500,7 @@ describe("loadFullConfig with no config file", () => {
 
     expect(result.version).toBe(5);
     expect(result.repos).toEqual([]);
-    expect(result.board.assignee).toBe("unknown");
+    expect(result.board?.assignee).toBe("unknown");
     expect(result).not.toHaveProperty("ticktick");
     // Should have saved to disk
     expect(mkdirSync).toHaveBeenCalled();
@@ -552,7 +552,7 @@ describe("claudePrompt config field", () => {
 
     const result = loadFullConfig();
 
-    expect(result.board.claudePrompt).toBeUndefined();
+    expect(result.board?.claudePrompt).toBeUndefined();
     expect(result.repos[0]?.claudePrompt).toBeUndefined();
   });
 
@@ -577,7 +577,7 @@ describe("claudePrompt config field", () => {
 
     const result = loadFullConfig();
 
-    expect(result.board.claudePrompt).toBe("Work on #{number}: {title}");
+    expect(result.board?.claudePrompt).toBe("Work on #{number}: {title}");
   });
 
   it("claudePrompt is parsed when present in repo config", () => {

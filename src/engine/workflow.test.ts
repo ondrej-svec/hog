@@ -6,7 +6,6 @@ import { derivePhaseStatus, resolvePhases } from "./workflow.js";
 // Minimal config stubs
 const minConfig = {
   repos: [],
-  board: { assignee: "test" },
   pipeline: { owner: "test" },
 } as unknown as HogConfig;
 
