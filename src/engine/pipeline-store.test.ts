@@ -35,6 +35,13 @@ describe("PipelineStore field coverage", () => {
     storiesPath: "docs/stories/test.md",
     architecturePath: "docs/stories/test.architecture.md",
     costByPhase: { impl: 0.5 },
+    context: {
+      testCommand: "cd toolkit && pytest",
+      testDir: "toolkit/tests",
+      testFiles: ["test_story_001.py"],
+      workingDir: "toolkit",
+      phaseSummaries: { test: "6 test files written" },
+    },
     totalCost: 1.2,
   };
 
@@ -53,6 +60,7 @@ describe("PipelineStore field coverage", () => {
       completedAt: fullPipeline.completedAt,
       storiesPath: fullPipeline.storiesPath,
       architecturePath: fullPipeline.architecturePath,
+      context: fullPipeline.context,
       costByPhase: fullPipeline.costByPhase,
       totalCost: fullPipeline.totalCost,
     };

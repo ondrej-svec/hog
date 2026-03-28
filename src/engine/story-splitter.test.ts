@@ -51,12 +51,12 @@ describe("story-splitter", () => {
   });
 
   describe("isParallelizablePhase", () => {
-    it("returns true for test and impl", () => {
+    it("returns true only for test phase", () => {
       expect(isParallelizablePhase("test")).toBe(true);
-      expect(isParallelizablePhase("impl")).toBe(true);
     });
 
-    it("returns false for other phases", () => {
+    it("returns false for all other phases including impl", () => {
+      expect(isParallelizablePhase("impl")).toBe(false);
       expect(isParallelizablePhase("brainstorm")).toBe(false);
       expect(isParallelizablePhase("stories")).toBe(false);
       expect(isParallelizablePhase("redteam")).toBe(false);

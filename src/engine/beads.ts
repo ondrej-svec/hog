@@ -396,6 +396,17 @@ export class BeadsClient {
     await runBdAsync(["close", beadId, "--reason", reason], cwd);
   }
 
+  /** Store structured metadata on a bead (JSON). */
+  async updateMetadata(cwd: string, beadId: string, metadata: Record<string, unknown>): Promise<void> {
+    await runBdAsync(["update", beadId, "--notes", JSON.stringify(metadata)], cwd);
+  }
+
+  /** Read notes/metadata from a bead. */
+  async readNotes(cwd: string, beadId: string): Promise<string | undefined> {
+    const bead = await this.show(cwd, beadId);
+    return (bead as Record<string, unknown>)["description"] as string | undefined;
+  }
+
   /** Add a dependency between two beads. */
   async addDependency(
     cwd: string,

@@ -50,10 +50,29 @@ export interface Pipeline {
   storiesPath?: string | undefined;
   /** Path to architecture doc (derived from storiesPath). */
   architecturePath?: string | undefined;
+  /**
+   * Pipeline context — grows as stages complete. Each stage can add info
+   * that subsequent stages need (test command, test dirs, created files).
+   */
+  context?: PipelineContext | undefined;
   /** Estimated cost tracking per phase (in USD). */
   costByPhase?: Record<string, number>;
   /** Total estimated cost (in USD). */
   totalCost?: number;
+}
+
+/** Shared context between pipeline stages. Grows as stages complete. */
+export interface PipelineContext {
+  /** How to run tests (e.g., "cd heart-of-gold-toolkit && pytest"). Set after test phase. */
+  testCommand?: string | undefined;
+  /** Directory containing test files. */
+  testDir?: string | undefined;
+  /** List of test files created by the test agent. */
+  testFiles?: string[] | undefined;
+  /** Working directory for test/impl/redteam (may differ from pipeline.localPath). */
+  workingDir?: string | undefined;
+  /** Summary from each completed phase. */
+  phaseSummaries?: Record<string, string> | undefined;
 }
 
 export interface ConductorOptions {
@@ -531,6 +550,163 @@ export class Conductor {
     }
   }
 
+  /**
+   * Build a context section to append to an agent's prompt.
+   * Injects operational facts from previous stages.
+   */
+  private buildContextSection(pipeline: Pipeline, role: PipelineRole): string | undefined {
+    const ctx = pipeline.context;
+    if (!ctx) return undefined;
+
+    const lines: string[] = [];
+
+    // impl, redteam, merge need test context
+    if ((role === "impl" || role === "redteam" || role === "merge") && ctx.testCommand) {
+      lines.push("");
+      lines.push("## Operational context from previous stages");
+      lines.push("");
+      if (ctx.testCommand) {
+        lines.push(`**Test command:** \`${ctx.testCommand}\``);
+      }
+      if (ctx.workingDir) {
+        lines.push(`**Working directory:** \`${ctx.workingDir}\` (run commands from here)`);
+      }
+      if (ctx.testDir) {
+        lines.push(`**Test directory:** \`${ctx.testDir}\``);
+      }
+      if (ctx.testFiles && ctx.testFiles.length > 0) {
+        lines.push(`**Test files (${ctx.testFiles.length}):** ${ctx.testFiles.slice(0, 10).join(", ")}${ctx.testFiles.length > 10 ? ` (+${ctx.testFiles.length - 10} more)` : ""}`);
+      }
+    }
+
+    // impl and redteam get summaries from earlier phases
+    if ((role === "impl" || role === "redteam") && ctx.phaseSummaries) {
+      const relevantPhases = role === "impl" ? ["test"] : ["test", "impl"];
+      for (const phase of relevantPhases) {
+        const summary = ctx.phaseSummaries[phase];
+        if (summary) {
+          lines.push("");
+          lines.push(`**${phase} phase summary:** ${summary.slice(0, 300)}`);
+        }
+      }
+    }
+
+    return lines.length > 0 ? lines.join("\n") : undefined;
+  }
+
+  /**
+   * Capture test context after the test phase completes.
+   * Uses git diff (ground truth) to find test files created and test runner config.
+   * Stores context on the pipeline AND on the bead metadata.
+   */
+  private async captureTestContext(pipeline: Pipeline): Promise<void> {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { existsSync } = await import("node:fs");
+    const execFileAsync = promisify(execFile);
+    const cwd = pipeline.localPath;
+
+    if (!pipeline.context) pipeline.context = {};
+
+    // 1. Find test files via git diff
+    try {
+      const { stdout } = await execFileAsync("git", ["diff", "--name-only", "--diff-filter=A", "HEAD~1", "HEAD"], {
+        cwd,
+        encoding: "utf-8",
+        timeout: 10_000,
+      });
+      const newFiles = stdout.trim().split("\n").filter(Boolean);
+      const testFiles = newFiles.filter((f) =>
+        f.includes("test") || f.endsWith(".test.ts") || f.endsWith(".test.py") || f.endsWith("_test.py") || f.endsWith("_test.go"),
+      );
+      if (testFiles.length > 0) {
+        pipeline.context.testFiles = testFiles;
+        // Derive testDir from common prefix
+        const dirs = [...new Set(testFiles.map((f) => f.split("/").slice(0, -1).join("/")))];
+        pipeline.context.testDir = dirs.length === 1 ? dirs[0] : dirs.join(", ");
+      }
+    } catch {
+      // No commits or git error — try unstaged
+      try {
+        const { stdout } = await execFileAsync("git", ["diff", "--name-only", "--diff-filter=A"], {
+          cwd,
+          encoding: "utf-8",
+          timeout: 10_000,
+        });
+        const newFiles = stdout.trim().split("\n").filter(Boolean);
+        const testFiles = newFiles.filter((f) => f.includes("test"));
+        if (testFiles.length > 0) {
+          pipeline.context.testFiles = testFiles;
+        }
+      } catch {
+        // best-effort
+      }
+    }
+
+    // 2. Find test command from config files in the project (search subdirectories)
+    try {
+      const { stdout } = await execFileAsync(
+        "find",
+        [cwd, "-maxdepth", "4", "-name", "vitest.config.*", "-o", "-name", "jest.config.*", "-o", "-name", "pytest.ini", "-o", "-name", "pyproject.toml", "-o", "-name", "Cargo.toml", "-o", "-name", "go.mod"],
+        { cwd, encoding: "utf-8", timeout: 10_000 },
+      );
+      const configFiles = stdout.trim().split("\n").filter(Boolean);
+
+      for (const configFile of configFiles) {
+        const relDir = configFile.replace(cwd + "/", "").split("/").slice(0, -1).join("/");
+        const cdPrefix = relDir ? `cd ${relDir} && ` : "";
+
+        if (configFile.includes("vitest.config")) {
+          pipeline.context.testCommand = `${cdPrefix}npx vitest run`;
+          pipeline.context.workingDir = relDir || undefined;
+          break;
+        }
+        if (configFile.includes("jest.config")) {
+          pipeline.context.testCommand = `${cdPrefix}npx jest`;
+          pipeline.context.workingDir = relDir || undefined;
+          break;
+        }
+        if (configFile.includes("pytest.ini") || configFile.includes("pyproject.toml")) {
+          pipeline.context.testCommand = `${cdPrefix}python -m pytest`;
+          pipeline.context.workingDir = relDir || undefined;
+          break;
+        }
+        if (configFile.includes("Cargo.toml")) {
+          pipeline.context.testCommand = `${cdPrefix}cargo test`;
+          pipeline.context.workingDir = relDir || undefined;
+          break;
+        }
+        if (configFile.includes("go.mod")) {
+          pipeline.context.testCommand = `${cdPrefix}go test ./...`;
+          pipeline.context.workingDir = relDir || undefined;
+          break;
+        }
+      }
+    } catch {
+      // best-effort
+    }
+
+    // 3. Store context on the bead metadata
+    const beadId = pipeline.beadIds.tests;
+    try {
+      await this.beads.updateMetadata(pipeline.localPath, beadId, {
+        testCommand: pipeline.context.testCommand,
+        testDir: pipeline.context.testDir,
+        testFiles: pipeline.context.testFiles,
+        workingDir: pipeline.context.workingDir,
+      });
+    } catch {
+      // best-effort — bead metadata is supplementary
+    }
+
+    this.store.save();
+    this.log(
+      pipeline.featureId,
+      "context:test-captured",
+      `Test context: command="${pipeline.context.testCommand ?? "auto"}", ${pipeline.context.testFiles?.length ?? 0} test files in ${pipeline.context.testDir ?? "project root"}`,
+    );
+  }
+
   /** Detect stub/scaffolding patterns in recently changed files. */
   private async detectStubs(
     cwd: string,
@@ -828,7 +1004,9 @@ export class Conductor {
       .replace(/\{spec\}/g, bead.description ?? pipeline.title)
       .replace(/\{storiesPath\}/g, resolvedStoriesPath)
       .replace(/\{archPath\}/g, archPath);
-    const prompt = scopeSuffix ? basePrompt + scopeSuffix : basePrompt;
+    // Inject pipeline context from previous stages
+    const contextSection = this.buildContextSection(pipeline, role);
+    const prompt = basePrompt + (contextSection ?? "") + (scopeSuffix ?? "");
 
     // Create worktree for isolation (if worktree manager available)
     let agentCwd = pipeline.localPath;
@@ -1071,6 +1249,22 @@ export class Conductor {
           `phase:completed:${phase}`,
           `${phaseLabel} done (${pipeline.completedBeads}/6)${summaryLine}`,
         );
+
+        // Store phase summary in pipeline context
+        if (!pipeline.context) {
+          pipeline.context = {};
+        }
+        if (!pipeline.context.phaseSummaries) {
+          pipeline.context.phaseSummaries = {};
+        }
+        if (summary) {
+          pipeline.context.phaseSummaries[phase] = summary.slice(0, 500);
+        }
+
+        // After test phase: detect test command and test files for subsequent stages
+        if (phase === "test") {
+          await this.captureTestContext(pipeline);
+        }
 
         // GREEN verification after impl completes (Farley)
         // Uses baseline comparison — only NEW failures count, pre-existing ones are ignored

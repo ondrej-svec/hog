@@ -34,6 +34,15 @@ const PIPELINE_SCHEMA = z.object({
   completedAt: z.string().optional(),
   storiesPath: z.string().optional(),
   architecturePath: z.string().optional(),
+  context: z
+    .object({
+      testCommand: z.string().optional(),
+      testDir: z.string().optional(),
+      testFiles: z.array(z.string()).optional(),
+      workingDir: z.string().optional(),
+      phaseSummaries: z.record(z.string(), z.string()).optional(),
+    })
+    .optional(),
   costByPhase: z.record(z.string(), z.number()).optional(),
   totalCost: z.number().optional(),
 });
@@ -133,6 +142,7 @@ export class PipelineStore {
         completedAt: p.completedAt,
         storiesPath: p.storiesPath,
         architecturePath: p.architecturePath,
+        context: p.context,
         costByPhase: p.costByPhase,
         totalCost: p.totalCost,
       }));
@@ -190,6 +200,7 @@ export class PipelineStore {
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
           ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
           ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.context !== undefined ? { context: data.context } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         };
@@ -241,6 +252,7 @@ export class PipelineStore {
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
           ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
           ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.context !== undefined ? { context: data.context } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
         });

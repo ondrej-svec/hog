@@ -48,22 +48,25 @@ describe("roles", () => {
     }
   });
 
-  it("impl prompt explicitly excludes spec access", () => {
+  it("impl prompt has three inputs and forbids stubs", () => {
     const implPrompt = PIPELINE_ROLES.impl.promptTemplate;
-    expect(implPrompt).toContain("do NOT have");
-    expect(implPrompt).toContain("ONLY see the failing tests");
+    expect(implPrompt).toContain("three inputs");
+    expect(implPrompt).toContain("REAL, production-quality code");
+    expect(implPrompt).toContain("NOT return hardcoded data");
   });
 
-  it("test prompt explicitly excludes spec access", () => {
+  it("test prompt references stories and architecture", () => {
     const testPrompt = PIPELINE_ROLES.test.promptTemplate;
     expect(testPrompt).toContain("do NOT have the original spec");
+    expect(testPrompt).toContain("{storiesPath}");
+    expect(testPrompt).toContain("{archPath}");
   });
 
-  it("brainstorm prompt encourages collaboration", () => {
+  it("brainstorm prompt uses pipeline done instead of create", () => {
     const prompt = PIPELINE_ROLES.brainstorm.promptTemplate;
     expect(prompt).toContain("brainstorm");
-    expect(prompt).toContain("hog pipeline create");
-    expect(prompt).toContain("--brainstorm-done");
+    expect(prompt).toContain("hog pipeline done");
+    expect(prompt).toContain("{featureId}");
   });
 
   it("brainstorm role detected from label fallback", () => {
