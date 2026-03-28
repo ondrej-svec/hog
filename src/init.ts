@@ -361,6 +361,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       owner: login,
       maxConcurrentAgents: Number.parseInt(maxAgents, 10) || 3,
       tddEnforcement,
+      worker: "claude",
     },
     profiles: existingConfig?.profiles ?? {},
   };

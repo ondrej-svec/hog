@@ -120,6 +120,8 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
   tddEnforcement: z.boolean().default(true),
+  /** Worker adapter for agent spawning. Default: "claude". */
+  worker: z.enum(["claude", "codex", "custom"]).default("claude"),
   phasePrompts: z.record(z.string(), z.string()).optional(),
   qualityGates: z
     .object({
