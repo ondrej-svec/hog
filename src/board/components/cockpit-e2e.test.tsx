@@ -170,7 +170,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows test agent activity", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("test");
+      expect(frame).toContain("Arthur");
     });
   });
 
@@ -266,16 +266,16 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
       // Phase bar shows the active phase with ◐
-      expect(frame).toContain("impl");
+      expect(frame).toContain("Arthur");
     });
 
     it("shows failure phase in the phase bar", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
       const frame = lastFrame() ?? "";
       // The phase bar shows impl as active (◐)
-      expect(frame).toContain("impl");
+      expect(frame).toContain("Arthur");
       // Completed phases show ✓
-      expect(frame).toContain("brainstorm ✓");
+      expect(frame).toContain("Zaphod ✓");
     });
   });
 
@@ -365,7 +365,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows brainstorm prompt not DECISION NEEDED", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("brainstorm");
+      expect(frame).toContain("Zaphod");
       expect(frame).not.toContain("DECISION NEEDED");
     });
 
@@ -373,15 +373,15 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
       // Phase bar shows brainstorm as active
-      expect(frame).toContain("brainstorm");
+      expect(frame).toContain("Zaphod");
       expect(frame).toContain("◐");
     });
 
     it("DAG shows brainstorm as first phase", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline] });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("brainstorm");
-      expect(frame).toContain("stories");
+      expect(frame).toContain("Zaphod");
+      expect(frame).toContain("Ford");
     });
 
     it("shows pipeline title for brainstorm phase", () => {

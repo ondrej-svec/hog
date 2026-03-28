@@ -199,14 +199,14 @@ This phase adds personality without compromising rigor.
 
 ### Tasks — H2G2 Theming
 
-- [ ] 3.1 **Character-mapped role labels** — In `humanize.ts`, map pipeline roles to H2G2
+- [x] 3.1 **Character-mapped role labels** — In `humanize.ts`, map pipeline roles to H2G2
   characters for display. `brainstorm` → "Zaphod", `stories` → "Ford", `test` → "Arthur",
   `impl` → "Arthur", `redteam` → "Marvin", `merge` → "Vogons". Keep the generic agent
   names (Ada, Bea, Cal) for multi-agent disambiguation within a phase — characters are
   role labels, not agent names.
   Files: `src/board/humanize.ts`
 
-- [ ] 3.2 **Themed conductor decision log entries** — Replace clinical log messages with
+- [x] 3.2 **Themed conductor decision log entries** — Replace clinical log messages with
   Douglas Adams register. Not jokes — calm, precise, dry wit:
   - Pipeline created → `Heart of Gold launched. Course: "{title}"`
   - Brainstorm done → `Zaphod has set a course. The ship is flying itself.`
@@ -221,37 +221,37 @@ This phase adds personality without compromising rigor.
   - Pipeline complete → `Pan Galactic Gargle Blaster served. Feature ready to merge.`
   Files: `src/engine/conductor.ts` (decision log calls)
 
-- [ ] 3.3 **"Don't Panic" error philosophy** — Audit all user-facing error messages
+- [x] 3.3 **"Don't Panic" error philosophy** — Audit all user-facing error messages
   (console.error, toast.error, CLI error handlers). Rewrite to pattern:
   state fact calmly → give specific reference → end with next action.
   Add `Don't Panic.` prefix to the `--help` output description.
   Files: `src/cli.ts`, `src/board/components/cockpit.tsx`, `src/daemon/ensure-daemon.ts`
 
-- [ ] 3.4 **Config missing message** — When config file not found:
+- [x] 3.4 **Config missing message** — When config file not found:
   `You don't know where your towel is. Run: hog init`
   Files: `src/config.ts`
 
-- [ ] 3.5 **Cockpit phase display with characters** — Update the phase bar to show
+- [x] 3.5 **Cockpit phase display with characters** — Update the phase bar to show
   character names alongside phase names:
   `Zaphod ✓ → Ford ✓ → Arthur ✓ → Arthur ● → Marvin ○ → Vogons ○`
   Files: `src/board/components/pipeline-view.tsx`
 
 ### Tasks — Cockpit Polish (from cockpit-redesign-polish plan)
 
-- [ ] 3.6 **Filter internal events from history** — Only show phase transitions,
+- [x] 3.6 **Filter internal events from history** — Only show phase transitions,
   completions, failures, decisions. Filter out "preparing to spawn", "bead count
   corrected", session IDs, RED/baseline internals (show only if RED FAILS).
   (Task P.3 from cockpit-redesign-polish plan)
 
-- [ ] 3.7 **Error/decision prominence** — Blocked state gets full-width treatment with
+- [x] 3.7 **Error/decision prominence** — Blocked state gets full-width treatment with
   error message, context, and action keys `[R]etry [S]kip [C]ancel`.
   (Task P.6)
 
-- [ ] 3.8 **Add retry action** — `r` key in cockpit to retry a failed phase. Dispatches
+- [x] 3.8 **Add retry action** — `r` key in cockpit to retry a failed phase. Dispatches
   to conductor to reopen the failed bead.
   (Not in cockpit plan — audit gap)
 
-- [ ] 3.9 **Clean up spacing and formatting** — Fix timestamp spacing, remove double
+- [x] 3.9 **Clean up spacing and formatting** — Fix timestamp spacing, remove double
   colons, consistent alignment, remove session/bead IDs from display.
   (Task P.7)
 

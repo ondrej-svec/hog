@@ -34,12 +34,12 @@ interface PipelineViewProps {
 const LEFT_PANEL_WIDTH = 26;
 
 const PHASE_LABELS: Record<string, string> = {
-  brainstorm: "brainstorm",
-  stories: "stories",
-  test: "tests",
-  impl: "impl",
-  redteam: "redteam",
-  merge: "merge",
+  brainstorm: "Zaphod",
+  stories: "Ford",
+  test: "Arthur",
+  impl: "Arthur",
+  redteam: "Marvin",
+  merge: "Vogons",
 };
 
 const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
@@ -339,12 +339,18 @@ function ActivityFeed({ entries }: { entries: readonly string[] }) {
   // Filter to meaningful events only
   const meaningful = entries
     .filter((e) => {
-      // Skip internal conductor noise
+      // Skip internal conductor noise — only show phase transitions, failures, decisions
       if (e.includes("preparing:")) return false;
       if (e.includes("beads-reconciled")) return false;
       if (e.includes("baseline-captured")) return false;
       if (e.includes("bead-unstuck")) return false;
       if (e.includes("context:test-captured")) return false;
+      if (e.includes("worktree:created")) return false;
+      if (e.includes("worktree:fallback")) return false;
+      if (e.includes("model:divergence")) return false;
+      if (e.includes("tdd:red-verified")) return false; // Only show if RED FAILS
+      if (e.includes("quality:stub-info")) return false;
+      if (e.includes("session-map")) return false;
       return true;
     })
     .slice(-7);

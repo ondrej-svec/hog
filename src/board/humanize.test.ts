@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { agentName, formatElapsed, humanizeTool, resetAgentNames, timeAgo } from "./humanize.js";
+import {
+  agentName,
+  formatElapsed,
+  humanizeTool,
+  resetAgentNames,
+  roleCharacter,
+  timeAgo,
+} from "./humanize.js";
 
 describe("humanizeTool", () => {
   // ── Core tools ──
@@ -134,5 +141,22 @@ describe("timeAgo", () => {
   it("formats hours ago", () => {
     const threeHoursAgo = new Date(Date.now() - 195 * 60_000).toISOString();
     expect(timeAgo(threeHoursAgo)).toBe("3h 15m ago");
+  });
+});
+
+describe("roleCharacter — H2G2 character mapping", () => {
+  it.each([
+    ["brainstorm", "Zaphod"],
+    ["stories", "Ford"],
+    ["test", "Arthur"],
+    ["impl", "Arthur"],
+    ["redteam", "Marvin"],
+    ["merge", "Vogons"],
+  ] as const)("maps %s → %s", (role, expected) => {
+    expect(roleCharacter(role)).toBe(expected);
+  });
+
+  it("returns the role name for unknown roles", () => {
+    expect(roleCharacter("unknown")).toBe("unknown");
   });
 });

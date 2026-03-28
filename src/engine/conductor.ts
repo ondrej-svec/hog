@@ -367,7 +367,7 @@ export class Conductor {
 
     this.store.set(featureId, pipeline);
     this.store.save();
-    this.log(featureId, "pipeline:started", `Created DAG for: ${title}`);
+    this.log(featureId, "pipeline:started", `Heart of Gold launched. Course: "${title}"`);
 
     // Don't tick here — the watcher process handles advancement.
     // This prevents the brainstorm tmux session from opening before
@@ -987,7 +987,7 @@ export class Conductor {
           this.log(
             pipeline.featureId,
             "tdd:red-failed",
-            `RED verification failed: ${redResult.detail}`,
+            `42. But what was the question? Tests pass without implementation — reopening test phase.`,
           );
         }
         // Re-open the test bead so tests get rewritten
@@ -1267,7 +1267,7 @@ export class Conductor {
         this.log(
           pipeline.featureId,
           "pipeline:completed",
-          `All phases complete for: ${pipeline.title}`,
+          `Pan Galactic Gargle Blaster served. ${pipeline.title} is ready to merge.`,
         );
       }
     } catch {

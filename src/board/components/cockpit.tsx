@@ -74,6 +74,12 @@ function HelpOverlay({ onClose }: { readonly onClose: () => void }) {
         </Text>
         <Text>
           <Text color="cyan" bold>
+            r
+          </Text>{" "}
+          Retry failed phase
+        </Text>
+        <Text>
+          <Text color="cyan" bold>
             l
           </Text>{" "}
           Open pipeline log (tmux)
@@ -309,6 +315,20 @@ export function Cockpit({ config }: CockpitProps) {
           } else {
             toast.info("No log file yet");
           }
+        }
+        return;
+      }
+
+      // r — retry failed phase (reopen the bead via pipeline.done)
+      if (input === "r") {
+        const selected = pipelineData.pipelines[selectedIndex];
+        if (selected && (selected.status === "blocked" || selected.status === "failed")) {
+          // Resume the pipeline — the conductor will re-tick and re-spawn
+          pipelineData.resumePipeline(selected.featureId).then((ok) => {
+            if (ok) {
+              toast.info("Retrying failed phase...");
+            }
+          });
         }
         return;
       }

@@ -131,9 +131,9 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const { lastFrame } = renderView({ pipelines: [pipeline] }, 120);
     const frame = lastFrame() ?? "";
     // Phase bar shows impl as active (◐) — the phase where failure occurred
-    expect(frame).toContain("impl");
+    expect(frame).toContain("Arthur");
     // Completed phases shown with ✓
-    expect(frame).toContain("brainstorm ✓");
+    expect(frame).toContain("Zaphod ✓");
   });
 
   // Replaces: status change on issues
@@ -166,7 +166,7 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     // PipelineView shows the pipeline title in the detail panel
     expect(frame).toContain("Content pipeline upgrade");
     // Phase bar is always shown
-    expect(frame).toContain("brainstorm");
+    expect(frame).toContain("Zaphod");
   });
 
   // Replaces: empty board state with guidance

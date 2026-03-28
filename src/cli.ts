@@ -69,7 +69,7 @@ const program = new Command();
 
 program
   .name("hog")
-  .description("TDD-enforced AI development pipelines with structural role separation")
+  .description("Don't Panic. TDD-enforced AI development pipelines — mostly harmless.")
   .version("2.0.0") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")

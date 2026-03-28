@@ -154,7 +154,7 @@ describe("PipelineView", () => {
       });
       const frame = lastFrame() ?? "";
       // Phase bar shows active phase with ◐
-      expect(frame).toContain("impl");
+      expect(frame).toContain("Arthur");
     });
 
     it("shows blocked pipeline with DECISION NEEDED when decision exists", () => {
@@ -276,8 +276,8 @@ describe("PipelineView", () => {
       });
       const frame = lastFrame() ?? "";
       // Phase bar shows all phases
-      expect(frame).toContain("brainstorm");
-      expect(frame).toContain("stories");
+      expect(frame).toContain("Zaphod");
+      expect(frame).toContain("Ford");
     });
   });
 
@@ -300,7 +300,7 @@ describe("PipelineView", () => {
         agents: [makeAgent({ phase: "impl" })],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("impl");
+      expect(frame).toContain("Arthur");
     });
 
     it("shows agent activity indicator", () => {

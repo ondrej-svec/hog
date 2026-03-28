@@ -1,6 +1,29 @@
 /**
  * Humanize raw tool names and agent data for cockpit display.
+ *
+ * H2G2 character mapping for pipeline roles:
+ * - brainstorm → Zaphod (reckless visionary, two heads)
+ * - stories → Ford (field researcher → structured documentation)
+ * - test → Arthur (constrained craftsman, never has full picture)
+ * - impl → Arthur (same — builds what he's told)
+ * - redteam → Marvin (brain the size of a planet, sees every flaw)
+ * - merge → Vogons (bureaucracy IS correctness)
  */
+
+/** Map pipeline role to H2G2 character name. */
+const ROLE_CHARACTERS: Record<string, string> = {
+  brainstorm: "Zaphod",
+  stories: "Ford",
+  test: "Arthur",
+  impl: "Arthur",
+  redteam: "Marvin",
+  merge: "Vogons",
+};
+
+/** Get the H2G2 character name for a pipeline role. */
+export function roleCharacter(role: string): string {
+  return ROLE_CHARACTERS[role] ?? role;
+}
 
 /** Convert raw tool use string to human-readable action. */
 export function humanizeTool(raw: string | undefined): string {
