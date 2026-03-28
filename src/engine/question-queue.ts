@@ -15,6 +15,10 @@ const QUESTION_SCHEMA = z.object({
   resolvedAt: z.string().optional(),
   answer: z.string().optional(),
   source: z.enum(["clarity-analyst", "stuck-agent", "conductor"]),
+  /** "blocking" halts the pipeline; "informational" queues for later. */
+  questionType: z.enum(["blocking", "informational"]).default("blocking"),
+  /** Optional story ID context for integration story escalation. */
+  storyId: z.string().optional(),
 });
 
 const QUEUE_SCHEMA = z.object({
@@ -64,16 +68,20 @@ export function enqueueQuestion(
     context?: string;
     options?: string[];
     source: Question["source"];
+    questionType?: Question["questionType"];
+    storyId?: string;
   },
 ): { queue: QuestionQueue; question: Question } {
   const question: Question = {
     id: generateQuestionId(),
     featureId: opts.featureId,
     question: opts.question,
+    questionType: opts.questionType ?? "blocking",
     createdAt: new Date().toISOString(),
     source: opts.source,
     ...(opts.context ? { context: opts.context } : {}),
     ...(opts.options ? { options: opts.options } : {}),
+    ...(opts.storyId ? { storyId: opts.storyId } : {}),
   };
 
   return {
@@ -106,9 +114,11 @@ export function getPendingForFeature(queue: QuestionQueue, featureId: string): Q
   return queue.questions.filter((q) => !q.resolvedAt && q.featureId === featureId);
 }
 
-/** Check if a feature has unresolved questions blocking it. */
+/** Check if a feature has unresolved blocking questions. */
 export function isBlockedByQuestions(queue: QuestionQueue, featureId: string): boolean {
-  return queue.questions.some((q) => !q.resolvedAt && q.featureId === featureId);
+  return queue.questions.some(
+    (q) => !q.resolvedAt && q.featureId === featureId && q.questionType === "blocking",
+  );
 }
 
 /** Remove unresolved questions for pipelines that no longer exist. */

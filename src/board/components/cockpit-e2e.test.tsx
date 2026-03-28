@@ -63,6 +63,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     options: ["LinkedIn only", "All platforms", "LinkedIn + YouTube"],
     createdAt: new Date().toISOString(),
     source: "clarity-analyst",
+    questionType: "blocking",
     ...overrides,
   };
 }

@@ -18,7 +18,8 @@ import type { Refinery } from "./refinery.js";
 import { writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
 import { beadToRole, PIPELINE_ROLES } from "./roles.js";
-import { verifyRedState } from "./tdd-enforcement.js";
+import { checkSummaryForFailure } from "./summary-parser.js";
+import { checkTraceability, verifyRedState } from "./tdd-enforcement.js";
 import type { WorktreeManager } from "./worktree.js";
 
 // ── Types ──
@@ -61,6 +62,18 @@ export interface Pipeline {
   totalCost?: number;
 }
 
+/** Structured feedback for retried agents. */
+export interface RetryFeedback {
+  /** Why the retry happened. */
+  readonly reason: string;
+  /** Specific missing items (story IDs, file paths, etc.). */
+  readonly missing: string[];
+  /** Previous agent's summary (truncated). */
+  readonly previousSummary: string;
+  /** 1-indexed retry attempt number. */
+  readonly attempt: number;
+}
+
 /** Shared context between pipeline stages. Grows as stages complete. */
 export interface PipelineContext {
   /** How to run tests (e.g., "cd heart-of-gold-toolkit && pytest"). Set after test phase. */
@@ -73,6 +86,10 @@ export interface PipelineContext {
   workingDir?: string | undefined;
   /** Summary from each completed phase. */
   phaseSummaries?: Record<string, string> | undefined;
+  /** Structured retry feedback per role — injected into re-spawned agent prompts. */
+  retryFeedback?: Record<string, RetryFeedback> | undefined;
+  /** Stories skipped by the human (excluded from coverage gates). */
+  skippedStories?: string[] | undefined;
 }
 
 export interface ConductorOptions {
@@ -1055,7 +1072,15 @@ export class Conductor {
       .replace(/\{archPath\}/g, archPath);
     // Inject pipeline context from previous stages
     const contextSection = this.buildContextSection(pipeline, role);
-    const prompt = basePrompt + (contextSection ?? "") + (scopeSuffix ?? "");
+
+    // Inject retry context if this is a re-spawn (completeness gate feedback)
+    let retrySection = "";
+    const feedback = pipeline.context?.retryFeedback?.[role];
+    if (feedback) {
+      retrySection = `\n\n## Retry Context (attempt ${feedback.attempt})\n\nYour previous run did not complete all required work.\n\nIssue: ${feedback.reason}\nMissing: ${feedback.missing.slice(0, 20).join(", ")}\n\nPrevious agent's summary:\n> ${feedback.previousSummary.slice(0, 300)}\n\nFocus on completing the missing work. Do not redo work that was already done.\n`;
+    }
+
+    const prompt = basePrompt + (contextSection ?? "") + retrySection + (scopeSuffix ?? "");
 
     // Create worktree for isolation (if worktree manager available)
     let agentCwd = pipeline.localPath;
@@ -1106,7 +1131,21 @@ export class Conductor {
     }
 
     // Resolve model from config for this role
-    const roleModel = this.config.pipeline?.models?.[role];
+    let roleModel = this.config.pipeline?.models?.[role];
+
+    // Enforce redteam model divergence — prevents mode collapse (Andrew Ng)
+    if (role === "redteam" && roleModel) {
+      const implModel = this.config.pipeline?.models?.impl;
+      if (implModel && roleModel === implModel) {
+        // Use a different model to prevent shared blind spots
+        roleModel = implModel.includes("opus") ? "claude-sonnet-4-6" : "claude-opus-4-6";
+        this.log(
+          pipeline.featureId,
+          "model:divergence",
+          `Redteam model same as impl (${implModel}) — switched to ${roleModel} to prevent mode collapse`,
+        );
+      }
+    }
 
     // Spawn the agent
     const result = this.agentManager.launchAgent({
@@ -1238,13 +1277,13 @@ export class Conductor {
 
   // ── Event Handlers ──
 
-  private onAgentCompleted(
+  private async onAgentCompleted(
     sessionId: string,
     _repo: string,
     _issueNumber: number,
     phase: string,
     summary?: string,
-  ): void {
+  ): Promise<void> {
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
     const pipeline = featureId ? this.store.get(featureId) : undefined;
@@ -1290,7 +1329,108 @@ export class Conductor {
       this.pendingParallelAgents.delete(beadId);
     }
 
-    // Close the bead
+    // ── Pre-close gates (run BEFORE closing the bead) ──
+
+    // Gate: Summary sentiment — exit 0 ≠ success
+    const sentiment = checkSummaryForFailure(summary, phase as PipelineRole);
+    if (sentiment.failed) {
+      this.log(
+        pipeline.featureId,
+        `gate:summary-sentiment:blocked`,
+        `Agent said "${sentiment.matchedPattern}" — escalating to human`,
+      );
+      const result = enqueueQuestion(this.questionQueue, {
+        featureId: pipeline.featureId,
+        question: `${PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase} agent reported: "${summary?.slice(0, 200)}". What should we do?`,
+        options: ["Retry this phase", "Continue anyway", "Cancel pipeline"],
+        source: "conductor",
+        ...(summary ? { context: summary.slice(0, 500) } : {}),
+      });
+      this.questionQueue = result.queue;
+      saveQuestionQueue(this.questionQueue);
+      pipeline.status = "blocked";
+      this.store.save();
+      return; // Don't close the bead — wait for human decision
+    }
+
+    // Gate: Story coverage — after test phase, check >25% stories are covered
+    if (phase === "test" && pipeline.storiesPath) {
+      try {
+        const traceability = await checkTraceability(pipeline.localPath, pipeline.storiesPath);
+        const skipped = pipeline.context?.skippedStories ?? [];
+        const adjustedTotal = traceability.coveredStories.length + traceability.uncoveredStories.length - skipped.length;
+        const uncoveredCount = traceability.uncoveredStories.filter((s) => !skipped.includes(s)).length;
+
+        if (adjustedTotal > 0 && uncoveredCount / adjustedTotal > 0.25) {
+          const retryAttempt = (pipeline.context?.retryFeedback?.["test"]?.attempt ?? 0) + 1;
+          if (retryAttempt <= 2) {
+            if (!pipeline.context) pipeline.context = {};
+            if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
+            pipeline.context.retryFeedback["test"] = {
+              reason: `Story coverage: ${traceability.coveredStories.length}/${adjustedTotal} stories covered (${Math.round((1 - uncoveredCount / adjustedTotal) * 100)}%)`,
+              missing: traceability.uncoveredStories.filter((s) => !skipped.includes(s)).slice(0, 20),
+              previousSummary: summary?.slice(0, 300) ?? "",
+              attempt: retryAttempt,
+            };
+            this.log(
+              pipeline.featureId,
+              "gate:story-coverage:failed",
+              `${uncoveredCount}/${adjustedTotal} stories uncovered — reopening test phase (attempt ${retryAttempt}/2)`,
+            );
+            this.store.save();
+            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
+            return; // Don't close — retry
+          }
+          // Max retries — escalate to human
+          this.log(pipeline.featureId, "gate:story-coverage:exhausted", "Max retries reached. Escalating.");
+          const escResult = enqueueQuestion(this.questionQueue, {
+            featureId: pipeline.featureId,
+            question: `Test writer covered only ${traceability.coveredStories.length}/${adjustedTotal} stories after 2 attempts. Missing: ${traceability.uncoveredStories.slice(0, 5).join(", ")}`,
+            options: ["Retry tests", "Continue with partial coverage", "Cancel pipeline"],
+            source: "conductor",
+          });
+          this.questionQueue = escResult.queue;
+          saveQuestionQueue(this.questionQueue);
+          pipeline.status = "blocked";
+          this.store.save();
+          return;
+        }
+      } catch {
+        // Traceability check failed — proceed (don't block on check failure)
+      }
+    }
+
+    // Gate: Stub detection — after impl, block if >5% stubs
+    if (phase === "impl") {
+      try {
+        const stubResult = await this.detectStubs(pipeline.localPath);
+        if (stubResult.stubRatio > 0.05) {
+          const retryAttempt = (pipeline.context?.retryFeedback?.["impl"]?.attempt ?? 0) + 1;
+          if (retryAttempt <= 2) {
+            if (!pipeline.context) pipeline.context = {};
+            if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
+            pipeline.context.retryFeedback["impl"] = {
+              reason: `Stub detection: ${Math.round(stubResult.stubRatio * 100)}% of files appear to be scaffolding`,
+              missing: stubResult.stubFiles.slice(0, 20),
+              previousSummary: summary?.slice(0, 300) ?? "",
+              attempt: retryAttempt,
+            };
+            this.log(
+              pipeline.featureId,
+              "gate:stub-detection:failed",
+              `${Math.round(stubResult.stubRatio * 100)}% stubs detected — reopening impl (attempt ${retryAttempt}/2)`,
+            );
+            this.store.save();
+            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
+            return;
+          }
+        }
+      } catch {
+        // best-effort
+      }
+    }
+
+    // Close the bead (all pre-close gates passed)
     this.beads
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
       .then(async () => {

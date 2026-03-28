@@ -72,6 +72,7 @@ function makeQuestion(overrides: Partial<Question> = {}): Question {
     options: ["OAuth", "API keys", "Both"],
     createdAt: new Date().toISOString(),
     source: "clarity-analyst",
+    questionType: "blocking",
     ...overrides,
   };
 }

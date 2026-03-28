@@ -14,6 +14,7 @@ import type { HogConfig, RepoConfig } from "../config.js";
 import type { AgentManager } from "../engine/agent-manager.js";
 import type { Bead, BeadsClient } from "../engine/beads.js";
 import { Conductor } from "../engine/conductor.js";
+import type { PipelineStatus } from "../engine/conductor.js";
 import { EventBus } from "../engine/event-bus.js";
 import { Refinery } from "../engine/refinery.js";
 import { PipelineStore } from "../engine/pipeline-store.js";
@@ -137,7 +138,7 @@ function createMockRefinery(): Refinery {
     submit: vi.fn().mockImplementation(
       (featureId: string, branch: string, worktreePath: string, repoPath: string, role?: string) => {
         const id = `merge-${queue.length + 1}`;
-        queue.push({ id, featureId, branch, worktreePath, repoPath, role });
+        queue.push({ id, featureId, branch, worktreePath, repoPath, ...(role !== undefined ? { role } : {}) });
         return id;
       },
     ),

@@ -129,42 +129,42 @@ plus three gaps the audit found that aren't in that plan.
 
 Execute the 7 sub-phases in the completeness gates plan exactly as specified:
 
-- [ ] 2.1 **Phase A: Foundation** — Add `retryFeedback`, `skippedStories` to PipelineContext +
+- [x] 2.1 **Phase A: Foundation** — Add `retryFeedback`, `skippedStories` to PipelineContext +
   Zod schema. Add `questionType` to question queue. Create `summary-parser.ts`. Write parser tests.
   (Tasks A1-A5 from completeness-gates plan)
 
-- [ ] 2.2 **Phase B: Integration Story Escalation** — Scan stories for `[INTEGRATION]` tags,
+- [x] 2.2 **Phase B: Integration Story Escalation** — Scan stories for `[INTEGRATION]` tags,
   enqueue informational questions, update tickPipeline, change blocking logic. Write tests.
   (Tasks B1-B5)
 
-- [ ] 2.3 **Phase C: Refactor onAgentCompleted** — Extract `runPreCloseGates()`, new flow:
+- [x] 2.3 **Phase C: Refactor onAgentCompleted** — Extract `runPreCloseGates()`, new flow:
   gates → close → hooks. Move GREEN verification to post-close. Write tests.
   (Tasks C1-C4)
 
-- [ ] 2.4 **Phase D: Story Coverage Gate** — Fix `checkTraceability` testGlob wiring + storiesPath
+- [x] 2.4 **Phase D: Story Coverage Gate** — Fix `checkTraceability` testGlob wiring + storiesPath
   resolution. Add blocking gate with 25% threshold minus skippedStories. Write tests.
   (Tasks D1-D5)
 
-- [ ] 2.5 **Phase E: Summary Sentiment Gate** — Check summary against FAILURE_PATTERNS with
+- [x] 2.5 **Phase E: Summary Sentiment Gate** — Check summary against FAILURE_PATTERNS with
   phase-aware exclusions. Enqueue blocking question on match. Write tests.
   (Tasks E1-E3)
 
-- [ ] 2.6 **Phase F: Contextual Retry** — Read retryFeedback in spawnForRole, append retry
+- [x] 2.6 **Phase F: Contextual Retry** — Read retryFeedback in spawnForRole, append retry
   section. Unify retry caps. Remove redundant counters. Write tests.
   (Tasks F1-F5)
 
-- [ ] 2.7 **Phase G: Redteam Completeness** — Add storiesPath to REDTEAM_PROMPT with
+- [x] 2.7 **Phase G: Redteam Completeness** — Add storiesPath to REDTEAM_PROMPT with
   completeness check + `[INTEGRATION]` awareness. Write test.
   (Tasks G1-G3)
 
 ### Tasks — Audit Gaps (not in completeness gates plan)
 
-- [ ] 2.8 **Make stub detection a blocking gate** — Promote `detectStubs()` result from logged
+- [x] 2.8 **Make stub detection a blocking gate** — Promote `detectStubs()` result from logged
   to enforced. If stub ratio >5% of impl files → reopen impl bead with specific stub
   locations as retry context. Add to `runPreCloseGates` for `phase === "impl"`.
   Files: `src/engine/conductor.ts`, `src/engine/tdd-enforcement.ts`
 
-- [ ] 2.9 **Budget enforcement** — Parse Claude's cost output from stream-json events
+- [x] 2.9 **Budget enforcement** — Parse Claude's cost output from stream-json events
   (look for `result.cost_usd` or similar). Populate `pipeline.costByPhase` and `totalCost`.
   Before spawning any agent, check `totalCost < budget.perPipeline` and
   `costByPhase[role] < budget.perPhase[role]`. If exceeded → enqueue blocking question
@@ -172,7 +172,7 @@ Execute the 7 sub-phases in the completeness gates plan exactly as specified:
   Files: `src/engine/conductor.ts`, `src/board/spawn-agent.ts` (cost parsing),
   `src/engine/pipeline-store.ts`
 
-- [ ] 2.10 **Enforce redteam model divergence** — In conductor's `spawnForRole`, when role is
+- [x] 2.10 **Enforce redteam model divergence** — In conductor's `spawnForRole`, when role is
   `redteam`, verify that `config.pipeline.models.redteam !== config.pipeline.models.impl`.
   If same → log warning and use a different model (fallback to sonnet if impl is opus,
   opus if impl is sonnet). This prevents mode collapse.

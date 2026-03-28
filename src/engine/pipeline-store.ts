@@ -41,6 +41,18 @@ const PIPELINE_SCHEMA = z.object({
       testFiles: z.array(z.string()).optional(),
       workingDir: z.string().optional(),
       phaseSummaries: z.record(z.string(), z.string()).optional(),
+      retryFeedback: z
+        .record(
+          z.string(),
+          z.object({
+            reason: z.string(),
+            missing: z.array(z.string()),
+            previousSummary: z.string(),
+            attempt: z.number(),
+          }),
+        )
+        .optional(),
+      skippedStories: z.array(z.string()).optional(),
     })
     .optional(),
   costByPhase: z.record(z.string(), z.number()).optional(),
