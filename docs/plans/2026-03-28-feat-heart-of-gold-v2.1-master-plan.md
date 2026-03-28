@@ -2,7 +2,7 @@
 title: "feat: Heart of Gold v2.1 — the most amazing agentic dev tool"
 type: plan
 date: 2026-03-28
-status: in_progress
+status: complete
 brainstorm: docs/audits/2026-03-28-hog-grand-audit.md
 confidence: high
 ---
