@@ -1074,6 +1074,7 @@ export class Conductor {
       phase: role,
       promptTemplate: prompt,
       model: roleModel,
+      permissionMode: this.config.pipeline?.permissionMode,
     });
 
     if (typeof result === "string") {
