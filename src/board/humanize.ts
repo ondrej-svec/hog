@@ -28,22 +28,32 @@ export function humanizeTool(raw: string | undefined): string {
       return detail ? `finding ${detail}` : "finding files";
     case "Bash":
       return humanizeBash(detail);
+    case "LS":
+      return detail ? `listing ${detail}` : "listing directory";
+    case "WebFetch":
+      return detail ? `fetching ${shortenUrl(detail)}` : "fetching web page";
+    case "WebSearch":
+      return detail ? `searching web for "${detail}"` : "searching the web";
     case "TodoWrite":
       return "planning next steps";
     case "Agent":
       return "delegating to subagent";
+    case "NotebookEdit":
+      return "editing notebook";
     default:
-      return raw.length > 40 ? `${raw.slice(0, 37)}...` : raw;
+      // Friendly fallback: lowercase the tool name
+      if (raw.length > 40) return `${raw.slice(0, 37)}...`;
+      return file ? `${tool.toLowerCase()} ${file}` : raw;
   }
 }
 
 function humanizeBash(cmd: string): string {
-  if (!cmd) return "running command";
+  if (!cmd || cmd.trim().length === 0) return "running command";
 
-  // Common patterns
-  if (cmd.match(/npm\s+test|vitest|jest|pytest|cargo\s+test|go\s+test/)) return "running tests";
+  // Order matters: install before test (uv pip install pytest matches both)
   if (cmd.match(/npm\s+install|pip\s+install|uv\s+(pip\s+)?install|brew\s+install/))
     return "installing dependencies";
+  if (cmd.match(/npm\s+test|vitest|jest|pytest|cargo\s+test|go\s+test/)) return "running tests";
   if (cmd.match(/npm\s+run\s+build|cargo\s+build|go\s+build/)) return "building project";
   if (cmd.match(/npm\s+run\s+lint|biome|eslint|ruff/)) return "running linter";
   if (cmd.match(/git\s+commit/)) return "committing changes";
@@ -61,6 +71,15 @@ function humanizeBash(cmd: string): string {
   return cmd.length > 50 ? `${cmd.slice(0, 47)}...` : cmd;
 }
 
+function shortenUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname + (u.pathname.length > 1 ? u.pathname.slice(0, 30) : "");
+  } catch {
+    return url.length > 40 ? `${url.slice(0, 37)}...` : url;
+  }
+}
+
 function shortenPath(path: string): string {
   if (!path) return "";
   // Remove line numbers (file.ts:142)
@@ -70,7 +89,7 @@ function shortenPath(path: string): string {
   return parts[parts.length - 1] ?? clean;
 }
 
-/** Generate a short agent name from a session ID. */
+/** Generate a short agent name from a session ID (deterministic hash). */
 const AGENT_NAMES = [
   "Ada",
   "Bea",
@@ -82,17 +101,37 @@ const AGENT_NAMES = [
   "Hal",
   "Ivy",
   "Jay",
+  "Kit",
+  "Lea",
+  "Max",
+  "Nia",
+  "Oz",
+  "Pia",
 ];
 
 const sessionNameCache = new Map<string, string>();
-let nextNameIndex = 0;
+const usedNames = new Set<string>();
 
 export function agentName(sessionId: string): string {
   const cached = sessionNameCache.get(sessionId);
   if (cached) return cached;
 
-  const name = AGENT_NAMES[nextNameIndex % AGENT_NAMES.length]!;
-  nextNameIndex++;
+  // Deterministic: hash the session ID to pick a name
+  let hash = 0;
+  for (let i = 0; i < sessionId.length; i++) {
+    hash = ((hash << 5) - hash + sessionId.charCodeAt(i)) | 0;
+  }
+  const baseIdx = Math.abs(hash) % AGENT_NAMES.length;
+  let name = AGENT_NAMES[baseIdx]!;
+
+  // Handle collisions with suffix
+  if (usedNames.has(name)) {
+    let suffix = 2;
+    while (usedNames.has(`${name}${suffix}`)) suffix++;
+    name = `${name}${suffix}`;
+  }
+
+  usedNames.add(name);
   sessionNameCache.set(sessionId, name);
   return name;
 }
@@ -100,7 +139,7 @@ export function agentName(sessionId: string): string {
 /** Reset name cache (for tests or new pipeline). */
 export function resetAgentNames(): void {
   sessionNameCache.clear();
-  nextNameIndex = 0;
+  usedNames.clear();
 }
 
 /** Format elapsed minutes nicely. */

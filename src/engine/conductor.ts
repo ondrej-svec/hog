@@ -216,6 +216,11 @@ export class Conductor {
     return [...this.decisionLog];
   }
 
+  /** Get session-to-pipeline mapping (for agent.list RPC). */
+  getSessionToPipeline(): ReadonlyMap<string, string> {
+    return this.sessionToPipeline;
+  }
+
   /** Get the current question queue. */
   getQuestionQueue(): QuestionQueue {
     return this.questionQueue;

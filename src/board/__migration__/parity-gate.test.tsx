@@ -152,7 +152,7 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const frame = lastFrame() ?? "";
     // Active agent card shows agent name (humanized) and phase
     expect(frame).toContain("stories");
-    expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay/);
+    expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
   });
 
   // Replaces: board help overlay with keyboard shortcuts

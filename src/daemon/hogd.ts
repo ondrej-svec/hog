@@ -273,6 +273,7 @@ export class HogDaemon {
       }
 
       case "agent.list": {
+        const sessionMap = this.conductor.getSessionToPipeline();
         const agents = this.engine.agents.getAgents().map((a) => ({
           sessionId: a.sessionId,
           repo: a.repo,
@@ -280,6 +281,7 @@ export class HogDaemon {
           pid: a.pid,
           startedAt: a.startedAt,
           lastToolUse: a.monitor.lastToolUse,
+          featureId: sessionMap.get(a.sessionId),
         }));
         this.send(socket, req.id, agents);
         break;

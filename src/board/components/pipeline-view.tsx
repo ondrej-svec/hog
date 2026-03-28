@@ -54,8 +54,8 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
   }
 
   const selectedPipeline = pipelines[selectedIndex];
-  const showLeftPanel = pipelines.length > 1;
-  const rightWidth = showLeftPanel ? cols - LEFT_PANEL_WIDTH - 3 : cols;
+  const showLeftPanel = pipelines.length > 1 && cols > 60;
+  const rightWidth = Math.max(40, showLeftPanel ? cols - LEFT_PANEL_WIDTH - 3 : cols);
 
   return (
     <Box flexDirection="row" height={rows}>
@@ -142,7 +142,7 @@ function PipelineDetail({
   rows: number;
 }) {
   const pipelineAgents = agents.filter(
-    (a) => a.repo === pipeline.repo || a.sessionId.length > 0,
+    (a) => a.featureId === pipeline.featureId || (!a.featureId && a.repo === pipeline.repo),
   );
   const activeAgents = pipelineAgents.filter((a) => a.isRunning);
   const activeAgent = activeAgents[0];
@@ -174,6 +174,13 @@ function PipelineDetail({
             <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />
           ) : pipeline.status === "paused" ? (
             <Text color="yellow">  ⏸ Pipeline paused — press x to resume</Text>
+          ) : pipeline.status === "blocked" ? (
+            <Text color="red">  ⚠ Pipeline blocked — waiting for resolution</Text>
+          ) : pipeline.status === "failed" ? (
+            <Box flexDirection="column" paddingLeft={2}>
+              <Text color="red" bold>✗ Pipeline failed</Text>
+              <Text dimColor>  Check the activity log for details</Text>
+            </Box>
           ) : null}
 
           <Text> </Text>
@@ -348,13 +355,21 @@ function ActivityFeed({ entries }: { entries: readonly string[] }) {
     <Box flexDirection="column">
       <Text dimColor>  ── Activity ──</Text>
       {meaningful.map((entry, i) => {
-        // Parse "[ISO] action: detail" format
-        const match = entry.match(/^\[([^\]]+)\]\s+(\S+?):\s*(.*)/);
-        const ts = match?.[1] ? formatTime(match[1]) : "";
-        const detail = match?.[3] ?? entry;
+        // Parse "[ISO] action:sub:detail: message" format
+        // Split on ": " (colon-space) to separate action from message, not first ":"
+        const tsMatch = entry.match(/^\[([^\]]+)\]\s+(.*)/);
+        const ts = tsMatch?.[1] ? formatTime(tsMatch[1]) : "";
+        const rest = tsMatch?.[2] ?? entry;
+        // Find the action (everything before first ": " that contains a letter)
+        const colonSpaceIdx = rest.indexOf(": ");
+        const action = colonSpaceIdx > 0 ? rest.slice(0, colonSpaceIdx) : "";
+        const detail = colonSpaceIdx > 0 ? rest.slice(colonSpaceIdx + 2) : rest;
 
         // Humanize the detail
         const humanDetail = humanizeLogEntry(detail);
+
+        // Skip entries that are purely internal
+        if (!humanDetail || humanDetail.length < 3) return null;
 
         return (
           <Box key={`${i}`} paddingLeft={2}>
@@ -410,16 +425,15 @@ function QualityGatesRow({ pipeline }: { pipeline: Pipeline }) {
 
   return (
     <Box paddingLeft={2}>
+      <Text dimColor>  gates: </Text>
       {gates.map((gate) =>
         gate.done ? (
           <Text key={gate.name}>
-            <Text color="green">✓ {gate.name}</Text>
-            <Text>  </Text>
+            <Text color="green">✓ {gate.name} </Text>
           </Text>
         ) : (
           <Text key={gate.name}>
-            <Text dimColor>○ {gate.name}</Text>
-            <Text>  </Text>
+            <Text dimColor>○ {gate.name} </Text>
           </Text>
         ),
       )}
@@ -465,7 +479,12 @@ function CompletionSummary({
   agents: readonly DaemonAgentInfo[];
 }) {
   const elapsed = pipeline.completedAt
-    ? formatElapsed(pipeline.startedAt)
+    ? (() => {
+        const ms = new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime();
+        const mins = Math.floor(ms / 60_000);
+        if (mins < 60) return `${mins}m`;
+        return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+      })()
     : formatElapsed(pipeline.startedAt);
 
   return (

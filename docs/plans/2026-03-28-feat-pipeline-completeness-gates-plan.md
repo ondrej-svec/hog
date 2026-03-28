@@ -4,6 +4,7 @@ type: plan
 date: 2026-03-28
 status: approved
 confidence: high
+reviewed_by: codex-gpt-5.3-spark
 ---
 
 # Pipeline Completeness Gates
@@ -32,38 +33,49 @@ Five gates, each targeting one gap. Design principle: **gates are feedback loops
 
 ### Gate 1: Story Coverage Gate (after test phase)
 
-**Where:** `conductor.ts` in `onAgentCompleted` when `phase === "test"`, after `captureTestContext`.
+**Where:** `conductor.ts` in `onAgentCompleted` when `phase === "test"`, **before** `beads.close()`.
 
 `checkTraceability()` already does the hard work — it extracts STORY-XXX IDs from the stories file and checks which ones appear in test files. Currently advisory. Make it blocking:
 
-- If `uncoveredStories.length > 0` AND `uncoveredStories.length / totalStories > 0.25` (more than 25% uncovered):
-  - Re-open the test bead
+- Exclude stories in `pipeline.context.skippedStories` from the coverage denominator (integration stories skipped by human via Gate 5)
+- If `uncoveredStories.length > 0` AND `uncoveredStories.length / adjustedTotal > 0.25` (more than 25% uncovered):
+  - Don't close the bead — re-open the test bead
   - Inject feedback into the retry prompt: "You covered {N}/{total} stories. Missing: {STORY-007, STORY-008, ...}. Write tests for all stories."
   - Log `"gate:story-coverage:failed"`
 - If uncovered but <= 25%: log warning, proceed (some stories may legitimately not need tests — e.g., documentation stories)
 
 **Why 25% threshold:** The Bobo run had 35% coverage (6/17). A rigid "100% coverage" gate would block on documentation-only stories (STORY-017) or integration stories that can't be unit tested. The threshold catches "test writer gave up halfway" without blocking legitimate partial coverage.
 
-**Assumption:** `checkTraceability` correctly parses STORY-XXX IDs from both stories and test files. **Status: Verified** — it uses regex `STORY-\d{3,}` and `grep -r` (tdd-enforcement.ts:287-288, 432).
+**Fix needed in `checkTraceability`:** `findTestStoryReferences` only greps `*.test.*` files (`tdd-enforcement.ts:454`). It must also match `*.spec.*` and `*_test.*` patterns. The `testGlob` parameter is accepted but currently ignored at line 290 — wire it through.
 
 ### Gate 2: Summary Sentiment Gate (all phases)
 
-**Where:** `conductor.ts` in `onAgentCompleted`, before closing the bead.
+**Where:** `conductor.ts` in `onAgentCompleted`, **before** `beads.close()`.
 
-Parse the agent's summary (`monitor.lastText`) for failure signals before treating exit 0 as success:
+**Critical structural change:** The current `onAgentCompleted` calls `beads.close().then(...)` and runs all gating logic inside the `.then()` callback (`conductor.ts:1248`). This means the bead is already closed before any gate runs. **Refactor `onAgentCompleted` to run gates before closing the bead.** The flow must become:
 
 ```
-FAILURE_PATTERNS = [
-  /CANNOT PROCEED/i,
-  /FAILED/i (but not "tests failed" in redteam context — that's expected),
-  /requires clarification/i,
-  /manual intervention/i,
-  /blocked/i,
-  /unable to complete/i,
-]
+1. Run pre-close gates (summary sentiment, story coverage)
+2. If any gate fails → don't close bead, store feedback, return
+3. If all gates pass → beads.close()
+4. Run post-close hooks (GREEN verification, GitHub sync, etc.)
 ```
 
-When a failure pattern matches:
+Parse the agent's summary (`monitor.lastText`) for failure signals:
+
+```typescript
+const FAILURE_PATTERNS: Array<{ pattern: RegExp; excludePhases?: PipelineRole[] }> = [
+  { pattern: /CANNOT PROCEED/i },
+  { pattern: /requires clarification/i },
+  { pattern: /manual intervention/i },
+  { pattern: /unable to complete/i },
+  // Phase-aware: "FAILED" is normal in redteam/test context
+  { pattern: /\bFAILED\b/i, excludePhases: ["redteam", "test"] },
+  { pattern: /\bblocked\b/i, excludePhases: ["redteam"] },
+];
+```
+
+When a failure pattern matches (and current phase is not excluded):
 - Don't close the bead
 - Enqueue a question via `enqueueQuestion()` with the agent's summary as context
 - Set `pipeline.status = "blocked"`
@@ -81,10 +93,12 @@ When a gate fails and re-opens a bead, store structured feedback:
 interface RetryFeedback {
   reason: string;        // "Story coverage: 6/17 stories covered"
   missing: string[];     // ["STORY-007", "STORY-008", ...]
-  previousSummary: string; // last agent's summary (truncated)
+  previousSummary: string; // last agent's summary (truncated to 300 chars)
   attempt: number;       // 1-indexed retry count
 }
 ```
+
+**Schema changes required:** Add `retryFeedback` and `skippedStories` to both `PipelineContext` in `conductor.ts:65` AND the Zod schema in `pipeline-store.ts:39`. These must be persisted to survive conductor restarts.
 
 In `spawnForRole`, check `pipeline.context.retryFeedback[role]`. If present, append a `## Retry Context` section to the prompt:
 
@@ -102,9 +116,29 @@ Previous agent's summary:
 Focus on completing the missing work. Do not redo work that was already done.
 ```
 
-This replaces the current "blind retry" where the agent gets the exact same prompt and may make the exact same mistake.
+**Prompt size guard:** Truncate `previousSummary` to 300 chars, `missing` list to 20 items. Total retry section must not exceed 500 chars. This prevents prompt bloat in long pipelines with many stories.
 
-**Cap retries at 2** (same as existing redteam→impl loop). On attempt 3, escalate to human via question queue.
+### Unified Retry Policy
+
+The codebase currently has three separate retry mechanisms with different caps:
+
+| Path | Current cap | Location |
+|------|------------|----------|
+| Agent process failure (exit ≠ 0) | 3 attempts | `onAgentFailed` at `conductor.ts:1453` |
+| Redteam→impl feedback loop | 2 iterations | `onAgentCompleted` at `conductor.ts:1336` |
+| New gate-triggered retry | (proposed) 2 attempts | Gates 1, 2 |
+
+**Unify into a single `RetryPolicy`:**
+
+```typescript
+interface RetryPolicy {
+  maxAttempts: number;  // default 2 for gate retries, 3 for process failures
+  currentAttempt: number;
+  source: "gate" | "process-failure" | "feedback-loop";
+}
+```
+
+Track via `pipeline.context.retryFeedback[role].attempt`. When `attempt >= maxAttempts`, always escalate to human via `enqueueQuestion()`. Remove the separate `failureCount` tracking in `onAgentFailed` and the `implRetries` counter in the redteam→impl loop — both should read from the unified `retryFeedback`.
 
 ### Gate 4: Redteam Completeness Check (strengthen prompt)
 
@@ -133,57 +167,93 @@ After stories bead closes, scan the stories file for `[INTEGRATION]` tags and `[
 - Enqueue a question: "Story {ID} requires: {description}. Is this ready?"
 - Options: ["Yes, it's set up", "Skip this story", "I'll do it now — pause pipeline"]
 
-The pipeline continues processing non-integration stories while waiting. When the human answers:
+**Critical change to question queue:** Currently, ALL pending questions block the entire pipeline (`conductor.ts:415`). This must change. Add a `questionType` field to distinguish:
+
+```typescript
+type QuestionType = "blocking" | "informational";
+```
+
+- `"blocking"` — current behavior, pipeline cannot proceed
+- `"informational"` — pipeline continues, answer is consumed when resolved
+
+Integration story questions are `"informational"` until the pipeline reaches impl. At that point, unresolved integration questions become blocking.
+
+**Question answer actions:** Currently `resolveQuestion()` only stamps `resolvedAt` + `answer` (`question-queue.ts:86`) but doesn't drive control flow. Add an `onResolved` callback mechanism or check resolved answers in `tickPipeline`:
+
+```typescript
+// In tickPipeline, after unblocking:
+const resolved = getResolvedForFeature(this.questionQueue, pipeline.featureId);
+for (const q of resolved) {
+  if (q.answer === "Skip this story" && q.context?.storyId) {
+    pipeline.context.skippedStories.push(q.context.storyId);
+  }
+  if (q.answer === "I'll do it now — pause pipeline") {
+    pipeline.status = "blocked";
+  }
+}
+```
+
+When the human answers:
 - "Yes" → mark as ready, include in test/impl scope
 - "Skip" → exclude from coverage gates (add to `pipeline.context.skippedStories[]`)
 - "Pause" → set `pipeline.status = "blocked"` until human resumes
-
-**Why not block immediately?** Most integration stories (API keys, repo creation) can be set up in parallel with the pipeline's brainstorm/stories/test phases. Blocking immediately wastes time. Ask early, block only when the pipeline actually needs the result (before impl).
 
 ## Implementation Tasks
 
 ### Phase A: Foundation (no behavior change, just plumbing)
 
-- [ ] A1. Add `retryFeedback` field to pipeline context type (`conductor.ts` PipelineEntry interface)
-- [ ] A2. Add `skippedStories` field to pipeline context type
-- [ ] A3. Extract `FAILURE_PATTERNS` constant (new file `src/engine/summary-parser.ts` — just regex matching, <30 lines)
-- [ ] A4. Write tests for summary parser: positive matches, false positives to avoid (e.g., "10 tests failed" in redteam is OK)
+- [ ] A1. Add `retryFeedback: Record<PipelineRole, RetryFeedback>` to `PipelineContext` type in `conductor.ts` AND Zod schema in `pipeline-store.ts`
+- [ ] A2. Add `skippedStories: string[]` to `PipelineContext` type AND Zod schema
+- [ ] A3. Add `questionType: "blocking" | "informational"` field to question queue schema (`question-queue.ts`)
+- [ ] A4. Extract `FAILURE_PATTERNS` with phase-aware exclusions (new file `src/engine/summary-parser.ts` — regex matching + phase filtering, <40 lines)
+- [ ] A5. Write tests for summary parser: positive matches, false positives to avoid (e.g., "10 tests failed" in redteam is OK, "FAILED test now passes" in impl is OK)
 
-### Phase B: Story Coverage Gate
+### Phase B: Integration Story Escalation (moved up — must run before Gate 1)
 
-- [ ] B1. Make `checkTraceability` return data (it already does — verify the return type is sufficient)
-- [ ] B2. In `onAgentCompleted` for `phase === "test"`: call `checkTraceability`, apply 25% threshold, re-open bead if failing
-- [ ] B3. Store `RetryFeedback` in `pipeline.context.retryFeedback.test` with missing story IDs
-- [ ] B4. In `spawnForRole` for test role: check `retryFeedback.test`, append retry context to prompt
-- [ ] B5. Write conductor tests: test phase re-opened when >25% stories uncovered, retry prompt includes missing stories
+**Why first:** Skipped stories must be in `pipeline.context.skippedStories` before the coverage gate fires, otherwise integration stories count as "uncovered" and trigger false positives.
 
-### Phase C: Summary Sentiment Gate
+- [ ] B1. After stories phase completes: scan stories file for `[INTEGRATION]` / `[HUMAN-REQUIRED]` tags
+- [ ] B2. Enqueue `"informational"` questions for each tagged story with ["Ready", "Skip", "Pause"] options, including `storyId` in question context
+- [ ] B3. Update `tickPipeline` to check resolved integration questions and apply answers (skip → add to `skippedStories`, pause → block)
+- [ ] B4. Change pipeline blocking logic (`conductor.ts:415`): only block on `questionType === "blocking"` questions
+- [ ] B5. Write conductor tests: integration stories trigger informational questions, pipeline continues until impl, skip answers populate `skippedStories`
 
-- [ ] C1. In `onAgentCompleted`: before `beads.close()`, check summary against `FAILURE_PATTERNS`
-- [ ] C2. On match: enqueue question with summary context, set pipeline to blocked
-- [ ] C3. Special case: for `phase === "redteam"`, exclude "tests failed" / "FAIL" patterns (expected)
-- [ ] C4. Write conductor tests: merge agent with "CANNOT PROCEED" summary triggers question queue
+### Phase C: Refactor `onAgentCompleted` (pre-close gating)
 
-### Phase D: Contextual Retry
+**Why before gates:** Gates 1 and 2 must run before `beads.close()`. Current structure has all logic inside `.then()` after close.
 
-- [ ] D1. In `spawnForRole`: read `pipeline.context.retryFeedback[role]` and append retry section to prompt
-- [ ] D2. In existing retry paths (impl after green-fail, redteam→impl loop): store `RetryFeedback` with the green-check failure details
-- [ ] D3. Cap all retry loops at 2 attempts before escalating (unify with existing redteam→impl cap)
-- [ ] D4. Write tests: retry prompt includes feedback, escalation after 2 retries
+- [ ] C1. Refactor `onAgentCompleted`: extract gate checks into `async runPreCloseGates(pipeline, phase, summary): Promise<{ passed: boolean; feedback?: RetryFeedback }>`
+- [ ] C2. New flow: run pre-close gates → if failed, store feedback + re-open bead + return → if passed, `beads.close()` → run post-close hooks
+- [ ] C3. Move GREEN verification (impl) and redteam→impl loop into post-close hooks (they depend on the bead being closed to trigger DAG progression)
+- [ ] C4. Write tests: gate failure prevents bead close, gate success allows bead close
 
-### Phase E: Redteam Completeness
+### Phase D: Story Coverage Gate
 
-- [ ] E1. Add `{storiesPath}` to REDTEAM_PROMPT with completeness check instructions
-- [ ] E2. Add `[INTEGRATION]` awareness: "flag for human, don't write impossible tests"
-- [ ] E3. Write roles.test.ts case: redteam prompt includes storiesPath substitution
+- [ ] D1. Fix `checkTraceability`: wire `testGlob` parameter through to `findTestStoryReferences` so it matches `*.spec.*` and `*_test.*` in addition to `*.test.*`
+- [ ] D2. Fix `checkTraceability`: resolve `storiesPath` robustly — handle directory vs file, use `findStoriesFile` helper if path is missing
+- [ ] D3. In `runPreCloseGates` for `phase === "test"`: call `checkTraceability`, subtract `skippedStories` from denominator, apply 25% threshold
+- [ ] D4. On failure: store `RetryFeedback` with missing story IDs, re-open test bead
+- [ ] D5. Write conductor tests: test phase re-opened when >25% stories uncovered, skipped stories excluded from count
 
-### Phase F: Integration Story Escalation
+### Phase E: Summary Sentiment Gate
 
-- [ ] F1. After stories phase: scan stories file for `[INTEGRATION]` / `[HUMAN-REQUIRED]` tags
-- [ ] F2. Enqueue questions for each tagged story with ["Ready", "Skip", "Pause"] options
-- [ ] F3. On "Skip": add story ID to `pipeline.context.skippedStories`, exclude from coverage gate
-- [ ] F4. On "Pause": block pipeline until human resumes
-- [ ] F5. Write conductor tests: integration stories trigger questions, skipped stories excluded from coverage
+- [ ] E1. In `runPreCloseGates` (all phases): check summary against `FAILURE_PATTERNS` with phase-aware exclusions
+- [ ] E2. On match: enqueue `"blocking"` question with summary context, set pipeline to blocked
+- [ ] E3. Write conductor tests: merge agent with "CANNOT PROCEED" summary triggers question queue; redteam agent with "tests FAILED" does NOT trigger
+
+### Phase F: Contextual Retry
+
+- [ ] F1. In `spawnForRole`: read `pipeline.context.retryFeedback[role]` and append retry section to prompt (max 500 chars)
+- [ ] F2. In existing retry paths (impl after green-fail, redteam→impl loop): store `RetryFeedback` instead of using separate counters
+- [ ] F3. Unify retry cap: all paths read `retryFeedback[role].attempt`, escalate at configured max (2 for gates, 3 for process failures)
+- [ ] F4. Remove redundant `implRetries` counting from `decisionLog.filter()` in redteam→impl path
+- [ ] F5. Write tests: retry prompt includes feedback, escalation after max retries, unified counting works across failure sources
+
+### Phase G: Redteam Completeness
+
+- [ ] G1. Add `{storiesPath}` to REDTEAM_PROMPT with completeness check instructions
+- [ ] G2. Add `[INTEGRATION]` awareness: "flag for human, don't write impossible tests"
+- [ ] G3. Write roles.test.ts case: redteam prompt includes storiesPath substitution
 
 ## Acceptance Criteria
 
@@ -191,7 +261,9 @@ The pipeline continues processing non-integration stories while waiting. When th
 - [ ] A merge agent that says "CANNOT PROCEED" triggers a human question, not a green checkmark
 - [ ] A retried agent receives a prompt that includes what went wrong and what's missing
 - [ ] The redteam agent checks story completeness, not just security
-- [ ] Stories tagged `[INTEGRATION]` surface as questions in the cockpit before impl begins
+- [ ] Stories tagged `[INTEGRATION]` surface as informational questions in the cockpit after stories phase; become blocking before impl
+- [ ] Integration stories answered "Skip" are excluded from the coverage gate denominator
+- [ ] All retry paths use unified `retryFeedback` tracking — no separate counters
 - [ ] All existing tests still pass (no regressions in conductor.test.ts, conductor-errors.test.ts, pipeline-lifecycle.integration.test.ts)
 
 ## Decision Rationale
@@ -203,26 +275,43 @@ Rigid gates cause false positives. A 100% story coverage gate would block on STO
 We don't control Claude's exit behavior. Exit code 0 means "conversation ended normally." Adding a structured protocol (e.g., writing a JSON result file) would require changing the agent prompts AND hoping the agent follows the protocol. Summary parsing is imperfect but works without agent cooperation — and it catches the exact failure we saw.
 
 **Why feedback injection instead of a separate "fixer" agent?**
-The agent that wrote incomplete tests has the best context about WHY it stopped (ran out of context, misunderstood scope, hit a tooling issue). Telling it "you missed STORY-007 through STORY-017" is more effective than spawning a fresh agent that has to re-discover everything. The retry cap (2 attempts) ensures we don't loop forever if the agent fundamentally can't do the job.
+The agent that wrote incomplete tests has the best context about WHY it stopped (ran out of context, misunderstood scope, hit a tooling issue). Telling it "you missed STORY-007 through STORY-017" is more effective than spawning a fresh agent that has to re-discover everything. The retry cap ensures we don't loop forever if the agent fundamentally can't do the job.
 
 **Why not add a new "verification" phase between impl and redteam?**
 More phases = more latency. The redteam agent already reads the full codebase — adding completeness checking to its prompt is cheaper than adding a whole new agent spawn. The story coverage gate after test phase catches the biggest gap (incomplete tests) early, before impl even starts.
+
+**Why refactor `onAgentCompleted` flow?**
+Codex review identified that the current `.then()` structure closes the bead before gates run. If a gate fails after close, we'd have to re-open a just-closed bead — a race condition with the DAG. Running gates before close is structurally sound: either the bead closes (all gates pass) or it stays open (gate failed, retry needed).
+
+**Why move integration escalation before coverage gate?**
+Codex review identified that integration stories would be counted as "uncovered" by the coverage gate, causing false positives. By scanning for `[INTEGRATION]` tags first and letting the human skip them, we populate `skippedStories` before the coverage gate runs.
+
+**Why informational vs blocking questions?**
+The current question queue blocks the entire pipeline on any pending question (`conductor.ts:415`). Integration setup can happen in parallel — the human might answer "I'll create the repo" while the test writer is still running. Only block when the pipeline actually needs the answer (at impl time).
 
 ## Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
-| Summary parsing false positives (agent says "the FAILED test now passes" → gate triggers) | Medium | Low — question queue, human decides | Phase-aware exclusion patterns (C3), tune patterns over time |
+| Summary parsing false positives ("the FAILED test now passes") | Medium | Low — question queue, human decides | Phase-aware exclusion patterns (E1), tune patterns over time |
 | 25% threshold too generous — allows 4/17 stories to be skipped | Low | Medium | Threshold is configurable; can tighten after observing real pipelines |
-| Retry feedback makes prompts too long, agent ignores it | Low | Medium | Keep feedback section short (<500 chars), put it at the end of the prompt |
-| Integration story scanning regex is too simple (`[INTEGRATION]` literal match) | Low | Low | Stories format is controlled by the stories agent prompt; can tighten later |
+| Retry feedback makes prompts too long, agent ignores it | Low | Medium | Hard cap at 500 chars total for retry section; truncate summary to 300 chars |
+| Integration story scanning regex too simple (`[INTEGRATION]` literal) | Low | Low | Stories format is controlled by the stories agent prompt; can tighten later |
+| `onAgentCompleted` refactor introduces race conditions | Medium | High | Thorough testing in Phase C; GREEN verification stays post-close (it needs DAG progression) |
+| `checkTraceability` grep is expensive on large repos | Low | Medium | Only runs once per test phase completion (not per tick); cache result in pipeline context |
+| Informational→blocking question transition has edge cases | Medium | Medium | Simple rule: unresolved informational questions for the current phase become blocking. Resolved ones are already applied. |
+| Story writer produces sparse/vague stories — no quality gate | Medium | Medium | Out of scope for this plan. Future: add story quality validation before test phase. Noted in assumptions as unverified. |
 
 ## Assumptions
 
 | Assumption | Status | Evidence |
 |------------|--------|----------|
 | `checkTraceability` parses STORY-XXX IDs reliably | Verified | Regex at tdd-enforcement.ts:432, tested via grep |
+| `checkTraceability` `testGlob` parameter works when wired | Unverified | Parameter accepted but ignored at line 290 — must be fixed (task D1) |
 | Agents produce meaningful `monitor.lastText` summaries | Verified | All 5 Bobo agent results have substantive summaries |
 | `enqueueQuestion` + cockpit TUI workflow is functional | Verified | Tested in conductor-errors.test.ts STORY-005, cockpit renders questions |
 | Retry prompt changes actually influence agent behavior | Unverified | Needs observation — first real test will be the next pipeline run |
 | Stories file consistently uses `[INTEGRATION]` tag format | Verified | Defined in STORIES_PROMPT at roles.ts:99 |
+| `PipelineStore` Zod schema accepts new fields without migration | Unverified | Must use `.optional()` or `.default()` for backwards compat with existing pipelines.json |
+| Story quality (complete acceptance criteria, clear scope) is sufficient | Unverified | No gate validates story quality — sparse stories produce sparse tests. Future work. |
+| Question answer resolution drives control flow after redesign | Unverified | `resolveQuestion` currently only stamps metadata — action dispatch must be added (task B3) |

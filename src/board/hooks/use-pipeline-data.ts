@@ -18,6 +18,7 @@ export interface DaemonAgentInfo {
   readonly startedAt: string;
   readonly lastToolUse?: string | undefined;
   readonly isRunning: boolean;
+  readonly featureId?: string | undefined;
 }
 
 export interface UsePipelineDataResult {

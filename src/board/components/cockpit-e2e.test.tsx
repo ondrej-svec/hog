@@ -123,7 +123,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       const { lastFrame } = renderView({ pipelines: [pipeline], agents: [agent] });
       const frame = lastFrame() ?? "";
       // Active agent card shows agent name and phase
-      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay/);
+      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
       expect(frame).toContain("stories");
     });
 

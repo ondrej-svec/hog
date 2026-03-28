@@ -290,7 +290,7 @@ describe("PipelineView", () => {
       });
       const frame = lastFrame() ?? "";
       // Agent card shows a humanized name (Ada, Bea, Cal…)
-      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay/);
+      expect(frame).toMatch(/Ada|Bea|Cal|Dev|Eve|Fin|Gia|Hal|Ivy|Jay|Kit|Lea|Max|Nia|Oz|Pia/);
     });
 
     it("shows agent phase", () => {
