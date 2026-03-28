@@ -103,7 +103,7 @@ ratings (FR-13, NFR-7).
   to PipelineStore alongside pipeline state. Recover on daemon restart.
   Files: `src/engine/conductor.ts` (lines 121), `src/engine/pipeline-store.ts`
 
-- [ ] 1.9 **Tests for wiring** — Integration tests verifying: agent gets worktree, completed
+- [x] 1.9 **Tests for wiring** — Integration tests verifying: agent gets worktree, completed
   branch enters Refinery queue, role-audit gate runs, merge queue state appears in RPC.
   Files: new test file `src/daemon/hogd-wiring.test.ts`
 
