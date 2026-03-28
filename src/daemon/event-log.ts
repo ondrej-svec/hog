@@ -18,8 +18,16 @@ export interface EventLogEntry {
   readonly data: Record<string, unknown>;
 }
 
-/** Start logging all EventBus events to per-pipeline JSONL files. */
-export function startEventLog(eventBus: EventBus): void {
+/**
+ * Start logging all EventBus events to per-pipeline JSONL files.
+ *
+ * @param resolveFeatureId — maps sessionId → featureId so events route to the right file.
+ *   Falls back to shared events.jsonl when featureId can't be resolved.
+ */
+export function startEventLog(
+  eventBus: EventBus,
+  resolveFeatureId?: (sessionId: string) => string | undefined,
+): void {
   mkdirSync(LOG_DIR, { recursive: true });
 
   const logEvent = <K extends keyof EngineEvents>(eventName: K): void => {
@@ -30,14 +38,20 @@ export function startEventLog(eventBus: EventBus): void {
         event: eventName,
         data,
       };
-
-      // Determine featureId from data if available (via sessionId mapping would be ideal,
-      // but for simplicity we log to a shared file keyed by event type)
       const line = `${JSON.stringify(entry)}\n`;
 
-      // Write to the shared events log
+      // Route to per-pipeline file when possible, shared file as fallback
+      const sessionId = data["sessionId"] as string | undefined;
+      const featureId =
+        (data["featureId"] as string | undefined) ??
+        (sessionId && resolveFeatureId ? resolveFeatureId(sessionId) : undefined);
+
+      const logFile = featureId
+        ? join(LOG_DIR, `${featureId}.events.jsonl`)
+        : join(LOG_DIR, "events.jsonl");
+
       try {
-        appendFileSync(join(LOG_DIR, "events.jsonl"), line, "utf-8");
+        appendFileSync(logFile, line, "utf-8");
       } catch {
         // best-effort
       }
@@ -53,11 +67,17 @@ export function startEventLog(eventBus: EventBus): void {
 
 /** Read event log entries, optionally filtered. */
 export function readEventLog(options?: { featureId?: string; limit?: number }): EventLogEntry[] {
-  const logFile = join(LOG_DIR, "events.jsonl");
-  if (!existsSync(logFile)) return [];
+  // Prefer per-pipeline file, fall back to shared log
+  const logFile = options?.featureId
+    ? join(LOG_DIR, `${options.featureId}.events.jsonl`)
+    : join(LOG_DIR, "events.jsonl");
+
+  // If per-pipeline file doesn't exist, try shared file with session filtering (legacy compat)
+  const targetFile = existsSync(logFile) ? logFile : join(LOG_DIR, "events.jsonl");
+  if (!existsSync(targetFile)) return [];
 
   try {
-    const content = readFileSync(logFile, "utf-8");
+    const content = readFileSync(targetFile, "utf-8");
     const lines = content.trim().split("\n").filter(Boolean);
     let entries: EventLogEntry[] = [];
 
@@ -69,8 +89,8 @@ export function readEventLog(options?: { featureId?: string; limit?: number }): 
       }
     }
 
-    // Filter by featureId if provided (match against sessionId patterns)
-    if (options?.featureId) {
+    // If reading from shared file with featureId filter, apply session-based matching
+    if (options?.featureId && targetFile.endsWith("events.jsonl") && !targetFile.includes(options.featureId)) {
       entries = entries.filter((e) => {
         const sessionId = e.data["sessionId"] as string | undefined;
         return sessionId?.includes(options.featureId!) ?? false;

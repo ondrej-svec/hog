@@ -69,7 +69,7 @@ export function usePipelineData(
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [agents, setAgents] = useState<readonly DaemonAgentInfo[]>([]);
   const [pendingDecisions, setPendingDecisions] = useState<Question[]>([]);
-  const [mergeQueue] = useState<readonly MergeQueueEntry[]>([]);
+  const [mergeQueue, setMergeQueue] = useState<readonly MergeQueueEntry[]>([]);
   const [beadsAvailable, setBeadsAvailable] = useState(false);
   const [daemonConnected, setDaemonConnected] = useState(false);
 
@@ -90,11 +90,12 @@ export function usePipelineData(
         setDaemonConnected(true);
 
         // Initial data load
-        const [pipelineData, agentData, decisionData, statusData] = await Promise.all([
+        const [pipelineData, agentData, decisionData, statusData, mergeQueueData] = await Promise.all([
           client.call("pipeline.list", {}),
           client.call("agent.list", {}),
           client.call("decision.list", {}),
           client.call("daemon.status", {}),
+          client.call("mergeQueue.list", {}),
         ]);
 
         if (cancelled) {
@@ -106,6 +107,7 @@ export function usePipelineData(
         setAgents(agentData.map((a) => ({ ...a, isRunning: true })));
         setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
         setBeadsAvailable(statusData.pipelines >= 0); // daemon running = beads available
+        setMergeQueue(mergeQueueData);
 
         // Subscribe to push events for real-time updates
         client.subscribe((event: RpcEvent) => {
@@ -177,12 +179,14 @@ export function usePipelineData(
       }
 
       try {
-        const [pipelineData, decisionData] = await Promise.all([
+        const [pipelineData, decisionData, mergeQueueData] = await Promise.all([
           client.call("pipeline.list", {}),
           client.call("decision.list", {}),
+          client.call("mergeQueue.list", {}),
         ]);
         setPipelines(pipelineData);
         setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
+        setMergeQueue(mergeQueueData);
       } catch {
         setDaemonConnected(false);
       }

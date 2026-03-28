@@ -4,7 +4,7 @@ import type { HogConfig, RepoConfig } from "../config.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
 import type { EventBus } from "./event-bus.js";
-import { PipelineStore } from "./pipeline-store.js";
+import { PipelineStore, type SessionMapEntry } from "./pipeline-store.js";
 import type { QuestionQueue } from "./question-queue.js";
 import {
   enqueueQuestion,
@@ -158,6 +158,18 @@ export class Conductor {
     this.onPhaseCompleted = options.onPhaseCompleted;
     this.store = new PipelineStore(config);
 
+    // Recover session maps from previous daemon run
+    for (const entry of this.store.loadSessionMap()) {
+      this.sessionToPipeline.set(entry.sessionId, entry.featureId);
+      if (entry.worktreePath && entry.branch && entry.repoPath) {
+        this.sessionWorktrees.set(entry.sessionId, {
+          worktreePath: entry.worktreePath,
+          branch: entry.branch,
+          repoPath: entry.repoPath,
+        });
+      }
+    }
+
     // Listen for agent completion/failure to advance pipelines
     this.eventBus.on("agent:completed", (event) => {
       this.onAgentCompleted(
@@ -219,6 +231,22 @@ export class Conductor {
   /** Get session-to-pipeline mapping (for agent.list RPC). */
   getSessionToPipeline(): ReadonlyMap<string, string> {
     return this.sessionToPipeline;
+  }
+
+  /** Persist session → pipeline/worktree maps for crash recovery. */
+  private persistSessionMaps(): void {
+    const entries: SessionMapEntry[] = [];
+    for (const [sessionId, featureId] of this.sessionToPipeline) {
+      const wt = this.sessionWorktrees.get(sessionId);
+      entries.push({
+        sessionId,
+        featureId,
+        worktreePath: wt?.worktreePath,
+        branch: wt?.branch,
+        repoPath: wt?.repoPath,
+      });
+    }
+    this.store.saveSessionMap(entries);
   }
 
   /** Get the current question queue. */
@@ -568,20 +596,28 @@ export class Conductor {
     // impl, redteam, merge need test context
     if ((role === "impl" || role === "redteam" || role === "merge") && ctx.testCommand) {
       lines.push("");
-      lines.push("## Operational context from previous stages");
-      lines.push("");
+      lines.push("<prior_stage_context>");
+      lines.push("<test_environment>");
       if (ctx.testCommand) {
-        lines.push(`**Test command:** \`${ctx.testCommand}\``);
+        lines.push(`  <test_command>${ctx.testCommand}</test_command>`);
       }
       if (ctx.workingDir) {
-        lines.push(`**Working directory:** \`${ctx.workingDir}\` (run commands from here)`);
+        lines.push(`  <working_directory>${ctx.workingDir}</working_directory>`);
       }
       if (ctx.testDir) {
-        lines.push(`**Test directory:** \`${ctx.testDir}\``);
+        lines.push(`  <test_directory>${ctx.testDir}</test_directory>`);
       }
       if (ctx.testFiles && ctx.testFiles.length > 0) {
-        lines.push(`**Test files (${ctx.testFiles.length}):** ${ctx.testFiles.slice(0, 10).join(", ")}${ctx.testFiles.length > 10 ? ` (+${ctx.testFiles.length - 10} more)` : ""}`);
+        lines.push(`  <test_files count="${ctx.testFiles.length}">`);
+        for (const f of ctx.testFiles.slice(0, 10)) {
+          lines.push(`    <file>${f}</file>`);
+        }
+        if (ctx.testFiles.length > 10) {
+          lines.push(`    <!-- +${ctx.testFiles.length - 10} more files -->`);
+        }
+        lines.push("  </test_files>");
       }
+      lines.push("</test_environment>");
     }
 
     // impl and redteam get summaries from earlier phases
@@ -590,10 +626,13 @@ export class Conductor {
       for (const phase of relevantPhases) {
         const summary = ctx.phaseSummaries[phase];
         if (summary) {
-          lines.push("");
-          lines.push(`**${phase} phase summary:** ${summary.slice(0, 300)}`);
+          lines.push(`<phase_summary phase="${phase}">${summary.slice(0, 300)}</phase_summary>`);
         }
       }
+    }
+
+    if (lines.length > 0) {
+      lines.push("</prior_stage_context>");
     }
 
     return lines.length > 0 ? lines.join("\n") : undefined;
@@ -1093,6 +1132,7 @@ export class Conductor {
       }
       // Map session to pipeline for correct completion routing
       this.sessionToPipeline.set(result, pipeline.featureId);
+      this.persistSessionMaps();
       pipeline.activePhase = role;
       this.log(
         pipeline.featureId,
@@ -1232,6 +1272,7 @@ export class Conductor {
       );
       this.sessionWorktrees.delete(sessionId);
     }
+    this.persistSessionMaps();
 
     // Check if this is a parallel agent — don't close bead until all are done
     const pending = this.pendingParallelAgents.get(beadId);
@@ -1409,6 +1450,7 @@ export class Conductor {
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
     this.sessionToPipeline.delete(sessionId);
+    this.persistSessionMaps();
 
     const matchedPipelines = featureId
       ? ([this.store.get(featureId)].filter(Boolean) as Pipeline[])

@@ -10,6 +10,7 @@
 import type { Pipeline, PipelineStatus } from "../engine/conductor.js";
 import type { EngineEvents } from "../engine/event-bus.js";
 import type { Question } from "../engine/question-queue.js";
+import type { MergeQueueEntry } from "../engine/refinery.js";
 
 // ── RPC Methods ──
 
@@ -64,6 +65,9 @@ export interface RpcMethods {
       lastToolUse?: string;
     }>;
   };
+  "mergeQueue.list": { params: Record<string, never>; result: MergeQueueEntry[] };
+  "mergeQueue.retry": { params: { entryId: string }; result: { ok: boolean } };
+  "mergeQueue.skip": { params: { entryId: string }; result: { ok: boolean } };
   "daemon.status": {
     params: Record<string, never>;
     result: {

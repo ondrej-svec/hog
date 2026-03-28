@@ -77,9 +77,19 @@ export interface PipelineSnapshot {
 // ── PipelineStore ──
 
 const PIPELINES_FILE = `${CONFIG_DIR}/pipelines.json`;
+const SESSION_MAP_FILE = `${CONFIG_DIR}/session-map.json`;
 
 const isTest = (): boolean =>
   process.env["NODE_ENV"] === "test" || process.env["VITEST"] === "true";
+
+/** Persisted session → pipeline/worktree mapping for crash recovery. */
+export interface SessionMapEntry {
+  readonly sessionId: string;
+  readonly featureId: string;
+  readonly worktreePath?: string | undefined;
+  readonly branch?: string | undefined;
+  readonly repoPath?: string | undefined;
+}
 
 export class PipelineStore {
   private readonly config: HogConfig;
@@ -208,6 +218,32 @@ export class PipelineStore {
       }
     } catch {
       // Corrupted file — start fresh
+    }
+  }
+
+  /** Save session → pipeline/worktree mappings for crash recovery. */
+  saveSessionMap(entries: SessionMapEntry[]): void {
+    if (isTest()) return;
+    try {
+      mkdirSync(CONFIG_DIR, { recursive: true });
+      const tmp = `${SESSION_MAP_FILE}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
+      renameSync(tmp, SESSION_MAP_FILE);
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** Load session → pipeline/worktree mappings (for daemon restart recovery). */
+  loadSessionMap(): SessionMapEntry[] {
+    if (isTest()) return [];
+    if (!existsSync(SESSION_MAP_FILE)) return [];
+    try {
+      const raw: unknown = JSON.parse(readFileSync(SESSION_MAP_FILE, "utf-8"));
+      if (!Array.isArray(raw)) return [];
+      return raw as SessionMapEntry[];
+    } catch {
+      return [];
     }
   }
 

@@ -16,6 +16,8 @@ import { CONFIG_DIR, loadFullConfig, resolveProfile } from "../config.js";
 import { Conductor } from "../engine/conductor.js";
 import { Engine } from "../engine/engine.js";
 import type { EngineEvents } from "../engine/event-bus.js";
+import { Refinery } from "../engine/refinery.js";
+import { WorktreeManager } from "../engine/worktree.js";
 import {
   isRpcRequest,
   RPC_ERRORS,
@@ -35,6 +37,7 @@ export class HogDaemon {
   private readonly config: HogConfig;
   private readonly engine: Engine;
   private readonly conductor: Conductor;
+  private readonly refinery: Refinery;
   private server: Server | null = null;
   private readonly subscribers = new Set<Socket>();
   private readonly startedAt = Date.now();
@@ -44,11 +47,19 @@ export class HogDaemon {
   constructor(config: HogConfig) {
     this.config = config;
     this.engine = new Engine(config);
+
+    // Wire the fuel lines: WorktreeManager for agent isolation, Refinery for merge queue
+    const worktrees = new WorktreeManager();
+    this.refinery = new Refinery(this.engine.eventBus, worktrees, {
+      baseBranch: "main",
+    });
+
     this.conductor = new Conductor(
       config,
       this.engine.eventBus,
       this.engine.agents,
       this.engine.beads,
+      { worktrees, refinery: this.refinery },
     );
   }
 
@@ -68,9 +79,10 @@ export class HogDaemon {
     // Write PID file
     writeFileSync(PID_FILE, `${process.pid}\n`, { mode: 0o600 });
 
-    // Start engine + conductor
+    // Start engine + conductor + merge queue
     await this.engine.start();
     this.conductor.start();
+    this.refinery.start();
 
     // Ensure Dolt is running for all active pipelines (prevents port mismatch on restart)
     for (const pipeline of this.conductor.getPipelines()) {
@@ -86,9 +98,10 @@ export class HogDaemon {
     // Bridge EventBus → subscribers
     this.bridgeEvents();
 
-    // Start append-only event log
+    // Start append-only event log — route events to per-pipeline files via session mapping
     const { startEventLog } = await import("./event-log.js");
-    startEventLog(this.engine.eventBus);
+    const sessionMap = this.conductor.getSessionToPipeline();
+    startEventLog(this.engine.eventBus, (sessionId) => sessionMap.get(sessionId));
 
     // Start Unix socket server
     this.server = createServer((socket) => this.handleConnection(socket));
@@ -117,6 +130,7 @@ export class HogDaemon {
 
   /** Stop the daemon gracefully. */
   stop(): void {
+    this.refinery.stop();
     this.conductor.stop();
     this.engine.stop();
 
@@ -284,6 +298,22 @@ export class HogDaemon {
           featureId: sessionMap.get(a.sessionId),
         }));
         this.send(socket, req.id, agents);
+        break;
+      }
+
+      case "mergeQueue.list":
+        this.send(socket, req.id, this.refinery.getQueue());
+        break;
+
+      case "mergeQueue.retry": {
+        const params = req.params as RpcMethods["mergeQueue.retry"]["params"];
+        this.send(socket, req.id, { ok: this.refinery.retry(params.entryId) });
+        break;
+      }
+
+      case "mergeQueue.skip": {
+        const params = req.params as RpcMethods["mergeQueue.skip"]["params"];
+        this.send(socket, req.id, { ok: this.refinery.skip(params.entryId) });
         break;
       }
 
