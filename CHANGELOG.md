@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.2](https://github.com/ondrej-svec/hog/compare/hog-v1.29.1...hog-v1.29.2) (2026-03-29)
+
+
+### Bug Fixes
+
+* cockpit shows stale agent from previous pipeline + missing scaffold label ([bf3fa8d](https://github.com/ondrej-svec/hog/commit/bf3fa8d0f3d592937d995d872e21a4338f64b32d))
+
 ## [1.29.1](https://github.com/ondrej-svec/hog/compare/hog-v1.29.0...hog-v1.29.1) (2026-03-29)
 
 
