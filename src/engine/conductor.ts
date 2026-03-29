@@ -963,8 +963,9 @@ export class Conductor {
             );
             this.pendingParallelAgents.set(bead.id, chunks.length);
 
-            for (const chunk of chunks) {
-              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction, true);
+            for (let ci = 0; ci < chunks.length; ci++) {
+              const chunk = chunks[ci]!;
+              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction, true, ci);
             }
             continue; // Don't fall through to single spawn
           }
@@ -985,6 +986,7 @@ export class Conductor {
     role: PipelineRole,
     scopeSuffix?: string,
     skipClaim?: boolean,
+    parallelIndex?: number,
   ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
@@ -1161,6 +1163,11 @@ export class Conductor {
     // BRAINSTORM_PATH is handled by contract-based wiring below (wirePhaseInputs).
     // Do NOT set it from phaseSummaries — that's a truncated summary string, not a file path.
 
+    // For parallel agents: pass story scope as env var so skills can read it
+    if (usingSkill && scopeSuffix) {
+      pipelineEnv["STORY_SCOPE"] = scopeSuffix.trim();
+    }
+
     // Contract-based wiring: auto-wire outputs from previous phases as inputs
     const skillContract = usingSkill ? getSkillContract(roleConfig.skill) : undefined;
     if (skillContract && pipeline.context?.pipelineOutputs) {
@@ -1272,6 +1279,7 @@ export class Conductor {
       model: roleModel,
       permissionMode: this.config.pipeline?.permissionMode,
       env: pipelineEnv,
+      parallelSuffix: parallelIndex !== undefined ? String(parallelIndex) : undefined,
     });
 
     if (typeof result === "string") {

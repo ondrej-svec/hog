@@ -31,6 +31,8 @@ export interface SpawnAgentOptions {
   readonly permissionMode?: string | undefined;
   /** Additional environment variables to pass to the spawned agent. */
   readonly env?: Readonly<Record<string, string>> | undefined;
+  /** Suffix for parallel agents — ensures unique result file paths. */
+  readonly parallelSuffix?: string | undefined;
 }
 
 export interface SpawnAgentResult {
@@ -172,10 +174,12 @@ export function buildResultFilePath(
   repoFullName: string,
   issueNumber: number,
   phase: string,
+  suffix?: string,
 ): string {
   const safePhase = phase.replace(/[^a-zA-Z0-9_-]/g, "_");
   const slug = repoFullName.replace(/\//g, "-");
-  return join(AGENT_RESULTS_DIR, `${slug}-${issueNumber}-${safePhase}.json`);
+  const safeSuffix = suffix ? `-${suffix.replace(/[^a-zA-Z0-9_-]/g, "_")}` : "";
+  return join(AGENT_RESULTS_DIR, `${slug}-${issueNumber}-${safePhase}${safeSuffix}.json`);
 }
 
 export function writeResultFile(path: string, result: AgentResultFile): void {
@@ -251,7 +255,7 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
     };
   }
 
-  const resultFilePath = buildResultFilePath(opts.repoFullName, opts.issueNumber, opts.phase);
+  const resultFilePath = buildResultFilePath(opts.repoFullName, opts.issueNumber, opts.phase, opts.parallelSuffix);
 
   return {
     ok: true,
