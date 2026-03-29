@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/ondrej-svec/hog/compare/hog-v1.28.1...hog-v1.29.0) (2026-03-29)
+
+
+### Features
+
+* init wizard checks for Heart of Gold toolkit plugins ([0045e04](https://github.com/ondrej-svec/hog/commit/0045e0469827c2423237120c663db11230c3ef67))
+
 ## [1.28.1](https://github.com/ondrej-svec/hog/compare/hog-v1.28.0...hog-v1.28.1) (2026-03-29)
 
 
