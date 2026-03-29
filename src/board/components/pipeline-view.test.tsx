@@ -203,6 +203,32 @@ describe("PipelineView", () => {
       expect(frame).toContain("Auth");
       expect(frame).toContain("Rate");
     });
+
+    it("shows scroll indicators when many pipelines overflow the panel", () => {
+      const many = Array.from({ length: 20 }, (_, i) =>
+        makePipeline({ featureId: `feat-${i}`, title: `Pipeline ${i}` }),
+      );
+      const { lastFrame } = render(
+        React.createElement(PipelineView, {
+          data: {
+            pipelines: many,
+            agents: [],
+            pendingDecisions: [],
+            mergeQueue: [],
+            selectedIndex: 10,
+          },
+          cols: 160,
+          rows: 20,
+        }),
+      );
+      const frame = lastFrame() ?? "";
+      // Selected item should be visible
+      expect(frame).toContain("Pipeline 10");
+      // Should show overflow indicators
+      expect(frame).toContain("↑");
+      expect(frame).toContain("↓");
+      expect(frame).toContain("more");
+    });
   });
 
   // STORY-012: As a user, pending decisions dominate the focus panel
@@ -439,6 +465,31 @@ describe("PipelineView", () => {
       );
       const frame = lastFrame() ?? "";
       expect(frame).toContain("Add user authentication");
+    });
+
+    it("narrow viewport with multiple pipelines shows compact selector", () => {
+      const { lastFrame } = render(
+        React.createElement(PipelineView, {
+          data: {
+            pipelines: [
+              makePipeline({ title: "Auth" }),
+              makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
+              makePipeline({ featureId: "feat-003", title: "Caching" }),
+            ],
+            agents: [],
+            pendingDecisions: [],
+            mergeQueue: [],
+            selectedIndex: 1,
+          },
+          cols: 50,
+          rows: 30,
+        }),
+      );
+      const frame = lastFrame() ?? "";
+      // Compact selector shows position and title
+      expect(frame).toContain("2");
+      expect(frame).toContain("/3");
+      expect(frame).toContain("Rate limiting");
     });
   });
 });

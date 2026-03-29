@@ -57,30 +57,92 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
 
   const selectedPipeline = pipelines[selectedIndex];
   const showLeftPanel = pipelines.length > 1 && cols > 60;
+  // Narrow viewport with multiple pipelines: show compact selector instead
+  const showCompactSelector = pipelines.length > 1 && !showLeftPanel;
   const rightWidth = Math.max(40, showLeftPanel ? cols - LEFT_PANEL_WIDTH - 1 : cols);
+  const detailRows = showCompactSelector ? rows - 1 : rows;
 
   return (
-    <Box flexDirection="row" height={rows} overflow="hidden">
-      {showLeftPanel ? (
-        <Box flexDirection="column" width={LEFT_PANEL_WIDTH} flexShrink={0}>
-          <Panel title="Pipelines" isActive={false} width={LEFT_PANEL_WIDTH} flexGrow={1}>
-            {pipelines.map((p, i) => (
-              <PipelineListItem key={p.featureId} pipeline={p} selected={i === selectedIndex} />
-            ))}
-          </Panel>
+    <Box flexDirection="column" height={rows} overflow="hidden">
+      {/* Compact pipeline selector for narrow viewports */}
+      {showCompactSelector ? (
+        <Box flexShrink={0} height={1}>
+          <Text wrap="truncate">
+            <Text dimColor> ◄ </Text>
+            <Text bold>{selectedIndex + 1}</Text>
+            <Text dimColor>/{pipelines.length} </Text>
+            <Text>{selectedPipeline?.title ?? ""}</Text>
+            <Text dimColor> ► j/k:nav</Text>
+          </Text>
         </Box>
       ) : null}
 
-      {selectedPipeline ? (
-        <PipelineDetail
-          pipeline={selectedPipeline}
-          agents={agents}
-          pendingDecisions={pendingDecisions}
-          logEntries={logEntries}
-          width={rightWidth}
-          rows={rows}
+      <Box flexDirection="row" flexGrow={1} overflow="hidden">
+        {showLeftPanel ? (
+          <Box flexDirection="column" width={LEFT_PANEL_WIDTH} flexShrink={0}>
+            <Panel title="Pipelines" isActive={false} width={LEFT_PANEL_WIDTH} flexGrow={1}>
+              <PipelineList pipelines={pipelines} selectedIndex={selectedIndex} rows={detailRows} />
+            </Panel>
+          </Box>
+        ) : null}
+
+        {selectedPipeline ? (
+          <PipelineDetail
+            pipeline={selectedPipeline}
+            agents={agents}
+            pendingDecisions={pendingDecisions}
+            logEntries={logEntries}
+            width={showLeftPanel ? rightWidth : cols}
+            rows={detailRows}
+          />
+        ) : null}
+      </Box>
+    </Box>
+  );
+}
+
+// ── Pipeline List (viewport-windowed) ──
+
+function PipelineList({
+  pipelines,
+  selectedIndex,
+  rows,
+}: {
+  pipelines: Pipeline[];
+  selectedIndex: number;
+  rows: number;
+}) {
+  // Each item is 2 lines. Panel borders take ~3 lines.
+  const linesPerItem = 2;
+  const availableLines = Math.max(2, rows - 3);
+  const maxVisible = Math.floor(availableLines / linesPerItem);
+
+  // Window the list to keep selectedIndex visible
+  let startIdx = 0;
+  if (pipelines.length > maxVisible) {
+    // Center the selection in the viewport, clamped to bounds
+    startIdx = Math.min(
+      Math.max(0, selectedIndex - Math.floor(maxVisible / 2)),
+      pipelines.length - maxVisible,
+    );
+  }
+  const endIdx = Math.min(startIdx + maxVisible, pipelines.length);
+  const visiblePipelines = pipelines.slice(startIdx, endIdx);
+
+  const hasMore = endIdx < pipelines.length;
+  const hasLess = startIdx > 0;
+
+  return (
+    <Box flexDirection="column">
+      {hasLess ? <Text dimColor>  ↑ {startIdx} more</Text> : null}
+      {visiblePipelines.map((p, vi) => (
+        <PipelineListItem
+          key={p.featureId}
+          pipeline={p}
+          selected={startIdx + vi === selectedIndex}
         />
-      ) : null}
+      ))}
+      {hasMore ? <Text dimColor>  ↓ {pipelines.length - endIdx} more</Text> : null}
     </Box>
   );
 }
