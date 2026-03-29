@@ -372,6 +372,12 @@ export class Conductor {
 
     this.store.set(featureId, pipeline);
     this.store.save();
+
+    // Write safety deny rules to .claude/settings.json in the project (fire-and-forget)
+    import("./safety-rules.js")
+      .then(({ writeSafetyRules }) => writeSafetyRules(repoConfig.localPath))
+      .catch(() => {});
+
     this.log(featureId, "pipeline:started", `Heart of Gold launched. Course: "${title}"`);
 
     // Don't tick here — the watcher process handles advancement.

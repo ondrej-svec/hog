@@ -31,6 +31,21 @@ vi.mock("./tdd-enforcement.js", () => ({
     passingTests: 0,
     detail: "3 tests failing (mock)",
   }),
+  checkTraceability: vi.fn().mockResolvedValue({
+    coveredStories: ["STORY-001"],
+    uncoveredStories: [],
+    orphanTests: [],
+  }),
+}));
+
+// Mock summary parser — prevent real sentiment analysis in integration tests
+vi.mock("./summary-parser.js", () => ({
+  checkSummaryForFailure: vi.fn().mockReturnValue({ failed: false }),
+}));
+
+// Mock safety rules — prevent file writes in tests
+vi.mock("./safety-rules.js", () => ({
+  writeSafetyRules: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock role-context — writeRoleClaudeMd writes to worktree directories
@@ -294,20 +309,21 @@ describe("Pipeline Lifecycle Integration", () => {
     // Step 8: Tick — impl bead ready (RED state assumed verified in mock)
     await tick(conductor);
 
-    // Step 9: Complete impl
+    // Step 9: Complete impl (async gates may need extra flush time)
     await completeAgent(eventBus, "session-4", "impl");
+    await new Promise((r) => setTimeout(r, 50)); // Let async gates settle
     await tick(conductor);
 
     // Step 10: Complete redteam
     await completeAgent(eventBus, "session-5", "redteam");
+    await new Promise((r) => setTimeout(r, 50));
     await tick(conductor);
 
     // Step 11: Complete merge
     await completeAgent(eventBus, "session-6", "merge");
-    // Tick to process the completion and run checkPipelineCompletion
+    await new Promise((r) => setTimeout(r, 50));
     await tick(conductor);
-    // One more tick — checkPipelineCompletion runs inside tickPipeline,
-    // which needs all beads to report "closed" via beads.show()
+    await tick(conductor);
     await tick(conductor);
 
     // Step 12: Pipeline should be completed
