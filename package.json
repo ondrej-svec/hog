@@ -1,7 +1,7 @@
 {
   "name": "@ondrej-svec/hog",
   "version": "2.0.0",
-  "description": "TDD-enforced AI development pipelines with structural role separation",
+  "description": "The Rails of agent-assisted development — TDD-enforced AI pipelines with structural role separation",
   "author": "Ondrej Svec",
   "repository": {
     "type": "git",
@@ -37,13 +37,13 @@
   ],
   "keywords": [
     "cli",
-    "ticktick",
-    "github-projects",
-    "task-manager",
-    "dashboard",
-    "tui",
-    "agent-friendly",
-    "command-deck"
+    "ai-agents",
+    "tdd",
+    "pipeline",
+    "code-generation",
+    "developer-tools",
+    "agent-orchestration",
+    "tui"
   ],
   "license": "MIT",
   "devDependencies": {
