@@ -1073,9 +1073,17 @@ export class Conductor {
 
     let basePrompt: string;
     if (usingSkill) {
-      // When using a skill, the prompt is just the slash command.
-      // Context is passed via env vars (see pipelineEnv below).
-      basePrompt = resolvedPrompt;
+      // Skill prompt: slash command + explicit context in the prompt itself.
+      // Env vars alone are unreliable — the agent may not check them.
+      // Putting paths directly in the prompt ensures the skill sees them.
+      basePrompt = [
+        resolvedPrompt,
+        "",
+        `Stories file: ${resolvedStoriesPath}`,
+        `Architecture doc: ${archPath}`,
+        `Feature: ${pipeline.title}`,
+        role === "merge" ? "Mode: merge readiness check (MERGE_CHECK=true)" : "",
+      ].filter(Boolean).join("\n");
     } else {
       // Fallback: substitute variables into the bundled prompt template
       basePrompt = resolvedPrompt
@@ -1134,46 +1142,7 @@ export class Conductor {
       }
     }
 
-    // Create worktree for isolation (if worktree manager available)
-    let agentCwd = pipeline.localPath;
-    let worktreePath: string | undefined;
-    let branchName: string | undefined;
-
-    if (this.worktrees) {
-      branchName = this.worktrees.branchName(pipeline.featureId, role);
-      try {
-        worktreePath = await this.worktrees.create(pipeline.localPath, branchName);
-        agentCwd = worktreePath;
-        // Write role-specific CLAUDE.md to restrict agent behavior
-        writeRoleClaudeMd(worktreePath, role, {
-          storiesPath: resolvedStoriesPath,
-          archPath,
-        }, usingSkill);
-        this.log(
-          pipeline.featureId,
-          `worktree:created:${role}`,
-          `Worktree at ${worktreePath} with ${role} CLAUDE.md`,
-        );
-      } catch (err) {
-        // Clean up leftover directory from failed worktree creation
-        worktreePath = undefined;
-        branchName = undefined;
-        agentCwd = pipeline.localPath;
-        try {
-          const { rmSync, existsSync } = await import("node:fs");
-          const worktreeDir = `${pipeline.localPath}/.hog-worktrees`;
-          if (existsSync(worktreeDir)) {
-            const { readdirSync } = await import("node:fs");
-            const entries = readdirSync(worktreeDir);
-            if (entries.length === 0) {
-              rmSync(worktreeDir, { recursive: true, force: true });
-            }
-          }
-        } catch {
-          // best-effort cleanup
-        }
-      }
-    }
+    const agentCwd = pipeline.localPath;
 
     // Capture test baseline before impl runs (for diff-based GREEN verification)
     if (role === "impl" && !this.testBaselines.has(pipeline.featureId)) {
@@ -1226,14 +1195,6 @@ export class Conductor {
     });
 
     if (typeof result === "string") {
-      // Track worktree for this session so we can submit to refinery on completion
-      if (worktreePath && branchName) {
-        this.sessionWorktrees.set(result, {
-          worktreePath,
-          branch: branchName,
-          repoPath: pipeline.localPath,
-        });
-      }
       // Map session to pipeline for correct completion routing
       this.sessionToPipeline.set(result, pipeline.featureId);
       this.persistSessionMaps();
@@ -1249,10 +1210,6 @@ export class Conductor {
         `agent:spawn-failed:${role}`,
         `Failed to spawn ${roleConfig.label}: ${result.error}`,
       );
-      // Clean up worktree on spawn failure
-      if (worktreePath && this.worktrees) {
-        this.worktrees.remove(pipeline.localPath, worktreePath).catch(() => {});
-      }
       // Unblock the bead so it can be retried
       try {
         await this.beads.updateStatus(pipeline.localPath, bead.id, "open");

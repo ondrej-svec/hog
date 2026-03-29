@@ -214,39 +214,10 @@ describe("Conductor Pipeline", () => {
     });
   });
 
-  // STORY-002: As a developer, each pipeline role gets its own worktree
-  // so agents work in isolation without file contention
-  describe("STORY-002: Worktree isolation per agent", () => {
-    it("creates a worktree when spawning an agent", async () => {
+  // STORY-002: Agents run in the project directory (worktree isolation removed)
+  describe("STORY-002: Agent runs in project directory", () => {
+    it("spawns agent in the pipeline's local path", async () => {
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads, {
-        worktrees,
-        refinery,
-      });
-
-      // Set up: stories bead is ready
-      const storiesBead = makeBead({
-        id: "bd-stories",
-        status: "open",
-        title: "[hog:stories] User stories",
-      });
-      beads.ready = vi.fn().mockResolvedValue([storiesBead]);
-
-      await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature X", "Description");
-      // startPipeline no longer ticks — watcher handles advancement
-      await (conductor as unknown as { tick(): Promise<void> }).tick();
-
-      expect(worktrees.create).toHaveBeenCalled();
-      const createCall = vi.mocked(worktrees.create).mock.calls[0];
-      expect(createCall?.[0]).toBe("/tmp/test-repo");
-      expect(createCall?.[1]).toContain("hog/");
-      expect(createCall?.[1]).toContain("stories");
-    });
-
-    it("spawns agent in the worktree directory, not the main repo", async () => {
-      worktrees.create = vi.fn().mockResolvedValue("/tmp/worktrees/hog-feat-stories");
-
-      const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads, {
-        worktrees,
         refinery,
       });
 
@@ -261,7 +232,7 @@ describe("Conductor Pipeline", () => {
       await (conductor as unknown as { tick(): Promise<void> }).tick();
 
       const launchCall = vi.mocked(agents.launchAgent).mock.calls[0]?.[0];
-      expect(launchCall?.localPath).toBe("/tmp/worktrees/hog-feat-stories");
+      expect(launchCall?.localPath).toBe("/tmp/test-repo");
     });
   });
 
@@ -342,12 +313,11 @@ describe("Conductor Pipeline", () => {
     });
   });
 
-  // STORY-004: As a developer, completed agent work is submitted to the
-  // Refinery merge queue for rebase + tests + quality gates before reaching main
-  describe("STORY-004: Completed work goes through Refinery", () => {
-    it("submits to refinery when agent completes and has a worktree", async () => {
+  // STORY-004: Agents work directly in the project directory
+  // (Refinery integration requires worktrees, which are currently disabled)
+  describe("STORY-004: Agent completes and advances pipeline", () => {
+    it("closes bead when agent completes", async () => {
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads, {
-        worktrees,
         refinery,
       });
 
@@ -361,11 +331,9 @@ describe("Conductor Pipeline", () => {
       await conductor.startPipeline("owner/repo", TEST_REPO_CONFIG, "Feature", "Desc");
       await (conductor as unknown as { tick(): Promise<void> }).tick();
 
-      // Get the session ID from the launch
       const sessionId = vi.mocked(agents.launchAgent).mock.results[0]?.value as string;
       expect(sessionId).toBeDefined();
 
-      // Simulate agent completion
       eventBus.emit("agent:completed", {
         sessionId,
         repo: "owner/repo",
@@ -373,10 +341,8 @@ describe("Conductor Pipeline", () => {
         phase: "stories",
       });
 
-      // Should have submitted to refinery
-      expect(refinery.submit).toHaveBeenCalled();
-      const submitCall = vi.mocked(refinery.submit).mock.calls[0];
-      expect(submitCall?.[1]).toContain("hog/"); // branch name
+      await new Promise((r) => setTimeout(r, 50));
+      expect(beads.close).toHaveBeenCalled();
     });
   });
 
