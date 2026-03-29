@@ -143,7 +143,7 @@ function PipelineDetail({
   rows: number;
 }) {
   const pipelineAgents = agents.filter(
-    (a) => a.featureId === pipeline.featureId || (!a.featureId && a.repo === pipeline.repo),
+    (a) => a.featureId === pipeline.featureId || (!a.featureId && a.isRunning && a.repo === pipeline.repo),
   );
   const activeAgents = pipelineAgents.filter((a) => a.isRunning);
   const activeAgent = activeAgents[0];
@@ -259,16 +259,16 @@ function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
   const name = agentName(agent.sessionId);
   const elapsed = formatElapsed(agent.startedAt);
   const activity = humanizeTool(agent.lastToolUse);
-  const phaseLabel =
-    agent.phase === "impl"
-      ? "Implementer"
-      : agent.phase === "test"
-        ? "Test Writer"
-        : agent.phase === "redteam"
-          ? "Red Team"
-          : agent.phase === "merge"
-            ? "Merge Gatekeeper"
-            : agent.phase;
+  const PHASE_LABELS: Record<string, string> = {
+    brainstorm: "Brainstorm",
+    stories: "Architect",
+    scaffold: "Scaffolder",
+    test: "Test Writer",
+    impl: "Implementer",
+    redteam: "Red Team",
+    merge: "Merge Gatekeeper",
+  };
+  const phaseLabel = PHASE_LABELS[agent.phase] ?? agent.phase;
 
   return (
     <Box flexDirection="column" paddingLeft={2}>
