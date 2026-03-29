@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.27.0](https://github.com/ondrej-svec/hog/compare/hog-v1.26.0...hog-v1.27.0) (2026-03-29)
+
+
+### Features
+
+* bypassPermissions default with explicit init consent ([0e157ef](https://github.com/ondrej-svec/hog/commit/0e157ef3c4d4e878064f357ddda354683f4f4fee))
+* safety deny rules — block destructive commands even in bypassPermissions ([afa5a57](https://github.com/ondrej-svec/hog/commit/afa5a57153523a07e1fd0c71b2f8f4bc7db77c7c))
+
+
+### Bug Fixes
+
+* add scaffold to empty state and overlay pipeline descriptions ([2f7201e](https://github.com/ondrej-svec/hog/commit/2f7201e909ac73d0b27b9e8bfe382311ac36d82a))
+* clarify that acceptEdits will cause agent failures, not prompts ([4eb5bad](https://github.com/ondrej-svec/hog/commit/4eb5bad7b2a5bb34d9e5af1925f295302f5f1071))
+* tighten scaffold — config and quality tooling only, zero source files ([bad3e9d](https://github.com/ondrej-svec/hog/commit/bad3e9d522e3f0525ed1be94b8b9ae6ec4ea2306))
+
 ## [1.26.0](https://github.com/ondrej-svec/hog/compare/hog-v1.25.1...hog-v1.26.0) (2026-03-29)
 
 
