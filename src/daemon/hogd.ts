@@ -49,18 +49,21 @@ export class HogDaemon {
     this.config = config;
     this.engine = new Engine(config);
 
-    // Wire the fuel lines: WorktreeManager for agent isolation, Refinery for merge queue
-    const worktrees = new WorktreeManager();
-    this.refinery = new Refinery(this.engine.eventBus, worktrees, {
-      baseBranch: "main",
-    });
+    // Wire the fuel lines: WorktreeManager (opt-in) for agent isolation, Refinery for merge queue
+    const useWorktrees = config.pipeline?.worktreeIsolation === true;
+    const worktrees = useWorktrees ? new WorktreeManager() : undefined;
+    this.refinery = new Refinery(
+      this.engine.eventBus,
+      worktrees ?? new WorktreeManager(), // Refinery needs one for cleanup, but conductor won't use it
+      { baseBranch: "main" },
+    );
 
     this.conductor = new Conductor(
       config,
       this.engine.eventBus,
       this.engine.agents,
       this.engine.beads,
-      { worktrees, refinery: this.refinery },
+      { ...(worktrees ? { worktrees } : {}), refinery: this.refinery },
     );
   }
 

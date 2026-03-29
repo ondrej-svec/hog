@@ -362,6 +362,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       maxConcurrentAgents: Number.parseInt(maxAgents, 10) || 3,
       tddEnforcement,
       worker: "claude",
+      worktreeIsolation: false,
     },
     profiles: existingConfig?.profiles ?? {},
   };

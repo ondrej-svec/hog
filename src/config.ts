@@ -120,6 +120,8 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   claudeStartCommand: CLAUDE_START_COMMAND_SCHEMA.optional(),
   claudePrompt: z.string().optional(),
   tddEnforcement: z.boolean().default(true),
+  /** Run each agent in an isolated git worktree. Default: false. */
+  worktreeIsolation: z.boolean().default(false),
   /** Worker adapter for agent spawning. Default: "claude". */
   worker: z.enum(["claude", "codex", "custom"]).default("claude"),
   phasePrompts: z.record(z.string(), z.string()).optional(),

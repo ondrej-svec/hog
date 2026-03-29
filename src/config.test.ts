@@ -387,7 +387,7 @@ describe("resolveProfile", () => {
         owner: "ondrej",
         maxConcurrentAgents: 3,
         tddEnforcement: true,
-        worker: "claude",
+        worker: "claude", worktreeIsolation: false,
       },
       profiles: {
         work: {
@@ -630,7 +630,7 @@ describe("findRepo", () => {
       },
     ],
     board: { refreshInterval: 60, backlogLimit: 20, assignee: "user", focusDuration: 1500 },
-    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, worker: "claude" },
+    pipeline: { owner: "user", maxConcurrentAgents: 3, tddEnforcement: true, worker: "claude", worktreeIsolation: false },
     profiles: {},
   };
 
