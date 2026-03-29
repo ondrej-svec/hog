@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.28.1](https://github.com/ondrej-svec/hog/compare/hog-v1.28.0...hog-v1.28.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* parallel agents get unique result files + STORY_SCOPE env var ([ea73030](https://github.com/ondrej-svec/hog/commit/ea73030560e417e3730fbc979a90ab0bebb2c457))
+
 ## [1.28.0](https://github.com/ondrej-svec/hog/compare/hog-v1.27.0...hog-v1.28.0) (2026-03-29)
 
 
