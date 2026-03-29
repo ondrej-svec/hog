@@ -34,12 +34,12 @@ interface PipelineViewProps {
 const LEFT_PANEL_WIDTH = 26;
 
 const PHASE_LABELS: Record<string, string> = {
-  brainstorm: "Zaphod",
-  stories: "Ford",
-  test: "Arthur",
-  impl: "Arthur",
-  redteam: "Marvin",
-  merge: "Vogons",
+  brainstorm: "brainstorm",
+  stories: "stories",
+  test: "tests",
+  impl: "impl",
+  redteam: "redteam",
+  merge: "merge",
 };
 
 const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
@@ -169,7 +169,9 @@ function PipelineDetail({
           {activeAgent ? (
             <ActiveAgentCard agent={activeAgent} />
           ) : pipeline.status === "running" ? (
-            <Text dimColor>  No active agents — daemon will advance to next phase</Text>
+            <Text dimColor>  {pipeline.activePhase === "brainstorm"
+              ? "Press Z to start brainstorm session (tmux)"
+              : "No active agents — daemon will advance to next phase"}</Text>
           ) : pipeline.status === "completed" ? (
             <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />
           ) : pipeline.status === "paused" ? (
@@ -524,7 +526,7 @@ function EmptyState({ cols, rows }: { cols: number; rows: number }) {
         Describe a feature and hog will:
       </Text>
       <Text dimColor>
-        brainstorm → write stories → write tests → implement → red team → merge
+        brainstorm → stories → tests → implement → red team → merge
       </Text>
     </Box>
   );

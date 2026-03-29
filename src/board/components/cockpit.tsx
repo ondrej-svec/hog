@@ -491,7 +491,9 @@ export function Cockpit({ config }: CockpitProps) {
           {[
             "P:new",
             hasPipelines ? "j/k:nav" : "",
+            selected?.activePhase === "brainstorm" ? "Z:brainstorm" : "",
             canPauseResume ? `x:${selected?.status === "paused" ? "resume" : "pause"}` : "",
+            selected?.status === "blocked" || selected?.status === "failed" ? "r:retry" : "",
             hasPipelines ? "d:cancel" : "",
             hasPipelines ? "l:log" : "",
             hasDecisions ? "D:answer" : "",

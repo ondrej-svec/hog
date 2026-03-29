@@ -144,14 +144,14 @@ describe("timeAgo", () => {
   });
 });
 
-describe("roleCharacter — H2G2 character mapping", () => {
+describe("roleCharacter — functional label mapping", () => {
   it.each([
-    ["brainstorm", "Zaphod"],
-    ["stories", "Ford"],
-    ["test", "Arthur"],
-    ["impl", "Arthur"],
-    ["redteam", "Marvin"],
-    ["merge", "Vogons"],
+    ["brainstorm", "Brainstorm"],
+    ["stories", "Story Writer"],
+    ["test", "Test Writer"],
+    ["impl", "Implementer"],
+    ["redteam", "Red Team"],
+    ["merge", "Merge Gate"],
   ] as const)("maps %s → %s", (role, expected) => {
     expect(roleCharacter(role)).toBe(expected);
   });
