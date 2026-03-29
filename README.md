@@ -28,11 +28,34 @@ hog cockpit                           # watch it run
 
 **Requirements:** [Node.js 22+](https://nodejs.org) and [Beads](https://github.com/steveyegge/beads) (`bd` CLI). Optionally: [GitHub CLI](https://cli.github.com/) for issue sync, [tmux](https://github.com/tmux/tmux) for agent session attachment.
 
+### Heart of Gold Toolkit (recommended)
+
+hog works best with the [Heart of Gold toolkit](https://github.com/ondrej-svec/heart-of-gold-toolkit) — Claude Code plugins that provide skill-based pipeline intelligence with Stop hooks, knowledge directories, and quality enforcement.
+
+```sh
+# Install the toolkit marketplace
+claude plugin install heart-of-gold-toolkit
+
+# Enable the pipeline plugins in Claude Code settings (~/.claude/settings.json)
+# Add to "enabledPlugins":
+#   "marvin@heart-of-gold-toolkit": true,
+#   "deep-thought@heart-of-gold-toolkit": true
+```
+
+**Without the toolkit:** hog falls back to bundled prompts. The pipeline still runs, but you lose Stop hooks (machine-enforced RED state, architecture verification), knowledge directories, and skill-specific quality gates.
+
+| Plugin | Skills | Purpose |
+|--------|--------|---------|
+| **marvin** | `scaffold`, `test-writer`, `work`, `redteam`, `review`, `compound` | Execution: TDD test writing, implementation, adversarial review, merge gating |
+| **deep-thought** | `brainstorm`, `architect`, `plan`, `review`, `think`, `investigate` | Thinking: problem exploration, architecture design, strategic planning |
+
+Each skill works standalone (`/marvin:test-writer`) AND in pipeline mode (hog passes context via env vars).
+
 ---
 
 ## How It Works
 
-1. `hog pipeline create` creates a [Beads](https://github.com/steveyegge/beads) dependency DAG with 6 phases
+1. `hog pipeline create` creates a [Beads](https://github.com/steveyegge/beads) dependency DAG with 7 phases
 2. The `hogd` daemon polls `bd ready` and spawns role-separated Claude agents as phases unblock
 3. Each agent runs in an isolated git worktree with a role-specific prompt and restricted context
 4. On completion, the bead closes and downstream phases become ready
@@ -42,16 +65,17 @@ hog cockpit                           # watch it run
 
 ---
 
-## The 6 Phases
+## The 7 Phases
 
-| Phase | Role | What it does | Constraint |
-|-------|------|-------------|------------|
-| **Brainstorm** | Human + AI | Interactive exploration of the problem space | Only phase with human involvement |
-| **Stories** | Autonomous | Writes testable user stories with acceptance criteria | Cannot write code |
-| **Tests** | Autonomous | Writes tests that FAIL (RED state) | Cannot read the spec — only stories |
-| **Implementation** | Autonomous | Writes minimum code to make tests pass (GREEN) | Cannot read stories — only failing tests |
-| **Red Team** | Adversarial | Writes new failing tests for edge cases and security | Cannot modify implementation |
-| **Merge** | Autonomous | Rebases, runs full suite, lints, security scan | Cannot fix — only reports |
+| Phase | Role | Skill | What it does | Constraint |
+|-------|------|-------|-------------|------------|
+| **Brainstorm** | Human + AI | `deep-thought:brainstorm` | Interactive exploration of the problem space | Only phase with human involvement |
+| **Architect** | Autonomous | `deep-thought:architect` | Writes user stories + architecture doc (ADRs, dependencies, file structure) | Cannot write code |
+| **Scaffold** | Autonomous | `marvin:scaffold` | Creates dirs, installs deps, sets up tooling | Cannot create source or test files |
+| **Tests** | Autonomous | `marvin:test-writer` | Writes tests that FAIL (RED state) — behavioral + conformance | Cannot read the spec — only stories |
+| **Implementation** | Autonomous | `marvin:work` | Makes tests pass with REAL implementations — architecture doc is BINDING | Cannot modify tests |
+| **Red Team** | Adversarial | `marvin:redteam` | Writes new failing tests exposing architecture violations, stubs, security issues | Cannot modify implementation |
+| **Merge** | Autonomous | `marvin:review` | Runs full suite, linter, security scan — MERGE or BLOCK verdict | Cannot fix — only reports |
 
 **Key insight:** The test writer and implementer have different context windows. The implementer can only see failing tests, not the original spec. This prevents the most common AI coding failure mode — writing tests that pass by construction.
 

@@ -250,6 +250,33 @@ export async function runInit(opts: InitOptions = {}): Promise<void> {
 async function runWizard(opts: InitOptions): Promise<void> {
   console.log("\n🚀 hog init — Pipeline Setup Wizard\n");
 
+  // Step 0: Check toolkit plugins
+  try {
+    const { checkSkillInstalled } = await import("./engine/roles.js");
+    const marvinOk = checkSkillInstalled("marvin:check");
+    const deepThoughtOk = checkSkillInstalled("deep-thought:check");
+
+    if (marvinOk && deepThoughtOk) {
+      console.log("  ✓ Heart of Gold toolkit: marvin + deep-thought plugins installed\n");
+    } else {
+      const missing = [
+        !marvinOk ? "marvin" : "",
+        !deepThoughtOk ? "deep-thought" : "",
+      ].filter(Boolean);
+      console.log(`  ⚠ Heart of Gold toolkit: ${missing.join(", ")} plugin(s) not found`);
+      console.log("  Pipeline will use fallback prompts (no Stop hooks or knowledge dirs)\n");
+      console.log("  To install:");
+      console.log("    claude plugin install heart-of-gold-toolkit");
+      console.log("  Then enable in ~/.claude/settings.json → enabledPlugins:");
+      for (const m of missing) {
+        console.log(`    "${m}@heart-of-gold-toolkit": true`);
+      }
+      console.log("");
+    }
+  } catch {
+    // Skill check not available — skip
+  }
+
   // Step 1: Check existing config
   const configExists = existsSync(`${CONFIG_DIR}/config.json`);
   if (configExists && !opts.force) {
