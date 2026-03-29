@@ -289,6 +289,21 @@ async function runWizard(opts: InitOptions): Promise<void> {
     default: true,
   });
 
+  console.log("");
+  console.log("  ⚠ Agent permissions:");
+  console.log("  Pipeline agents run with full shell access (bypassPermissions).");
+  console.log("  They can install packages, run builds, execute commands.");
+  console.log("  Safety net: the Refinery + quality gates block bad code at merge time.");
+  console.log("  Agents work in your project directory — not as root, not system-wide.");
+  const acceptPermissions = await confirm({
+    message: "  Accept? (required for autonomous pipeline operation)",
+    default: true,
+  });
+  if (!acceptPermissions) {
+    console.log("\n  Using restrictive mode (acceptEdits). Agents may prompt for shell commands.");
+    console.log("  You can change later: hog config set pipeline.permissionMode bypassPermissions");
+  }
+
   // Step 4: GitHub integration (optional, de-emphasized)
   let shouldSetupGithub = false;
   if (connectGithub && isGhAuthenticated()) {
@@ -361,6 +376,7 @@ async function runWizard(opts: InitOptions): Promise<void> {
       owner: login,
       maxConcurrentAgents: Number.parseInt(maxAgents, 10) || 3,
       tddEnforcement,
+      permissionMode: acceptPermissions ? "bypassPermissions" : "acceptEdits",
       worker: "claude",
       worktreeIsolation: false,
     },

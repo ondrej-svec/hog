@@ -217,14 +217,11 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
 
   const args = [...extraArgs, "-p", prompt, "--output-format", "stream-json", "--verbose"];
 
-  // Permission mode: auto (classifier-backed) with acceptEdits fallback
-  // Auto mode uses a classifier to allow safe operations and block risky ones.
-  // If auto mode isn't available, acceptEdits allows file changes without prompting.
-  if (opts.permissionMode) {
-    args.push("--permission-mode", opts.permissionMode);
-  } else {
-    args.push("--permission-mode", "auto");
-  }
+  // Permission mode for pipeline agents.
+  // Default: bypassPermissions — agents need full autonomy to install packages,
+  // run tests, use build tools. The safety net is the Refinery + quality gates
+  // at merge time, not permission prompts during execution.
+  args.push("--permission-mode", opts.permissionMode ?? "bypassPermissions");
 
   // Pass --model flag if specified
   if (opts.model) {

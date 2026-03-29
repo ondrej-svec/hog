@@ -90,6 +90,7 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+    mockConfirm.mockResolvedValueOnce(true); // accept agent permissions
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
@@ -176,6 +177,7 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("5"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(false); // TDD enforcement off
+    mockConfirm.mockResolvedValueOnce(true); // accept agent permissions
 
     // "Connect to GitHub?" → no
     mockConfirm.mockResolvedValueOnce(false);
@@ -196,6 +198,7 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+    mockConfirm.mockResolvedValueOnce(true); // accept agent permissions
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
@@ -219,6 +222,7 @@ describe("hog init wizard", () => {
     // Pipeline settings
     mockInput.mockResolvedValueOnce("3"); // max concurrent agents
     mockConfirm.mockResolvedValueOnce(true); // TDD enforcement
+    mockConfirm.mockResolvedValueOnce(true); // accept agent permissions
 
     // "Connect to GitHub?" → yes
     mockConfirm.mockResolvedValueOnce(true);
