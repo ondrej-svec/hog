@@ -170,7 +170,7 @@ function PipelineDetail({
             <ActiveAgentCard agent={activeAgent} />
           ) : pipeline.status === "running" ? (
             <Text dimColor>  {pipeline.activePhase === "brainstorm"
-              ? "Press Z to start brainstorm session (tmux)"
+              ? "Brainstorm session should be open — press Z to reopen if needed"
               : "No active agents — daemon will advance to next phase"}</Text>
           ) : pipeline.status === "completed" ? (
             <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />
