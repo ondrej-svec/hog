@@ -375,7 +375,7 @@ export class Conductor {
 
     // Write safety deny rules to .claude/settings.json in the project (fire-and-forget)
     import("./safety-rules.js")
-      .then(({ writeSafetyRules }) => writeSafetyRules(repoConfig.localPath))
+      .then(({ writeSafetyRules }) => writeSafetyRules(repoConfig.localPath ?? ""))
       .catch(() => {});
 
     this.log(featureId, "pipeline:started", `Heart of Gold launched. Course: "${title}"`);
@@ -1459,13 +1459,19 @@ export class Conductor {
       .then(async () => {
         pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
         const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
-        const summaryLine = summary
-          ? ` — ${summary.split("\n")[0]?.slice(0, 150)}`
+        // Strip session markers (from user's CLAUDE.md) from agent summary
+        const cleanSummary = summary
+          ?.split("\n")
+          .filter((l) => !l.includes("═══") && !l.includes("──~") && !l.includes("── ·") && !l.includes("── !") && !l.includes("── ✓") && !l.includes("Gargle Blaster"))
+          .join(" ")
+          .trim();
+        const summaryLine = cleanSummary
+          ? ` — ${cleanSummary.slice(0, 150)}`
           : "";
         this.log(
           pipeline.featureId,
           `phase:completed:${phase}`,
-          `${phaseLabel} done (${pipeline.completedBeads}/6)${summaryLine}`,
+          `${phaseLabel} done (${pipeline.completedBeads}/7)${summaryLine}`,
         );
 
         // Store phase summary in pipeline context
