@@ -963,7 +963,7 @@ export class Conductor {
         this.log(
           pipeline.featureId,
           "phase:skipped:stories",
-          `Stories already exist (from brainstorm) — skipping to tests`,
+          `Stories already exist (from brainstorm) — advancing to scaffold`,
         );
         await this.beads.close(pipeline.localPath, bead.id, "Stories already written by brainstorm");
         pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
