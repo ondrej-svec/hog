@@ -152,8 +152,6 @@ export class Conductor {
   private readonly sessionToPipeline: Map<string, string> = new Map();
   /** Test baselines captured before impl agent runs — for diff-based GREEN verification. */
   private readonly testBaselines: Map<string, import("./tdd-enforcement.js").TestBaseline> = new Map();
-  /** Tracks pending parallel agents per bead. Bead closes when count reaches 0. */
-  private readonly pendingParallelAgents: Map<string, number> = new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -597,9 +595,7 @@ export class Conductor {
         if (beadStatuses[role] !== "in_progress") continue;
         const pipelineRole = role === "tests" ? "test" : (role as PipelineRole);
         const hasAgent = activeAgents.some((a) => a.phase === pipelineRole);
-        // Don't unstick beads with pending parallel agents — some agents finished but others are still running
-        const hasPendingParallel = (this.pendingParallelAgents.get(id) ?? 0) > 0;
-        if (!hasAgent && !hasPendingParallel) {
+        if (!hasAgent) {
           // Bead claimed but agent is gone — re-open for retry
           await this.beads.updateStatus(pipeline.localPath, id, "open").catch(() => {});
           this.log(
@@ -926,58 +922,8 @@ export class Conductor {
       const role = beadIdToRole[bead.id] ?? beadToRole(bead);
       if (!role) continue;
 
-      // Check if this phase should run parallel agents
-      const { isParallelizablePhase, splitIntoChunks, findStoriesFile, extractStoryIds } =
-        await import("./story-splitter.js");
-
-      if (
-        isParallelizablePhase(role) &&
-        this.config.pipeline?.maxConcurrentAgents > 1 &&
-        !this.pendingParallelAgents.has(bead.id)
-      ) {
-        const resolvedStories =
-          pipeline.storiesPath ??
-          findStoriesFile(
-            pipeline.localPath,
-            pipeline.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
-          );
-        const storyIds = resolvedStories ? extractStoryIds(resolvedStories) : [];
-
-        if (storyIds.length > 1 && resolvedStories) {
-          const maxAgents = this.config.pipeline.maxConcurrentAgents;
-          const outputDir = join(pipeline.localPath, ".hog", "parallel");
-          const chunks = splitIntoChunks(
-            resolvedStories,
-            storyIds,
-            maxAgents,
-            outputDir,
-            role,
-          );
-
-          if (chunks.length > 1) {
-            // Claim bead ONCE for all parallel agents
-            try {
-              await this.beads.claim(pipeline.localPath, bead.id);
-            } catch {
-              continue; // Another agent already claimed it
-            }
-
-            this.log(
-              pipeline.featureId,
-              `parallel:${role}`,
-              `Splitting ${storyIds.length} stories into ${chunks.length} parallel agents (filtered files)`,
-            );
-            this.pendingParallelAgents.set(bead.id, chunks.length);
-
-            for (let ci = 0; ci < chunks.length; ci++) {
-              const chunk = chunks[ci]!;
-              // Each agent gets its own filtered stories file as STORIES_PATH
-              await this.spawnForRole(pipeline, bead, role, undefined, true, ci, chunk.filteredStoriesPath);
-            }
-            continue; // Don't fall through to single spawn
-          }
-        }
-      }
+      // Parallelism is handled by the agent itself (via Claude Code's Agent tool),
+      // not by the orchestrator. One agent per phase, all stories.
 
       await this.spawnForRole(pipeline, bead, role);
     }
@@ -991,10 +937,6 @@ export class Conductor {
     pipeline: Pipeline,
     bead: Bead,
     role: PipelineRole,
-    _unused?: undefined,
-    skipClaim?: boolean,
-    parallelIndex?: number,
-    storiesPathOverride?: string,
   ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
@@ -1098,18 +1040,16 @@ export class Conductor {
       }
     }
 
-    // Claim the bead (skip if already claimed by parallel block)
-    if (!skipClaim) {
-      try {
-        await this.beads.claim(pipeline.localPath, bead.id);
-      } catch (err) {
-        this.log(
-          pipeline.featureId,
-          `agent:claim-failed:${role}`,
-          `Failed to claim bead ${bead.id}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-        return;
-      }
+    // Claim the bead
+    try {
+      await this.beads.claim(pipeline.localPath, bead.id);
+    } catch (err) {
+      this.log(
+        pipeline.featureId,
+        `agent:claim-failed:${role}`,
+        `Failed to claim bead ${bead.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
     }
 
     // Build the prompt with variable substitution
@@ -1171,10 +1111,6 @@ export class Conductor {
     // BRAINSTORM_PATH is handled by contract-based wiring below (wirePhaseInputs).
     // Do NOT set it from phaseSummaries — that's a truncated summary string, not a file path.
 
-    // For parallel agents: override STORIES_PATH with the filtered file
-    if (storiesPathOverride) {
-      pipelineEnv["STORIES_PATH"] = storiesPathOverride;
-    }
 
     // Contract-based wiring: auto-wire outputs from previous phases as inputs
     const skillContract = usingSkill ? getSkillContract(roleConfig.skill) : undefined;
@@ -1287,7 +1223,6 @@ export class Conductor {
       model: roleModel,
       permissionMode: this.config.pipeline?.permissionMode,
       env: pipelineEnv,
-      parallelSuffix: parallelIndex !== undefined ? String(parallelIndex) : undefined,
     });
 
     if (typeof result === "string") {
@@ -1430,22 +1365,6 @@ export class Conductor {
     // Capture worktree info now — submission to refinery deferred until gates pass
     const worktreeInfo = this.sessionWorktrees.get(sessionId);
     this.persistSessionMaps();
-
-    // Check if this is a parallel agent — don't close bead until all are done
-    const pending = this.pendingParallelAgents.get(beadId);
-    if (pending !== undefined && pending > 1) {
-      this.pendingParallelAgents.set(beadId, pending - 1);
-      this.log(
-        pipeline.featureId,
-        `parallel:agent-done:${phase}`,
-        `Parallel agent completed (${pending - 1} remaining)`,
-      );
-      return; // Don't close bead yet — wait for all agents
-    }
-    // Last parallel agent (or single agent) — close the bead
-    if (pending !== undefined) {
-      this.pendingParallelAgents.delete(beadId);
-    }
 
     // ── Pre-close gates (run BEFORE closing the bead) ──
 
@@ -1638,11 +1557,9 @@ export class Conductor {
           }
         }
 
-        // After test phase: detect test command and clean up parallel files
+        // After test phase: detect test command and test files for subsequent stages
         if (phase === "test") {
           await this.captureTestContext(pipeline);
-          const { cleanupParallelFiles } = await import("./story-splitter.js");
-          cleanupParallelFiles(pipeline.localPath);
         }
 
         // GREEN verification after impl completes (Farley)
