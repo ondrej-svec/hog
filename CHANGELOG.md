@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.2](https://github.com/ondrej-svec/hog/compare/hog-v1.30.1...hog-v1.30.2) (2026-03-29)
+
+
+### Bug Fixes
+
+* remove worktree isolation + pass context in prompt, not env vars ([716ecec](https://github.com/ondrej-svec/hog/commit/716ecec292504ebf069c85c8f4f5a646887a97fc))
+
 ## [1.30.1](https://github.com/ondrej-svec/hog/compare/hog-v1.30.0...hog-v1.30.1) (2026-03-29)
 
 
