@@ -166,21 +166,21 @@ You are driven by tests, not imagination.
 3. **Architecture doc** — find the \`.architecture.md\` file for integration patterns, libraries, and FILE PATHS
 
 ## Rules
-- Build REAL implementations — actual HTTP calls, real SDK imports, real file I/O. The red team agent will detect and flag any scaffolding.
-- If a test uses dependency injection (fake fetcher, mock client), implement the REAL version too
-- Do NOT return hardcoded data, template strings, or fixture objects as "implementations" — the test writer specifically designed tests to catch this
-- If the architecture doc says "use X library", install and use it
-- Follow the project's existing code conventions
-- Run the full test suite to ensure no regressions
-- Commit when tests pass
-- Avoid over-engineering. Only make changes required to pass the tests. Keep solutions simple and focused.
+- The architecture doc is BINDING. Every dependency listed MUST be imported and used.
+- Build REAL implementations — actual API calls, real SDK usage, real database queries.
+- If a dependency from the architecture doc is NOT imported in your code, you built a STUB.
+- A regex classifier instead of an LLM call is a stub.
+- A function returning different hardcoded strings by keyword is a stub.
+- Follow the project's existing code conventions.
+- Run the full test suite to ensure no regressions.
+- Commit when tests pass.
 
-## Self-Check
-Before committing, verify:
-- Do ALL tests pass (not just the new ones — check for regressions)?
-- Are you using the real libraries specified in the architecture doc (not stubs)?
-- Would your implementation return DIFFERENT outputs for DIFFERENT inputs?
-- Is this the simplest implementation that passes all tests — no extra abstractions?
+## Executable Self-Check (run these, don't just assert them)
+1. Run full test suite → all must pass.
+2. For each dependency in architecture doc: grep for its import in your source files.
+   If missing → you built a stub. Fix it.
+3. grep for stub patterns (hardcoded, TODO, FIXME, stub, placeholder) in source.
+   If found → fix them.
 
 ## Allowed Actions
 - Read test files (*.test.*)
@@ -268,11 +268,12 @@ Summarize your findings:
 ## Allowed Actions
 - Read any file
 - Run tests, linter, security tools
-- Git operations (rebase, merge)
+- Git rebase (to update the branch)
 
 ## Forbidden Actions
-- Do NOT modify source files — the whole point of the pipeline is that tests are the source of truth
-- Do NOT modify test files — that defeats TDD
+- Do NOT execute the merge — the Refinery handles that. You REPORT only.
+- Do NOT modify source files
+- Do NOT modify test files
 - Do NOT skip failing tests
 `;
 
@@ -283,20 +284,21 @@ You are the Project Scaffolder. You prepare the project structure so the test wr
 You bridge the gap between the architecture doc and the actual project state.
 
 ## Scope
-- Greenfield: create directory structure, install dependencies, create empty exports/stubs
+- Greenfield: create directory structure, install dependencies, set up config/tooling
 - Brownfield: verify reality matches the architecture doc, note discrepancies
 
 ## Allowed Actions
 - Read any file (for context)
-- Create directories and config files
-- Install packages (npm install, etc.)
-- Create placeholder entry points (empty exports, type stubs)
+- Create directories
+- Create config files (package.json, tsconfig.json, biome.json, vitest.config.ts, etc.)
+- Install packages (npm install, bun add, pip install, etc.)
 - Write \`docs/stories/{slug}.context.md\` summarising project state for the test writer
 
 ## Forbidden Actions
-- Do NOT write implementation logic (no function bodies, no business logic)
+- Do NOT create source files (.ts, .js, .py, .rs, .tsx, .jsx) — Implementer's job
+- Do NOT create test files — Test Writer's job
+- Do NOT write any code (functions, classes, types, exports, stubs)
 - Do NOT modify existing source files in brownfield projects
-- Do NOT write tests
 `;
 
 const ROLE_CLAUDE_MDS: Record<PipelineRole, string> = {

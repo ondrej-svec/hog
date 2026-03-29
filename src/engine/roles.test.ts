@@ -48,11 +48,12 @@ describe("roles", () => {
     }
   });
 
-  it("impl prompt has three inputs and forbids stubs", () => {
+  it("impl prompt treats architecture as binding and has executable self-check", () => {
     const implPrompt = PIPELINE_ROLES.impl.promptTemplate;
     expect(implPrompt).toContain("three inputs");
-    expect(implPrompt).toContain("REAL, production-quality code");
-    expect(implPrompt).toContain("NOT return hardcoded data");
+    expect(implPrompt).toContain("architecture doc is BINDING");
+    expect(implPrompt).toContain("what_stubs_look_like");
+    expect(implPrompt).toContain("executable_self_check");
   });
 
   it("test prompt references stories and architecture", () => {
