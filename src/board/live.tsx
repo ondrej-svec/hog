@@ -35,6 +35,11 @@ export async function runCockpit(config: HogConfig): Promise<void> {
     );
   }
 
+  // Enter alternate screen buffer (like lazygit, vim, etc.)
+  process.stdout.write("\x1b[?1049h");
+  // Hide cursor
+  process.stdout.write("\x1b[?25l");
+
   const instance = render(
     <InkErrorBoundary>
       <Cockpit config={config} />
@@ -42,6 +47,11 @@ export async function runCockpit(config: HogConfig): Promise<void> {
   );
   setInkInstance(instance);
   await instance.waitUntilExit();
+
+  // Show cursor
+  process.stdout.write("\x1b[?25h");
+  // Leave alternate screen buffer — restores previous terminal content
+  process.stdout.write("\x1b[?1049l");
 }
 
 /** @deprecated Use runCockpit instead. Kept for backward compat during migration. */

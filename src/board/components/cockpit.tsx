@@ -376,7 +376,7 @@ export function Cockpit({ config }: CockpitProps) {
       return null;
     }
     return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
+      <Box flexDirection="column" height={termSize.rows} paddingX={2} paddingY={1}>
         <Text bold>Answer Decision</Text>
         <Box marginTop={1}>
           <Text>{decision.question}</Text>
@@ -418,7 +418,7 @@ export function Cockpit({ config }: CockpitProps) {
   // Start pipeline overlay
   if (mode === "overlay:startPipeline") {
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={termSize.rows}>
         <StartPipelineOverlay
           beadsAvailable={pipelineData.beadsAvailable}
           onSubmit={(description) => {
@@ -495,7 +495,7 @@ export function Cockpit({ config }: CockpitProps) {
   // Help overlay
   if (mode === "help") {
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" height={termSize.rows}>
         <HelpOverlay onClose={() => setMode("normal")} />
       </Box>
     );
@@ -509,7 +509,7 @@ export function Cockpit({ config }: CockpitProps) {
 
   // Normal: pipeline view + hint bar
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={termSize.rows}>
       <PipelineView
         data={{
           pipelines: pipelineData.pipelines,
