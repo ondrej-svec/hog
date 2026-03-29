@@ -70,7 +70,7 @@ const program = new Command();
 program
   .name("hog")
   .description("Don't Panic. TDD-enforced AI development pipelines — mostly harmless.")
-  .version("1.30.0") // x-release-please-version
+  .version("1.30.1") // x-release-please-version
   .option("--json", "Force JSON output")
   .option("--human", "Force human-readable output")
   .hook("preAction", (thisCommand) => {
