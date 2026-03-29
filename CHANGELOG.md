@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.0](https://github.com/ondrej-svec/hog/compare/hog-v1.29.2...hog-v1.30.0) (2026-03-29)
+
+
+### Features
+
+* parallel agents get filtered stories files instead of prompt hints ([701dd3f](https://github.com/ondrej-svec/hog/commit/701dd3f2ef3bb07a96c40799f26272e5b94ead60))
+
 ## [1.29.2](https://github.com/ondrej-svec/hog/compare/hog-v1.29.1...hog-v1.29.2) (2026-03-29)
 
 
