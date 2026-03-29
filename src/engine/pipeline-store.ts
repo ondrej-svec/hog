@@ -24,6 +24,7 @@ const BEAD_IDS_SCHEMA = z.object({
 const PIPELINE_SCHEMA = z.object({
   featureId: z.string(),
   title: z.string().default(""),
+  description: z.string().optional(),
   repo: z.string(),
   localPath: z.string().default(""),
   beadIds: BEAD_IDS_SCHEMA,
@@ -154,6 +155,7 @@ export class PipelineStore {
       const data = [...this.pipelines.values()].map((p) => ({
         featureId: p.featureId,
         title: p.title,
+        ...(p.description !== undefined ? { description: p.description } : {}),
         repo: p.repo,
         localPath: p.localPath,
         beadIds: p.beadIds,
@@ -211,6 +213,7 @@ export class PipelineStore {
         const pipeline: Pipeline = {
           featureId: data.featureId,
           title: data.title,
+          ...(data.description !== undefined ? { description: data.description } : {}),
           repo: data.repo,
           localPath: data.localPath || repoConfig.localPath || "",
           repoConfig,
@@ -289,6 +292,7 @@ export class PipelineStore {
         this.pipelines.set(data.featureId, {
           featureId: data.featureId,
           title: data.title,
+          ...(data.description !== undefined ? { description: data.description } : {}),
           repo: data.repo,
           localPath: data.localPath || repoConfig.localPath || "",
           repoConfig,

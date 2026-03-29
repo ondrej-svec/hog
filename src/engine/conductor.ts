@@ -29,6 +29,8 @@ export type PipelineStatus = "running" | "paused" | "blocked" | "completed" | "f
 export interface Pipeline {
   readonly featureId: string;
   readonly title: string;
+  /** Full description the user provided when creating the pipeline. */
+  readonly description?: string | undefined;
   readonly repo: string;
   readonly localPath: string;
   readonly repoConfig: RepoConfig;
@@ -342,6 +344,7 @@ export class Conductor {
     const pipeline: Pipeline = {
       featureId,
       title,
+      description,
       repo,
       localPath: repoConfig.localPath,
       repoConfig,

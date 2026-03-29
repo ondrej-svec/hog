@@ -267,10 +267,11 @@ export function Cockpit({ config }: CockpitProps) {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
+          const spec = selected.description ?? selected.title;
           const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
             .replace(/\{title\}/g, selected.title)
             .replace(/\{slug\}/g, slug)
-            .replace(/\{spec\}/g, selected.title)
+            .replace(/\{spec\}/g, spec)
             .replace(/\{featureId\}/g, selected.featureId);
 
           const result = launchClaude({
