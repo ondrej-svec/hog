@@ -597,7 +597,9 @@ export class Conductor {
         if (beadStatuses[role] !== "in_progress") continue;
         const pipelineRole = role === "tests" ? "test" : (role as PipelineRole);
         const hasAgent = activeAgents.some((a) => a.phase === pipelineRole);
-        if (!hasAgent) {
+        // Don't unstick beads with pending parallel agents — some agents finished but others are still running
+        const hasPendingParallel = (this.pendingParallelAgents.get(id) ?? 0) > 0;
+        if (!hasAgent && !hasPendingParallel) {
           // Bead claimed but agent is gone — re-open for retry
           await this.beads.updateStatus(pipeline.localPath, id, "open").catch(() => {});
           this.log(

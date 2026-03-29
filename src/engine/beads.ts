@@ -428,6 +428,38 @@ export class BeadsClient {
   }
 
   /**
+   * Close orphaned hog beads from previous pipeline runs.
+   * Finds all open beads with [hog:*] title prefix and closes them.
+   * Called automatically before creating a new feature DAG.
+   */
+  async cleanupOrphanedBeads(cwd: string): Promise<number> {
+    try {
+      const allBeads = await this.ready(cwd);
+      const orphans = allBeads.filter(
+        (b) => b.title.match(/^\[hog:/) && b.status !== "closed",
+      );
+      let closed = 0;
+      for (const orphan of orphans) {
+        try {
+          await this.close(cwd, orphan.id, "Orphaned bead — auto-cleaned by hog");
+          closed++;
+        } catch {
+          // Force close if blocked by dependencies
+          try {
+            await runBdAsync(["close", "--force", orphan.id], cwd);
+            closed++;
+          } catch {
+            // best-effort
+          }
+        }
+      }
+      return closed;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
    * Create a feature DAG: a standard bead dependency graph for a feature.
    *
    * Creates: brainstorm → stories → scaffold → tests → impl → redteam → merge beads
@@ -446,6 +478,9 @@ export class BeadsClient {
     redteam: Bead;
     merge: Bead;
   }> {
+    // Clean up orphaned beads from previous pipelines before creating new ones
+    await this.cleanupOrphanedBeads(cwd);
+
     // Truncate title for bead names (bd doesn't handle very long titles well)
     const shortTitle = featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
 
