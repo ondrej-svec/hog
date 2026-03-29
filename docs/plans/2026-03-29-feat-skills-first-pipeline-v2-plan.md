@@ -2,7 +2,7 @@
 title: "feat: skills-first pipeline v2 — standalone skills + hog orchestration"
 type: plan
 date: 2026-03-29
-status: approved
+status: complete
 brainstorm: docs/brainstorms/2026-03-29-skills-first-pipeline-brainstorm.md
 confidence: high
 replaces: docs/plans/2026-03-29-feat-skills-first-pipeline-plan.md
@@ -81,7 +81,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
 
 ### Tasks
 
-- [ ] 1.1 **`deep-thought:architect`** — new skill in `plugins/deep-thought/skills/architect/`
+- [x] 1.1 **`deep-thought:architect`** — new skill in `plugins/deep-thought/skills/architect/`
 
   Learns from `deep-thought:plan` but outputs design, not tasks:
 
@@ -103,7 +103,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
   - `adr-format.md` — ADR structure reference
   - `story-format.md` — story format with examples
 
-- [ ] 1.2 **`marvin:scaffold`** — new skill in `plugins/marvin/skills/scaffold/`
+- [x] 1.2 **`marvin:scaffold`** — new skill in `plugins/marvin/skills/scaffold/`
 
   **Standalone:** "What project are you setting up?" → creates dirs, configs, installs deps
   **With hog:** reads `$ARCH_PATH`, creates structure from architecture doc
@@ -126,7 +126,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
             command: "find . -name '*.ts' -newer /tmp/scaffold-start -not -name '*.config.*' -not -name '*.d.ts' | head -1 && echo '{\"ok\":false,\"reason\":\"Created source files — scaffold must only create configs\"}' || echo '{\"ok\":true}'"
   ```
 
-- [ ] 1.3 **`marvin:test-writer`** — new skill in `plugins/marvin/skills/test-writer/`
+- [x] 1.3 **`marvin:test-writer`** — new skill in `plugins/marvin/skills/test-writer/`
 
   **Standalone:** "What should I test?" → asks for stories or feature description → writes tests
   **With hog:** reads `$STORIES_PATH` + `$ARCH_PATH`, writes failing tests
@@ -154,7 +154,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
             timeout: 120
   ```
 
-- [ ] 1.4 **`marvin:redteam`** — new skill in `plugins/marvin/skills/redteam/`
+- [x] 1.4 **`marvin:redteam`** — new skill in `plugins/marvin/skills/redteam/`
 
   **Standalone:** "Review this code adversarially" → finds weaknesses, writes failing tests
   **With hog:** reads `$ARCH_PATH`, verifies architectural conformance + security + stubs
@@ -183,7 +183,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
 
 ### Tasks — Enhance Existing Skills
 
-- [ ] 1.5 **Enhance `marvin:work`** — add architecture-aware mode:
+- [x] 1.5 **Enhance `marvin:work`** — add architecture-aware mode:
 
   Add a section to the existing SKILL.md:
   ```markdown
@@ -207,7 +207,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
             timeout: 180
   ```
 
-- [ ] 1.6 **Enhance `marvin:review`** — add merge readiness mode:
+- [x] 1.6 **Enhance `marvin:review`** — add merge readiness mode:
 
   Add a section to the existing SKILL.md:
   ```markdown
@@ -225,7 +225,7 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
 
 ### Tasks — Plugin Hooks
 
-- [ ] 1.7 **Add plugin hooks** at `plugins/marvin/hooks/hooks.json`:
+- [x] 1.7 **Add plugin hooks** at `plugins/marvin/hooks/hooks.json`:
 
   ```json
   {
@@ -275,10 +275,10 @@ All work in this phase happens in the `heart-of-gold-toolkit` repo.
 
 ### Exit Criteria — Phase 1
 
-- [ ] 4 new skills exist and work standalone (without hog)
-- [ ] 2 enhanced skills work in both standalone and pipeline modes
-- [ ] Plugin hooks block destructive commands and auto-lint file writes
-- [ ] Each skill with a Stop hook cannot complete without verification passing
+- [x] 4 new skills exist and work standalone (without hog)
+- [x] 2 enhanced skills work in both standalone and pipeline modes
+- [x] Plugin hooks block destructive commands and auto-lint file writes
+- [x] Each skill with a Stop hook cannot complete without verification passing
 
 ---
 
@@ -288,7 +288,7 @@ All work in this phase happens in the `hog` repo.
 
 ### Tasks
 
-- [ ] 2.1 **Update conductor to invoke skills by name:**
+- [x] 2.1 **Update conductor to invoke skills by name:**
 
   In `spawnForRole`, instead of passing the raw prompt from `roles.ts`:
   ```typescript
@@ -316,7 +316,7 @@ All work in this phase happens in the `hog` repo.
   }
   ```
 
-- [ ] 2.2 **Add skill availability check:**
+- [x] 2.2 **Add skill availability check:**
 
   Before spawning, check if the skill is installed:
   ```typescript
@@ -331,7 +331,7 @@ All work in this phase happens in the `hog` repo.
 
   This ensures hog works without the toolkit installed (degraded mode).
 
-- [ ] 2.3 **Update feedback loops for skill-based agents:**
+- [x] 2.3 **Update feedback loops for skill-based agents:**
 
   The conductor's retry logic stays the same — it doesn't care whether the
   agent ran a skill or a raw prompt. The flow is:
@@ -344,7 +344,7 @@ All work in this phase happens in the `hog` repo.
   | Merge review fails | Re-invoke work with review findings as context | 2 |
   | All retries exhausted | Human escalation via question queue | — |
 
-- [ ] 2.4 **Simplify roles.ts to metadata-only:**
+- [x] 2.4 **Simplify roles.ts to metadata-only:**
 
   ```typescript
   export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
@@ -361,7 +361,7 @@ All work in this phase happens in the `hog` repo.
   Remove the 800+ lines of prompt string constants. The intelligence lives
   in SKILL.md files in the toolkit.
 
-- [ ] 2.5 **Keep fallback prompts bundled:**
+- [x] 2.5 **Keep fallback prompts bundled:**
 
   For users without the toolkit installed, bundle simplified versions of the
   skill content as fallback prompts. These are read from files, not string
@@ -379,10 +379,10 @@ All work in this phase happens in the `hog` repo.
 
 ### Exit Criteria — Phase 2
 
-- [ ] hog invokes toolkit skills when available
-- [ ] hog falls back to bundled prompts when toolkit not installed
-- [ ] Feedback loops work identically with skills and fallback prompts
-- [ ] roles.ts is metadata-only (no prompt strings)
+- [x] hog invokes toolkit skills when available
+- [x] hog falls back to bundled prompts when toolkit not installed
+- [x] Feedback loops work identically with skills and fallback prompts
+- [x] roles.ts is metadata-only (no prompt strings)
 
 ---
 
@@ -390,7 +390,7 @@ All work in this phase happens in the `hog` repo.
 
 ### Tasks
 
-- [ ] 3.1 **Add merge→impl retry loop in conductor:**
+- [x] 3.1 **Add merge→impl retry loop in conductor:**
 
   When the merge review (marvin:review in merge-check mode) reports BLOCK:
   - If test failures → re-invoke `marvin:work` with the failure details
@@ -398,7 +398,7 @@ All work in this phase happens in the `hog` repo.
   - Max 2 retries, then human escalation
   - Same pattern as redteam→impl loop
 
-- [ ] 3.2 **Unify all retry loops:**
+- [x] 3.2 **Unify all retry loops:**
 
   All feedback loops follow the same pattern:
   ```typescript
@@ -412,9 +412,9 @@ All work in this phase happens in the `hog` repo.
 
 ### Exit Criteria — Phase 3
 
-- [ ] Merge check failures trigger impl retry (not human immediately)
-- [ ] All retry loops use unified RetryLoop pattern
-- [ ] Human escalation only after max retries exhausted
+- [x] Merge check failures trigger impl retry (not human immediately)
+- [x] All retry loops use unified RetryLoop pattern
+- [x] Human escalation only after max retries exhausted
 
 ---
 
@@ -422,12 +422,12 @@ All work in this phase happens in the `hog` repo.
 
 ### Tasks
 
-- [ ] 4.1 **Update marvin plugin.json** with new skills and hooks
-- [ ] 4.2 **Update deep-thought plugin.json** with architect skill
-- [ ] 4.3 **Write marvin README** — what each skill does, how to use standalone,
+- [x] 4.1 **Update marvin plugin.json** with new skills and hooks
+- [x] 4.2 **Update deep-thought plugin.json** with architect skill
+- [x] 4.3 **Write marvin README** — what each skill does, how to use standalone,
   how hog orchestrates them
-- [ ] 4.4 **Test end-to-end** — install toolkit, run pipeline, verify skills + hooks work
-- [ ] 4.5 **Update hog README** — explain the relationship with heart-of-gold-toolkit
+- [x] 4.4 **Test end-to-end** — install toolkit, run pipeline, verify skills + hooks work
+- [x] 4.5 **Update hog README** — explain the relationship with heart-of-gold-toolkit
 
 ### Exit Criteria — Phase 4
 

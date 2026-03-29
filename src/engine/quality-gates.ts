@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -65,7 +65,7 @@ export async function runQualityGates(
 
 const lintingGate: QualityGate = {
   name: "linting",
-  severity: "warning",
+  severity: "error",
 
   isAvailable(cwd: string): boolean {
     return (
@@ -121,7 +121,7 @@ const lintingGate: QualityGate = {
       const issues = parseLintIssues(output);
       return {
         gate: "linting",
-        severity: "warning",
+        severity: "error",
         passed: false,
         issues,
         detail: `${issues.length} linting issue(s) found`,
@@ -139,7 +139,6 @@ const securityGate: QualityGate = {
   isAvailable(_cwd: string): boolean {
     // Check if semgrep is available
     try {
-      const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
       execFileSync("semgrep", ["--version"], { encoding: "utf-8", timeout: 5_000, stdio: "pipe" });
       return true;
     } catch {

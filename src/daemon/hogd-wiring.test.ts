@@ -253,7 +253,7 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
   // ── Tracer 3: Agent completion submits to Refinery ──
 
   describe("TRACER-3: Completion submits to Refinery merge queue", () => {
-    it("submits branch to Refinery when agent completes with a worktree", () => {
+    it("submits branch to Refinery when agent completes with a worktree", async () => {
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads, {
         worktrees,
         refinery,
@@ -310,6 +310,9 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
         phase: "impl",
         summary: "Implementation complete",
       });
+
+      // Allow async onAgentCompleted to complete (gates are async)
+      await new Promise((r) => setTimeout(r, 50));
 
       // Verify the refinery received the submission
       expect(refinery.submit).toHaveBeenCalledWith(

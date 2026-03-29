@@ -87,14 +87,15 @@ describe("GitHubSync", () => {
     const sync = new GitHubSync({
       phaseToLabel: {
         stories: "phase:stories",
+        scaffold: "phase:scaffold",
         test: "phase:red",
       },
     });
 
     await sync.onPhaseCompleted(makePipeline(), "test", "owner/repo", 42);
 
-    // Should remove the stories label and add the test label
-    expect(removeLabelAsync).toHaveBeenCalledWith("owner/repo", 42, "phase:stories");
+    // Should remove the scaffold label (previous phase) and add the test label
+    expect(removeLabelAsync).toHaveBeenCalledWith("owner/repo", 42, "phase:scaffold");
     expect(addLabelAsync).toHaveBeenCalledWith("owner/repo", 42, "phase:red");
   });
 

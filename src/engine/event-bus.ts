@@ -23,8 +23,8 @@ export interface EngineEvents {
   };
   "data:refreshed": { data: unknown };
   "mutation:started": { description: string };
-  "mutation:completed": { description: string };
-  "mutation:failed": { description: string; error: string };
+  "mutation:completed": { description: string; featureId?: string; role?: string };
+  "mutation:failed": { description: string; error: string; featureId?: string; role?: string };
   "workflow:phase-changed": {
     repo: string;
     issueNumber: number;
