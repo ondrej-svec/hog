@@ -15,7 +15,7 @@
     "hog": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && mkdir -p dist/engine && cp -r src/engine/fallback-prompts dist/engine/",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
     "check": "biome check src/",

@@ -367,7 +367,7 @@ pipelineCommand
         console.log(`Pipeline started: ${result.featureId}`);
         console.log(`  Repo:    ${repoName}`);
         console.log(
-          `  Beads:   brainstorm${opts.brainstormDone ? " ✓" : ""} → stories → tests → impl → redteam → merge`,
+          `  Beads:   brainstorm${opts.brainstormDone ? " ✓" : ""} → stories → scaffold → tests → impl → redteam → merge`,
         );
         if (opts.brainstormDone) {
           console.log("  Mode:    brainstorm skipped — stories agent starts next");
@@ -451,7 +451,7 @@ pipelineCommand
       return;
     }
 
-    const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"];
+    const phases = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"];
     const completed = pipeline.completedBeads ?? 0;
 
     if (useJson()) {
@@ -462,7 +462,7 @@ pipelineCommand
       console.log(`Status:   ${pipeline.status}`);
       console.log(`Repo:     ${pipeline.repo}`);
       console.log(`Started:  ${pipeline.startedAt}`);
-      console.log(`Progress: ${completed}/6 phases`);
+      console.log(`Progress: ${completed}/7 phases`);
       console.log("");
 
       // DAG visualization
@@ -604,7 +604,7 @@ pipelineCommand
       return;
     }
 
-    const phases = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
+    const phases = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"] as const;
     const phaseStatus = phases.map((p) => {
       const beadId = pipeline.beadIds[p === "tests" ? "tests" : p];
       return { phase: p, beadId };
@@ -637,7 +637,7 @@ pipelineCommand
       console.log(
         `Status: ${pipeline.status} (${elapsed}m${pipeline.completedAt ? " total" : " elapsed"})`,
       );
-      console.log(`Progress: ${pipeline.completedBeads}/6 phases`);
+      console.log(`Progress: ${pipeline.completedBeads}/7 phases`);
       console.log("");
       console.log("Phases:");
       for (const ps of phaseStatus) {
@@ -768,7 +768,7 @@ pipelineCommand
           console.log("Pipeline completed successfully!");
           sendOsNotification({
             title: "hog pipeline",
-            body: "Pipeline complete! All 6 phases done.",
+            body: "Pipeline complete! All 7 phases done.",
           });
           clearInterval(checkInterval);
           client.close();
@@ -967,6 +967,89 @@ Other commands: \`hog pipeline list\`, \`hog pipeline pause <id>\`, \`hog pipeli
       writeFileSync(claudeMdPath, `# CLAUDE.md\n${section}`, "utf-8");
       console.log("Created CLAUDE.md with Hog Pipelines section");
     }
+  });
+
+pipelineCommand
+  .command("dry-run <title>")
+  .description("Show what a pipeline WOULD do without spawning agents")
+  .option("--stories <path>", "Path to stories file")
+  .option("--architecture <path>", "Path to architecture doc")
+  .action(async (title: string, opts: { stories?: string; architecture?: string }) => {
+    const { PIPELINE_ROLES, resolvePromptForRole, checkSkillInstalled } = await import("./engine/roles.js");
+    const { SKILL_CONTRACTS, validateContract } = await import("./engine/skill-contract.js");
+    const { GATE_CONFIGS, gatesForPhase } = await import("./engine/retry-engine.js");
+
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    console.log(`\n🔍 Pipeline Dry Run: "${title}"\n`);
+    console.log("─".repeat(60));
+
+    // Phase plan
+    console.log("\n## Phases\n");
+    const roles: Array<"brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge"> = [
+      "brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge",
+    ];
+
+    for (const role of roles) {
+      const config = PIPELINE_ROLES[role];
+      const { usingSkill } = resolvePromptForRole(role);
+      const mode = usingSkill ? `skill: ${config.skill}` : "fallback prompt";
+      const gates = gatesForPhase(role);
+      const gateInfo = gates.length > 0
+        ? ` → gates: ${gates.map((g) => g.id).join(", ")}`
+        : "";
+      console.log(`  ${config.label.padEnd(16)} [${mode}]${gateInfo}`);
+    }
+
+    // Env vars
+    console.log("\n## Environment Variables\n");
+    const storiesPath = opts.stories ?? `docs/stories/${slug}.md`;
+    const archPath = opts.architecture ?? `docs/stories/${slug}.architecture.md`;
+    console.log(`  STORIES_PATH   = ${storiesPath}`);
+    console.log(`  ARCH_PATH      = ${archPath}`);
+    console.log(`  FEATURE_ID     = (generated at creation)`);
+    console.log(`  MERGE_CHECK    = true (merge phase only)`);
+
+    // Contract validation
+    console.log("\n## Contract Validation\n");
+    for (const role of roles) {
+      const config = PIPELINE_ROLES[role];
+      const contract = SKILL_CONTRACTS[config.skill];
+      if (contract) {
+        const env: Record<string, string> = {
+          STORIES_PATH: storiesPath,
+          ARCH_PATH: archPath,
+          FEATURE_ID: "dry-run",
+          ...(role === "merge" ? { MERGE_CHECK: "true" } : {}),
+        };
+        const result = validateContract(contract, env);
+        if (result.warnings.length > 0) {
+          for (const w of result.warnings) {
+            console.log(`  ⚠ ${config.label}: ${w}`);
+          }
+        }
+      }
+    }
+
+    // Retry loops
+    console.log("\n## Retry Loops\n");
+    for (const gate of GATE_CONFIGS) {
+      console.log(`  ${gate.id.padEnd(16)} retry: ${gate.retryRole} (max ${gate.maxRetries}x) → escalation: human`);
+    }
+
+    // Toolkit status
+    console.log("\n## Toolkit Status\n");
+    const plugins = ["deep-thought", "marvin"];
+    for (const plugin of plugins) {
+      const installed = checkSkillInstalled(`${plugin}:check`);
+      console.log(`  ${plugin.padEnd(16)} ${installed ? "✓ installed" : "✗ not installed (using fallback prompts)"}`);
+    }
+
+    console.log(`\n${"─".repeat(60)}`);
+    console.log("No agents spawned. This was a dry run.\n");
   });
 
 // -- Policy management --

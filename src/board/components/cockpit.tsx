@@ -13,7 +13,7 @@ import { TextInput } from "@inkjs/ui";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
-import { PIPELINE_ROLES } from "../../engine/roles.js";
+import { PIPELINE_ROLES, resolvePromptForRole } from "../../engine/roles.js";
 import { usePipelineData } from "../hooks/use-pipeline-data.js";
 import { useToast } from "../hooks/use-toast.js";
 import { launchClaude } from "../launch-claude.js";
@@ -268,11 +268,14 @@ export function Cockpit({ config }: CockpitProps) {
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
           const spec = selected.description ?? selected.title;
-          const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
-            .replace(/\{title\}/g, selected.title)
-            .replace(/\{slug\}/g, slug)
-            .replace(/\{spec\}/g, spec)
-            .replace(/\{featureId\}/g, selected.featureId);
+          const { prompt: resolvedBsPrompt, usingSkill: bsUsingSkill } = resolvePromptForRole("brainstorm");
+          const brainstormPrompt = bsUsingSkill
+            ? resolvedBsPrompt
+            : resolvedBsPrompt
+                .replace(/\{title\}/g, selected.title)
+                .replace(/\{slug\}/g, slug)
+                .replace(/\{spec\}/g, spec)
+                .replace(/\{featureId\}/g, selected.featureId);
 
           const result = launchClaude({
             localPath,
@@ -457,11 +460,14 @@ export function Cockpit({ config }: CockpitProps) {
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "");
                   const spec = description;
-                  const brainstormPrompt = PIPELINE_ROLES.brainstorm.promptTemplate
-                    .replace(/\{title\}/g, pipeline.title)
-                    .replace(/\{slug\}/g, slug)
-                    .replace(/\{spec\}/g, spec)
-                    .replace(/\{featureId\}/g, pipeline.featureId);
+                  const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } = resolvePromptForRole("brainstorm");
+                  const brainstormPrompt = bsUsingSkill2
+                    ? resolvedBsPrompt2
+                    : resolvedBsPrompt2
+                        .replace(/\{title\}/g, pipeline.title)
+                        .replace(/\{slug\}/g, slug)
+                        .replace(/\{spec\}/g, spec)
+                        .replace(/\{featureId\}/g, pipeline.featureId);
 
                   const launchResult = launchClaude({
                     localPath,

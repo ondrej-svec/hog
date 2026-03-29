@@ -17,7 +17,8 @@ import {
 import type { Refinery } from "./refinery.js";
 import { writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
-import { beadToRole, PIPELINE_ROLES } from "./roles.js";
+import { beadToRole, PIPELINE_ROLES, resolvePromptForRole } from "./roles.js";
+import { getSkillContract, resolveOutputPaths, validateContract, wirePhaseInputs } from "./skill-contract.js";
 import { checkSummaryForFailure } from "./summary-parser.js";
 import { checkTraceability, verifyRedState } from "./tdd-enforcement.js";
 import type { WorktreeManager } from "./worktree.js";
@@ -77,6 +78,9 @@ export interface RetryFeedback {
   readonly attempt: number;
 }
 
+// Retry loop configuration lives in retry-engine.ts (GATE_CONFIGS).
+// The conductor's inline retry logic will be replaced by the engine in Phase 2.
+
 /** Shared context between pipeline stages. Grows as stages complete. */
 export interface PipelineContext {
   /** How to run tests (e.g., "cd heart-of-gold-toolkit && pytest"). Set after test phase. */
@@ -93,6 +97,8 @@ export interface PipelineContext {
   retryFeedback?: Record<string, RetryFeedback> | undefined;
   /** Stories skipped by the human (excluded from coverage gates). */
   skippedStories?: string[] | undefined;
+  /** Accumulated outputs from completed phases — used by contract-based wiring. */
+  pipelineOutputs?: Record<string, string> | undefined;
 }
 
 export interface ConductorOptions {
@@ -208,6 +214,42 @@ export class Conductor {
         event.phase,
         event.exitCode,
         event.errorMessage,
+      );
+    });
+
+    // Listen for refinery merge outcomes — roll back bead state on failure
+    this.eventBus.on("mutation:failed", (event) => {
+      if (!event.featureId) return;
+      const pipeline = this.store.get(event.featureId);
+      if (!pipeline) return;
+
+      const role = event.role as PipelineRole | undefined;
+      if (!role) return;
+
+      const beadId = this.roleToBeadId(pipeline, role);
+      if (!beadId) return;
+
+      this.log(
+        pipeline.featureId,
+        `refinery:failed:${role}`,
+        `Merge failed for ${role}: ${event.error}. Reopening bead.`,
+      );
+
+      // Re-open the bead and decrement — the agent's work didn't actually merge
+      this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
+      pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
+      this.store.save();
+    });
+
+    this.eventBus.on("mutation:completed", (event) => {
+      if (!event.featureId) return;
+      const pipeline = this.store.get(event.featureId);
+      if (!pipeline) return;
+
+      this.log(
+        pipeline.featureId,
+        `refinery:merged:${event.role ?? "unknown"}`,
+        event.description,
       );
     });
   }
@@ -531,6 +573,7 @@ export class Conductor {
         const phaseOrder: Array<[string, PipelineRole]> = [
           ["brainstorm", "brainstorm"],
           ["stories", "stories"],
+          ["scaffold", "scaffold"],
           ["tests", "test"],
           ["impl", "impl"],
           ["redteam", "redteam"],
@@ -1075,12 +1118,25 @@ export class Conductor {
       pipeline.architecturePath ??
       resolvedStoriesPath.replace(/\.md$/, ".architecture.md");
 
-    const basePrompt = roleConfig.promptTemplate
-      .replace(/\{title\}/g, pipeline.title)
-      .replace(/\{slug\}/g, slug)
-      .replace(/\{spec\}/g, bead.description ?? pipeline.title)
-      .replace(/\{storiesPath\}/g, resolvedStoriesPath)
-      .replace(/\{archPath\}/g, archPath);
+    // Resolve prompt: skill invocation (if toolkit installed) or fallback prompt
+    const { prompt: resolvedPrompt, usingSkill } = resolvePromptForRole(role);
+
+    let basePrompt: string;
+    if (usingSkill) {
+      // When using a skill, the prompt is just the slash command.
+      // Context is passed via env vars (see pipelineEnv below).
+      basePrompt = resolvedPrompt;
+    } else {
+      // Fallback: substitute variables into the bundled prompt template
+      basePrompt = resolvedPrompt
+        .replace(/\{title\}/g, pipeline.title)
+        .replace(/\{slug\}/g, slug)
+        .replace(/\{spec\}/g, bead.description ?? pipeline.title)
+        .replace(/\{storiesPath\}/g, resolvedStoriesPath)
+        .replace(/\{archPath\}/g, archPath)
+        .replace(/\{featureId\}/g, pipeline.featureId);
+    }
+
     // Inject pipeline context from previous stages
     const contextSection = this.buildContextSection(pipeline, role);
 
@@ -1092,6 +1148,40 @@ export class Conductor {
     }
 
     const prompt = basePrompt + (contextSection ?? "") + retrySection + (scopeSuffix ?? "");
+
+    // Build env vars for skill context using contract-based wiring
+    const pipelineEnv: Record<string, string> = {
+      STORIES_PATH: resolvedStoriesPath,
+      ARCH_PATH: archPath,
+      FEATURE_ID: pipeline.featureId,
+    };
+    if (role === "merge") {
+      pipelineEnv["MERGE_CHECK"] = "true";
+    }
+    // BRAINSTORM_PATH is handled by contract-based wiring below (wirePhaseInputs).
+    // Do NOT set it from phaseSummaries — that's a truncated summary string, not a file path.
+
+    // Contract-based wiring: auto-wire outputs from previous phases as inputs
+    const skillContract = usingSkill ? getSkillContract(roleConfig.skill) : undefined;
+    if (skillContract && pipeline.context?.pipelineOutputs) {
+      const wiredEnv = wirePhaseInputs(pipeline.context.pipelineOutputs, skillContract);
+      Object.assign(pipelineEnv, wiredEnv);
+    }
+
+    // Validate contract inputs (advisory logging — don't block on warnings)
+    if (skillContract) {
+      const validation = validateContract(skillContract, pipelineEnv);
+      if (!validation.valid) {
+        this.log(
+          pipeline.featureId,
+          `contract:missing:${role}`,
+          `Missing required inputs: ${validation.missing.join(", ")}`,
+        );
+      }
+      for (const warning of validation.warnings) {
+        this.log(pipeline.featureId, `contract:info:${role}`, warning);
+      }
+    }
 
     // Create worktree for isolation (if worktree manager available)
     let agentCwd = pipeline.localPath;
@@ -1107,7 +1197,7 @@ export class Conductor {
         writeRoleClaudeMd(worktreePath, role, {
           storiesPath: resolvedStoriesPath,
           archPath,
-        });
+        }, usingSkill);
         this.log(
           pipeline.featureId,
           `worktree:created:${role}`,
@@ -1181,6 +1271,7 @@ export class Conductor {
       promptTemplate: prompt,
       model: roleModel,
       permissionMode: this.config.pipeline?.permissionMode,
+      env: pipelineEnv,
     });
 
     if (typeof result === "string") {
@@ -1234,11 +1325,14 @@ export class Conductor {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-    const prompt = PIPELINE_ROLES.brainstorm.promptTemplate
-      .replace(/\{title\}/g, pipeline.title)
-      .replace(/\{slug\}/g, slug)
-      .replace(/\{spec\}/g, bead.description ?? pipeline.title)
-      .replace(/\{featureId\}/g, pipeline.featureId);
+    const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } = resolvePromptForRole("brainstorm");
+    const prompt = brainstormUsingSkill
+      ? resolvedBrainstormPrompt
+      : resolvedBrainstormPrompt
+          .replace(/\{title\}/g, pipeline.title)
+          .replace(/\{slug\}/g, slug)
+          .replace(/\{spec\}/g, bead.description ?? pipeline.title)
+          .replace(/\{featureId\}/g, pipeline.featureId);
 
     const result = launchClaude({
       localPath: pipeline.localPath,
@@ -1317,23 +1411,8 @@ export class Conductor {
 
     this.sessionToPipeline.delete(sessionId);
 
-    // If this agent had a worktree, submit to refinery for merge
+    // Capture worktree info now — submission to refinery deferred until gates pass
     const worktreeInfo = this.sessionWorktrees.get(sessionId);
-    if (worktreeInfo && this.refinery) {
-      const mergeId = this.refinery.submit(
-        pipeline.featureId,
-        worktreeInfo.branch,
-        worktreeInfo.worktreePath,
-        worktreeInfo.repoPath,
-        phase, // Pass role for diff-audit gate (Amodei)
-      );
-      this.log(
-        pipeline.featureId,
-        `refinery:submitted:${phase}`,
-        `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
-      );
-      this.sessionWorktrees.delete(sessionId);
-    }
     this.persistSessionMaps();
 
     // Check if this is a parallel agent — don't close bead until all are done
@@ -1447,10 +1526,40 @@ export class Conductor {
             await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
             return;
           }
+          // Max retries exhausted — escalate to human
+          this.log(pipeline.featureId, "gate:stub-detection:exhausted", "Max retries reached. Escalating.");
+          const stubEscResult = enqueueQuestion(this.questionQueue, {
+            featureId: pipeline.featureId,
+            question: `Implementation still has ${Math.round(stubResult.stubRatio * 100)}% stubs after 2 attempts. Files: ${stubResult.stubFiles.slice(0, 5).join(", ")}`,
+            options: ["Retry impl", "Continue with stubs", "Cancel pipeline"],
+            source: "conductor",
+          });
+          this.questionQueue = stubEscResult.queue;
+          saveQuestionQueue(this.questionQueue);
+          pipeline.status = "blocked";
+          this.store.save();
+          return;
         }
       } catch {
         // best-effort
       }
+    }
+
+    // Submit to refinery AFTER all gates pass (not before)
+    if (worktreeInfo && this.refinery) {
+      const mergeId = this.refinery.submit(
+        pipeline.featureId,
+        worktreeInfo.branch,
+        worktreeInfo.worktreePath,
+        worktreeInfo.repoPath,
+        phase,
+      );
+      this.log(
+        pipeline.featureId,
+        `refinery:submitted:${phase}`,
+        `Branch ${worktreeInfo.branch} submitted to merge queue (${mergeId})`,
+      );
+      this.sessionWorktrees.delete(sessionId);
     }
 
     // Close the bead (all pre-close gates passed)
@@ -1485,6 +1594,34 @@ export class Conductor {
           pipeline.context.phaseSummaries[phase] = summary.slice(0, 500);
         }
 
+        // Store contract outputs for downstream phase wiring
+        const phaseRole = phase as PipelineRole;
+        const phaseContract = getSkillContract(PIPELINE_ROLES[phaseRole]?.skill ?? "");
+        if (phaseContract && Object.keys(phaseContract.outputs).length > 0) {
+          const slug = pipeline.title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "");
+          const outputs = resolveOutputPaths(phaseContract, { slug });
+          if (!pipeline.context.pipelineOutputs) {
+            pipeline.context.pipelineOutputs = {};
+          }
+          // Only store outputs that actually exist on disk
+          const { existsSync: fileExists } = await import("node:fs");
+          for (const [name, filePath] of Object.entries(outputs)) {
+            const fullPath = join(pipeline.localPath, filePath);
+            if (fileExists(fullPath)) {
+              pipeline.context.pipelineOutputs[name] = filePath;
+            } else {
+              this.log(
+                pipeline.featureId,
+                `contract:output-missing:${phase}`,
+                `Expected output ${name} at ${filePath} not found — downstream skills will search`,
+              );
+            }
+          }
+        }
+
         // After test phase: detect test command and test files for subsequent stages
         if (phase === "test") {
           await this.captureTestContext(pipeline);
@@ -1503,11 +1640,29 @@ export class Conductor {
             detail: "GREEN check failed to run — skipping",
           }));
           if (!green.passed) {
-            this.log(pipeline.featureId, "tdd:green-failed", green.detail);
-            // Re-open impl bead for retry
-            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
-            pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
-            return; // Don't proceed to GitHub sync — impl needs retry
+            // Track green failures to prevent infinite loops
+            const greenRetries = this.decisionLog.filter(
+              (e) => e.featureId === pipeline.featureId && e.action === "tdd:green-failed",
+            ).length;
+            if (greenRetries < 2) {
+              this.log(pipeline.featureId, "tdd:green-failed", `${green.detail} (attempt ${greenRetries + 1}/2)`);
+              await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
+              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
+              return;
+            }
+            // Max green retries exhausted — escalate to human
+            this.log(pipeline.featureId, "tdd:green-exhausted", "Tests still failing after 2 impl retries. Escalating.");
+            const greenEscResult = enqueueQuestion(this.questionQueue, {
+              featureId: pipeline.featureId,
+              question: `Tests still failing after 2 impl attempts. Failures: ${green.detail.slice(0, 200)}`,
+              options: ["Retry impl", "Skip green check", "Cancel pipeline"],
+              source: "conductor",
+            });
+            this.questionQueue = greenEscResult.queue;
+            saveQuestionQueue(this.questionQueue);
+            pipeline.status = "blocked";
+            this.store.save();
+            return;
           }
           this.log(pipeline.featureId, "tdd:green-verified", green.detail);
 
@@ -1576,6 +1731,58 @@ export class Conductor {
               source: "conductor",
             });
             this.questionQueue = result.queue;
+            saveQuestionQueue(this.questionQueue);
+            pipeline.status = "blocked";
+            this.store.save();
+          }
+        }
+
+        // Merge→impl feedback loop
+        // After merge review, if agent reports BLOCK, re-invoke impl to fix issues
+        if (phase === "merge") {
+          const mergeBlocked = summary?.includes("BLOCK") || summary?.includes("FAIL");
+          if (mergeBlocked) {
+            const mergeRetries = this.decisionLog.filter(
+              (e) => e.featureId === pipeline.featureId && e.action === "merge:impl-loop",
+            ).length;
+            if (mergeRetries < 2) {
+              this.log(
+                pipeline.featureId,
+                "merge:impl-loop",
+                `Merge review blocked — re-opening impl (attempt ${mergeRetries + 1}/2)`,
+              );
+              // Re-open impl bead so it can fix the issues
+              const implBeadId = pipeline.beadIds.impl;
+              await this.beads.updateStatus(pipeline.localPath, implBeadId, "open").catch(() => {});
+              // Re-open merge bead too so it re-runs after impl fixes
+              await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
+              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 2);
+
+              // Inject merge review findings as retry context for impl
+              if (!pipeline.context) pipeline.context = {};
+              if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
+              pipeline.context.retryFeedback["impl"] = {
+                reason: "Merge review reported BLOCK. Fix the issues and make all tests pass.",
+                missing: [],
+                previousSummary: summary?.slice(0, 300) ?? "",
+                attempt: (pipeline.context.retryFeedback["impl"]?.attempt ?? 0) + 1,
+              };
+              this.store.save();
+              return; // Don't proceed — impl needs to fix first
+            }
+            // Max iterations reached — escalate to human
+            this.log(
+              pipeline.featureId,
+              "merge:impl-loop-exhausted",
+              "Max merge→impl iterations reached. Escalating to human.",
+            );
+            const mergeEscResult = enqueueQuestion(this.questionQueue, {
+              featureId: pipeline.featureId,
+              question: `Merge review blocked after 2 impl retries. Manual intervention needed. Last review: ${summary?.slice(0, 200)}`,
+              options: ["Retry impl", "Force merge", "Cancel pipeline"],
+              source: "conductor",
+            });
+            this.questionQueue = mergeEscResult.queue;
             saveQuestionQueue(this.questionQueue);
             pipeline.status = "blocked";
             this.store.save();

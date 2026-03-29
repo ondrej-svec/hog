@@ -172,6 +172,8 @@ export class Refinery {
         this.eventBus.emit("mutation:failed", {
           description: `Merge failed: rebase conflicts on ${next.branch}`,
           error: "Rebase conflicts — needs manual resolution",
+          featureId: next.featureId,
+          ...(next.role ? { role: next.role } : {}),
         });
         return;
       }
@@ -185,6 +187,8 @@ export class Refinery {
         this.eventBus.emit("mutation:failed", {
           description: `Merge failed: tests on ${next.branch}`,
           error: "Tests failed after rebase",
+          featureId: next.featureId,
+          ...(next.role ? { role: next.role } : {}),
         });
         return;
       }
@@ -208,6 +212,8 @@ export class Refinery {
         this.eventBus.emit("mutation:failed", {
           description: `Merge failed: quality gates on ${next.branch}`,
           error: `Blockers: ${gatesReport.blockers.map((b) => b.gate).join(", ")}`,
+          featureId: next.featureId,
+          ...(next.role ? { role: next.role } : {}),
         });
         return;
       }
@@ -224,6 +230,8 @@ export class Refinery {
 
       this.eventBus.emit("mutation:completed", {
         description: `Merged ${next.branch} to ${this.baseBranch}`,
+        featureId: next.featureId,
+        ...(next.role ? { role: next.role } : {}),
       });
 
       // Step 5: Clean up worktree

@@ -22,7 +22,7 @@ export interface GitHubSyncConfig {
 }
 
 /** Ordered pipeline phases for label cleanup. */
-const PHASE_ORDER: PipelineRole[] = ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
+const PHASE_ORDER: PipelineRole[] = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"];
 
 // ── GitHubSync ──
 
@@ -105,7 +105,7 @@ export class GitHubSync {
     phase: string,
   ): Promise<void> {
     try {
-      const msg = `Pipeline phase \`${phase}\` completed for "${pipeline.title}" (${pipeline.completedBeads}/6 phases done).`;
+      const msg = `Pipeline phase \`${phase}\` completed for "${pipeline.title}" (${pipeline.completedBeads}/7 phases done).`;
       await addCommentAsync(repo, issueNumber, msg);
     } catch {
       // Best-effort

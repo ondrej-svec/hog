@@ -29,6 +29,8 @@ export interface SpawnAgentOptions {
   readonly model?: string | undefined;
   /** Permission mode: "auto", "acceptEdits", "bypassPermissions", etc. Defaults to "auto". */
   readonly permissionMode?: string | undefined;
+  /** Additional environment variables to pass to the spawned agent. */
+  readonly env?: Readonly<Record<string, string>> | undefined;
 }
 
 export interface SpawnAgentResult {
@@ -235,6 +237,7 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
       ...process.env,
       HOG_REPO: opts.repoFullName,
       HOG_ISSUE: String(opts.issueNumber),
+      ...opts.env,
     },
   });
 
