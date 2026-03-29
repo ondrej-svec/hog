@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.28.0](https://github.com/ondrej-svec/hog/compare/hog-v1.27.0...hog-v1.28.0) (2026-03-29)
+
+
+### Features
+
+* pipeline prompt overhaul — architecture as binding, executable self-checks, feedback loops ([7ddd78d](https://github.com/ondrej-svec/hog/commit/7ddd78dca21178822877d9d1c9e9a4b1d97be4bc))
+* skills-first pipeline v2 — standalone skills + hog orchestration ([38e4397](https://github.com/ondrej-svec/hog/commit/38e4397058526980e0eb22d0d2e9037a5721db8e))
+
+
+### Bug Fixes
+
+* strip session markers from phase summaries, fix completedBeads count ([407b485](https://github.com/ondrej-svec/hog/commit/407b4851401f9732a14ea7ba9f4827ef7cb60309))
+
 ## [1.27.0](https://github.com/ondrej-svec/hog/compare/hog-v1.26.0...hog-v1.27.0) (2026-03-29)
 
 
