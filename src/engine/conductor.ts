@@ -1106,11 +1106,23 @@ export class Conductor {
           `Worktree at ${worktreePath} with ${role} CLAUDE.md`,
         );
       } catch (err) {
-        this.log(
-          pipeline.featureId,
-          `worktree:failed:${role}`,
-          `Worktree creation failed, using main repo: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        // Clean up leftover directory from failed worktree creation
+        worktreePath = undefined;
+        branchName = undefined;
+        agentCwd = pipeline.localPath;
+        try {
+          const { rmSync, existsSync } = await import("node:fs");
+          const worktreeDir = `${pipeline.localPath}/.hog-worktrees`;
+          if (existsSync(worktreeDir)) {
+            const { readdirSync } = await import("node:fs");
+            const entries = readdirSync(worktreeDir);
+            if (entries.length === 0) {
+              rmSync(worktreeDir, { recursive: true, force: true });
+            }
+          }
+        } catch {
+          // best-effort cleanup
+        }
       }
     }
 
