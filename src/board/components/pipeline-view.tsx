@@ -1,8 +1,8 @@
 /**
  * Pipeline View — the cockpit's main display.
  *
- * Design A with personality: spacious layout, agent names, humanized tools,
- * narrative activity feed, quality gates row.
+ * Lazygit-style panelled layout: bordered sections, overflow hidden,
+ * activity feed fills remaining space, quality gates anchored at bottom.
  */
 
 import { Box, Text } from "ink";
@@ -11,6 +11,7 @@ import type { Pipeline, PipelineStatus } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import { agentName, formatElapsed, humanizeTool, timeAgo } from "../humanize.js";
+import { Panel } from "./panel.js";
 
 // ── Types ──
 
@@ -56,17 +57,17 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
 
   const selectedPipeline = pipelines[selectedIndex];
   const showLeftPanel = pipelines.length > 1 && cols > 60;
-  const rightWidth = Math.max(40, showLeftPanel ? cols - LEFT_PANEL_WIDTH - 3 : cols);
+  const rightWidth = Math.max(40, showLeftPanel ? cols - LEFT_PANEL_WIDTH - 1 : cols);
 
   return (
-    <Box flexDirection="row" height={rows}>
+    <Box flexDirection="row" height={rows} overflow="hidden">
       {showLeftPanel ? (
-        <Box flexDirection="column" width={LEFT_PANEL_WIDTH} borderStyle="single" borderRight>
-          <Text bold> Pipelines</Text>
-          <Text> </Text>
-          {pipelines.map((p, i) => (
-            <PipelineListItem key={p.featureId} pipeline={p} selected={i === selectedIndex} />
-          ))}
+        <Box flexDirection="column" width={LEFT_PANEL_WIDTH} flexShrink={0}>
+          <Panel title="Pipelines" isActive={false} width={LEFT_PANEL_WIDTH} flexGrow={1}>
+            {pipelines.map((p, i) => (
+              <PipelineListItem key={p.featureId} pipeline={p} selected={i === selectedIndex} />
+            ))}
+          </Panel>
         </Box>
       ) : null}
 
@@ -96,31 +97,22 @@ function PipelineListItem({
   const completed = pipeline.completedBeads ?? 0;
   const pct = Math.round((completed / 6) * 100);
   const phase = pipeline.activePhase ?? "";
-  const barWidth = 12;
+  const barWidth = 10;
   const filled = Math.round((completed / 6) * barWidth);
   const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 
+  const title = pipeline.title.length > 18 ? `${pipeline.title.slice(0, 16)}..` : pipeline.title;
+
   return (
-    <Box flexDirection="column" paddingLeft={1}>
-      <Box>
+    <Box flexDirection="column">
+      <Text wrap="truncate">
         {selected ? (
-          <Text color="cyan" bold>
-            {"► "}
-            {pipeline.title.length > 20 ? `${pipeline.title.slice(0, 18)}..` : pipeline.title}
-          </Text>
+          <Text color="cyan" bold>► {title}</Text>
         ) : (
-          <Text>
-            {"  "}
-            {pipeline.title.length > 20 ? `${pipeline.title.slice(0, 18)}..` : pipeline.title}
-          </Text>
+          <Text>  {title}</Text>
         )}
-      </Box>
-      <Box paddingLeft={2}>
-        <Text dimColor>
-          {bar} {pct}% {phase}
-        </Text>
-      </Box>
-      <Text> </Text>
+      </Text>
+      <Text dimColor wrap="truncate">    {bar} {pct}% {phase}</Text>
     </Box>
   );
 }
@@ -151,71 +143,112 @@ function PipelineDetail({
     (q) => q.featureId === pipeline.featureId,
   );
 
+  // Decision panel takes priority when blocked
+  if (pipelineDecisions.length > 0) {
+    return (
+      <Box flexDirection="column" width={width} height={rows} overflow="hidden">
+        <Panel title={pipeline.title} isActive={true} width={width} flexGrow={1}>
+          <PhaseBar pipeline={pipeline} width={width - 4} />
+          <Text> </Text>
+          <DecisionPanel decisions={pipelineDecisions} />
+        </Panel>
+        <QualityGatesRow pipeline={pipeline} />
+      </Box>
+    );
+  }
+
+  // Count fixed rows: status panel ~8 lines, gates 1 line — rest goes to activity
+  const completedCount = pipeline.completedBeads ?? 0;
+  // Status panel height: title border(2) + phase(1) + spacer(1) + agent(2) + completed(completedCount+1) + border(1)
+  const statusHeight = Math.min(rows - 6, 4 + 2 + (completedCount > 0 ? completedCount + 1 : 0));
+
   return (
-    <Box flexDirection="column" paddingLeft={1} width={width}>
-      {/* Title */}
-      <Text bold>{pipeline.title}</Text>
-      <Text> </Text>
+    <Box flexDirection="column" width={width} height={rows} overflow="hidden">
+      {/* Status panel — fixed height */}
+      <Panel title={pipeline.title} isActive={true} width={width} height={statusHeight}>
+        <PhaseBar pipeline={pipeline} width={width - 4} />
+        <Text> </Text>
+        <StatusSection
+          pipeline={pipeline}
+          activeAgent={activeAgent}
+          pipelineAgents={pipelineAgents}
+        />
+        <CompletedPhases pipeline={pipeline} agents={pipelineAgents} />
+      </Panel>
 
-      {/* Phase DAG */}
-      <PhaseBar pipeline={pipeline} />
-      <Text> </Text>
+      {/* Activity panel — fills remaining space */}
+      <Panel title="Activity" isActive={false} width={width} flexGrow={1}>
+        {logEntries && logEntries.length > 0 ? (
+          <ActivityFeed entries={logEntries} width={width - 4} />
+        ) : (
+          <Text dimColor>No activity yet</Text>
+        )}
+      </Panel>
 
-      {/* Decision panel (takes priority when blocked) */}
-      {pipelineDecisions.length > 0 ? (
-        <DecisionPanel decisions={pipelineDecisions} />
-      ) : (
-        <>
-          {/* Active Agent Spotlight */}
-          {activeAgent ? (
-            <ActiveAgentCard agent={activeAgent} />
-          ) : pipeline.status === "running" ? (
-            <Text dimColor>  {pipeline.activePhase === "brainstorm"
-              ? "Brainstorm session should be open — press Z to reopen if needed"
-              : "No active agents — daemon will advance to next phase"}</Text>
-          ) : pipeline.status === "completed" ? (
-            <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />
-          ) : pipeline.status === "paused" ? (
-            <Text color="yellow">  ⏸ Pipeline paused — press x to resume</Text>
-          ) : pipeline.status === "blocked" ? (
-            <Text color="red">  ⚠ Pipeline blocked — waiting for resolution</Text>
-          ) : pipeline.status === "failed" ? (
-            <Box flexDirection="column" paddingLeft={2}>
-              <Text color="red" bold>✗ Pipeline failed</Text>
-              <Text dimColor>  Check the activity log for details</Text>
-            </Box>
-          ) : null}
-
-          <Text> </Text>
-
-          {/* Completed Phases */}
-          <CompletedPhases pipeline={pipeline} agents={pipelineAgents} />
-
-          <Text> </Text>
-
-          {/* Activity Feed */}
-          {logEntries && logEntries.length > 0 ? (
-            <ActivityFeed entries={logEntries} />
-          ) : null}
-
-          <Text> </Text>
-
-          {/* Quality Gates (compact row) */}
-          <QualityGatesRow pipeline={pipeline} />
-        </>
-      )}
+      {/* Quality gates — anchored at bottom */}
+      <QualityGatesRow pipeline={pipeline} />
     </Box>
   );
 }
 
+// ── Status Section (agent card or status message) ──
+
+function StatusSection({
+  pipeline,
+  activeAgent,
+  pipelineAgents,
+}: {
+  pipeline: Pipeline;
+  activeAgent: DaemonAgentInfo | undefined;
+  pipelineAgents: readonly DaemonAgentInfo[];
+}) {
+  if (activeAgent) {
+    return <ActiveAgentCard agent={activeAgent} />;
+  }
+
+  if (pipeline.status === "running") {
+    return (
+      <Text dimColor wrap="truncate">
+        {pipeline.activePhase === "brainstorm"
+          ? "Brainstorm session should be open — press Z to reopen if needed"
+          : "No active agents — daemon will advance to next phase"}
+      </Text>
+    );
+  }
+
+  if (pipeline.status === "completed") {
+    return <CompletionSummary pipeline={pipeline} agents={pipelineAgents} />;
+  }
+
+  if (pipeline.status === "paused") {
+    return <Text color="yellow">⏸ Pipeline paused — press x to resume</Text>;
+  }
+
+  if (pipeline.status === "blocked") {
+    return <Text color="red">⚠ Pipeline blocked — waiting for resolution</Text>;
+  }
+
+  if (pipeline.status === "failed") {
+    return (
+      <Box flexDirection="column">
+        <Text color="red" bold>✗ Pipeline failed</Text>
+        <Text dimColor>  Check the activity log for details</Text>
+      </Box>
+    );
+  }
+
+  return null;
+}
+
 // ── Phase Bar ──
 
-function PhaseBar({ pipeline }: { pipeline: Pipeline }) {
+function PhaseBar({ pipeline, width }: { pipeline: Pipeline; width?: number }) {
   const completed = pipeline.completedBeads ?? 0;
+  // Use compact connectors to fit terminal width
+  const connector = width && width < 80 ? "→" : " → ";
 
   return (
     <Box>
-      <Text>  </Text>
       {PHASE_ORDER.map((phase, i) => {
         const label = PHASE_LABELS[phase] ?? phase;
         const beadKey = phase === "test" ? "tests" : phase;
@@ -224,13 +257,13 @@ function PhaseBar({ pipeline }: { pipeline: Pipeline }) {
           phase === pipeline.activePhase ||
           (phase === "test" && pipeline.activePhase === "test");
 
-        const connector = i < PHASE_ORDER.length - 1 ? " ── " : "";
+        const sep = i < PHASE_ORDER.length - 1 ? connector : "";
 
         if (isCompleted) {
           return (
             <Text key={beadKey}>
               <Text color="green">{label} ✓</Text>
-              <Text dimColor>{connector}</Text>
+              <Text dimColor>{sep}</Text>
             </Text>
           );
         }
@@ -238,14 +271,14 @@ function PhaseBar({ pipeline }: { pipeline: Pipeline }) {
           return (
             <Text key={beadKey}>
               <Text color="yellow" bold>{label} ◐</Text>
-              <Text dimColor>{connector}</Text>
+              <Text dimColor>{sep}</Text>
             </Text>
           );
         }
         return (
           <Text key={beadKey}>
             <Text dimColor>{label} ·</Text>
-            <Text dimColor>{connector}</Text>
+            <Text dimColor>{sep}</Text>
           </Text>
         );
       })}
@@ -259,7 +292,7 @@ function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
   const name = agentName(agent.sessionId);
   const elapsed = formatElapsed(agent.startedAt);
   const activity = humanizeTool(agent.lastToolUse);
-  const PHASE_LABELS: Record<string, string> = {
+  const ROLE_LABELS: Record<string, string> = {
     brainstorm: "Brainstorm",
     stories: "Architect",
     scaffold: "Scaffolder",
@@ -268,23 +301,17 @@ function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
     redteam: "Red Team",
     merge: "Merge Gatekeeper",
   };
-  const phaseLabel = PHASE_LABELS[agent.phase] ?? agent.phase;
+  const phaseLabel = ROLE_LABELS[agent.phase] ?? agent.phase;
 
   return (
-    <Box flexDirection="column" paddingLeft={2}>
-      <Box>
-        <Text color="cyan" bold>
-          ◐ {name}
-        </Text>
+    <Box flexDirection="column">
+      <Text wrap="truncate">
+        <Text color="cyan" bold>◐ {name}</Text>
         <Text> is </Text>
         <Text bold>{activity}</Text>
         <Text dimColor>  {elapsed}</Text>
-      </Box>
-      <Box paddingLeft={2}>
-        <Text dimColor>
-          {phaseLabel} phase
-        </Text>
-      </Box>
+      </Text>
+      <Text dimColor>  {phaseLabel} phase</Text>
     </Box>
   );
 }
@@ -305,7 +332,6 @@ function CompletedPhases({
 
   return (
     <Box flexDirection="column">
-      <Text dimColor>  ── Completed ──</Text>
       {completedPhases.map((phase) => {
         const label = PHASE_LABELS[phase] ?? phase;
         const phaseAgents = agents.filter((a) => a.phase === phase);
@@ -313,23 +339,19 @@ function CompletedPhases({
         const names = phaseAgents.map((a) => agentName(a.sessionId)).join(", ");
         const elapsed = phaseAgents[0] ? formatElapsed(phaseAgents[0].startedAt) : "";
 
-        // Get summary from pipeline context
         const summary = pipeline.context?.phaseSummaries?.[phase];
         const shortSummary = summary
-          ? summary.split("\n")[0]?.slice(0, 60)
+          ? summary.split("\n")[0]?.slice(0, 50)
           : agentCount > 1
             ? `${agentCount} agents (${names})`
             : "";
 
         return (
-          <Box key={phase} paddingLeft={2}>
+          <Text key={phase} wrap="truncate">
             <Text color="green">✓ </Text>
             <Text>{label.padEnd(12)}</Text>
-            <Text dimColor>
-              {elapsed ? `${elapsed.padEnd(6)}` : "      "}
-              {shortSummary}
-            </Text>
-          </Box>
+            <Text dimColor>{shortSummary}</Text>
+          </Text>
         );
       })}
     </Box>
@@ -338,52 +360,42 @@ function CompletedPhases({
 
 // ── Activity Feed ──
 
-function ActivityFeed({ entries }: { entries: readonly string[] }) {
-  // Filter to meaningful events only
+function ActivityFeed({ entries, width }: { entries: readonly string[]; width?: number }) {
   const meaningful = entries
     .filter((e) => {
-      // Skip internal conductor noise — only show phase transitions, failures, decisions
       if (e.includes("preparing:")) return false;
       if (e.includes("beads-reconciled")) return false;
       if (e.includes("baseline-captured")) return false;
       if (e.includes("bead-unstuck")) return false;
       if (e.includes("context:test-captured")) return false;
-      if (e.includes("worktree:")) return false; // All worktree internals (created, failed, fallback)
+      if (e.includes("worktree:")) return false;
       if (e.includes("model:divergence")) return false;
-      if (e.includes("tdd:red-verified")) return false; // Only show if RED FAILS
+      if (e.includes("tdd:red-verified")) return false;
       if (e.includes("quality:stub-info")) return false;
       if (e.includes("session-map")) return false;
       return true;
     })
-    .slice(-7);
+    .slice(-12);
 
-  if (meaningful.length === 0) return null;
+  if (meaningful.length === 0) return <Text dimColor>No activity yet</Text>;
 
   return (
     <Box flexDirection="column">
-      <Text dimColor>  ── Activity ──</Text>
       {meaningful.map((entry, i) => {
-        // Parse "[ISO] action:sub:detail: message" format
-        // Split on ": " (colon-space) to separate action from message, not first ":"
         const tsMatch = entry.match(/^\[([^\]]+)\]\s+(.*)/);
         const ts = tsMatch?.[1] ? formatTime(tsMatch[1]) : "";
         const rest = tsMatch?.[2] ?? entry;
-        // Find the action (everything before first ": " that contains a letter)
         const colonSpaceIdx = rest.indexOf(": ");
-        const action = colonSpaceIdx > 0 ? rest.slice(0, colonSpaceIdx) : "";
         const detail = colonSpaceIdx > 0 ? rest.slice(colonSpaceIdx + 2) : rest;
-
-        // Humanize the detail
         const humanDetail = humanizeLogEntry(detail);
 
-        // Skip entries that are purely internal
         if (!humanDetail || humanDetail.length < 3) return null;
 
         return (
-          <Box key={`${i}`} paddingLeft={2}>
-            <Text dimColor>{ts ? `${ts}  ` : "      "}</Text>
+          <Text key={`${i}`} wrap="truncate">
+            <Text dimColor>{ts ? `${ts} ` : "     "}</Text>
             <Text>{humanDetail}</Text>
-          </Box>
+          </Text>
         );
       })}
     </Box>
@@ -400,16 +412,11 @@ function formatTime(iso: string): string {
 }
 
 function humanizeLogEntry(detail: string): string {
-  // Clean up common patterns
   return (
     detail
-      // Remove session IDs
       .replace(/\(session:\s*[\w-]+\)/g, "")
-      // Remove bead IDs
       .replace(/for bead \S+/g, "")
-      // Remove "Spawned X agent" → "X started"
       .replace(/Spawned (\w[\w ]+) agent\s*/g, "$1 started")
-      // Trim whitespace
       .replace(/\s{2,}/g, " ")
       .trim()
   );
@@ -424,25 +431,21 @@ function QualityGatesRow({ pipeline }: { pipeline: Pipeline }) {
   const mergeDone = completed >= 6;
 
   const gates = [
-    { name: "lint", done: implDone, after: "impl" },
-    { name: "typecheck", done: implDone, after: "impl" },
-    { name: "security", done: redteamDone, after: "redteam" },
-    { name: "mutation", done: redteamDone, after: "redteam" },
-    { name: "suite", done: mergeDone, after: "merge" },
+    { name: "lint", done: implDone },
+    { name: "typecheck", done: implDone },
+    { name: "security", done: redteamDone },
+    { name: "mutation", done: redteamDone },
+    { name: "suite", done: mergeDone },
   ];
 
   return (
-    <Box paddingLeft={2}>
-      <Text dimColor>  gates: </Text>
+    <Box flexShrink={0} height={1}>
+      <Text dimColor> gates: </Text>
       {gates.map((gate) =>
         gate.done ? (
-          <Text key={gate.name}>
-            <Text color="green">✓ {gate.name} </Text>
-          </Text>
+          <Text key={gate.name} color="green">✓ {gate.name}  </Text>
         ) : (
-          <Text key={gate.name}>
-            <Text dimColor>○ {gate.name} </Text>
-          </Text>
+          <Text key={gate.name} dimColor>○ {gate.name}  </Text>
         ),
       )}
     </Box>
@@ -456,18 +459,14 @@ function DecisionPanel({ decisions }: { decisions: Question[] }) {
   if (!decision) return null;
 
   return (
-    <Box flexDirection="column" paddingLeft={2} marginTop={1}>
-      <Text color="red" bold>
-        ⚠ DECISION NEEDED
-      </Text>
+    <Box flexDirection="column">
+      <Text color="red" bold>⚠ DECISION NEEDED</Text>
       <Text> </Text>
       <Text>{decision.question}</Text>
       <Text> </Text>
       {(decision.options ?? []).map((option, i) => (
         <Box key={option}>
-          <Text color="cyan" bold>
-            [{i + 1}]
-          </Text>
+          <Text color="cyan" bold>[{i + 1}]</Text>
           <Text> {option}</Text>
         </Box>
       ))}
@@ -496,10 +495,8 @@ function CompletionSummary({
     : formatElapsed(pipeline.startedAt);
 
   return (
-    <Box flexDirection="column" paddingLeft={2}>
-      <Text color="green" bold>
-        ✓ Pipeline complete
-      </Text>
+    <Box flexDirection="column">
+      <Text color="green" bold>✓ Pipeline complete</Text>
       <Text dimColor>  {elapsed} total · {agents.length} agents used</Text>
     </Box>
   );
@@ -522,9 +519,6 @@ function EmptyState({ cols, rows }: { cols: number; rows: number }) {
         Press <Text color="cyan" bold>P</Text> to start a new pipeline
       </Text>
       <Text> </Text>
-      <Text dimColor>
-        Describe a feature and hog will:
-      </Text>
       <Text dimColor>
         brainstorm → stories → scaffold → tests → implement → red team → merge
       </Text>
