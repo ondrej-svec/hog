@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
 import { CONFIG_DIR } from "../../config.js";
+import type { DaemonClient } from "../../daemon/client.js";
+import type { RpcEvent } from "../../daemon/protocol.js";
 import type { Pipeline } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
-import type { DaemonClient } from "../../daemon/client.js";
-import type { RpcEvent } from "../../daemon/protocol.js";
 
 // ── Types ──
 
@@ -21,6 +21,21 @@ export interface DaemonAgentInfo {
   readonly featureId?: string | undefined;
 }
 
+/** A structured activity entry for the cockpit feed. */
+export interface ActivityEntry {
+  readonly timestamp: string;
+  readonly type:
+    | "phase-start"
+    | "phase-complete"
+    | "agent-spawn"
+    | "agent-progress"
+    | "agent-complete"
+    | "agent-fail";
+  readonly phase?: string | undefined;
+  readonly agentSessionId?: string | undefined;
+  readonly detail: string;
+}
+
 export interface UsePipelineDataResult {
   /** All active pipelines. */
   readonly pipelines: Pipeline[];
@@ -30,6 +45,8 @@ export interface UsePipelineDataResult {
   readonly pendingDecisions: Question[];
   /** Merge queue entries. */
   readonly mergeQueue: readonly MergeQueueEntry[];
+  /** Structured activity log per pipeline (keyed by featureId). */
+  readonly activityLog: ReadonlyMap<string, readonly ActivityEntry[]>;
   /** Whether Beads CLI is available. */
   readonly beadsAvailable: boolean;
   /** Whether connected to daemon. */
@@ -49,6 +66,67 @@ export interface UsePipelineDataResult {
   readonly cancelPipeline: (featureId: string) => Promise<boolean>;
   /** Resolve a pending question. */
   readonly resolveDecision: (questionId: string, answer: string) => void;
+}
+
+// ── Helpers ──
+
+/** Convert a JSONL EventLogEntry to a structured ActivityEntry. */
+function eventLogToActivity(e: {
+  timestamp: string;
+  event: string;
+  data: Record<string, unknown>;
+}): ActivityEntry {
+  const phase = e.data["phase"] as string | undefined;
+  const sessionId = e.data["sessionId"] as string | undefined;
+
+  switch (e.event) {
+    case "agent:spawned":
+      return {
+        timestamp: e.timestamp,
+        type: "agent-spawn",
+        phase,
+        agentSessionId: sessionId,
+        detail: `Agent spawned for ${phase ?? "unknown"} phase`,
+      };
+    case "agent:progress":
+      return {
+        timestamp: e.timestamp,
+        type: "agent-progress",
+        agentSessionId: sessionId,
+        detail: (e.data["toolName"] as string) ?? "working",
+      };
+    case "agent:completed":
+      return {
+        timestamp: e.timestamp,
+        type: "agent-complete",
+        phase,
+        agentSessionId: sessionId,
+        detail: (e.data["summary"] as string) ?? `${phase ?? "Agent"} phase completed`,
+      };
+    case "agent:failed":
+      return {
+        timestamp: e.timestamp,
+        type: "agent-fail",
+        phase,
+        agentSessionId: sessionId,
+        detail: (e.data["errorMessage"] as string) ?? `${phase ?? "Agent"} phase failed`,
+      };
+    case "workflow:phase-changed": {
+      const state = e.data["state"] as string;
+      return {
+        timestamp: e.timestamp,
+        type: state === "completed" ? "phase-complete" : "phase-start",
+        phase,
+        detail: `${phase ?? "Phase"} → ${state}`,
+      };
+    }
+    default:
+      return {
+        timestamp: e.timestamp,
+        type: "agent-progress",
+        detail: e.event,
+      };
+  }
 }
 
 // ── Constants ──
@@ -72,6 +150,22 @@ export function usePipelineData(
   const [mergeQueue, setMergeQueue] = useState<readonly MergeQueueEntry[]>([]);
   const [beadsAvailable, setBeadsAvailable] = useState(false);
   const [daemonConnected, setDaemonConnected] = useState(false);
+  const activityRef = useRef<Map<string, ActivityEntry[]>>(new Map());
+  const [activityLog, setActivityLog] = useState<ReadonlyMap<string, readonly ActivityEntry[]>>(new Map());
+
+  const MAX_ACTIVITY_ENTRIES = 100;
+
+  const pushActivity = useCallback((featureId: string, entry: ActivityEntry) => {
+    const map = activityRef.current;
+    const existing = map.get(featureId) ?? [];
+    existing.push(entry);
+    // Keep only the last N entries
+    if (existing.length > MAX_ACTIVITY_ENTRIES) {
+      existing.splice(0, existing.length - MAX_ACTIVITY_ENTRIES);
+    }
+    map.set(featureId, existing);
+    setActivityLog(new Map(map));
+  }, []);
 
   // Connect to daemon and subscribe to events
   useEffect(() => {
@@ -90,13 +184,14 @@ export function usePipelineData(
         setDaemonConnected(true);
 
         // Initial data load
-        const [pipelineData, agentData, decisionData, statusData, mergeQueueData] = await Promise.all([
-          client.call("pipeline.list", {}),
-          client.call("agent.list", {}),
-          client.call("decision.list", {}),
-          client.call("daemon.status", {}),
-          client.call("mergeQueue.list", {}),
-        ]);
+        const [pipelineData, agentData, decisionData, statusData, mergeQueueData] =
+          await Promise.all([
+            client.call("pipeline.list", {}),
+            client.call("agent.list", {}),
+            client.call("decision.list", {}),
+            client.call("daemon.status", {}),
+            client.call("mergeQueue.list", {}),
+          ]);
 
         if (cancelled) {
           client.close();
@@ -104,10 +199,33 @@ export function usePipelineData(
         }
 
         setPipelines(pipelineData);
-        setAgents(agentData.map((a) => ({ ...a, isRunning: true })));
+        const enrichedAgents = agentData.map((a) => ({ ...a, isRunning: true }));
+        setAgents(enrichedAgents);
         setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
         setBeadsAvailable(statusData.pipelines >= 0); // daemon running = beads available
         setMergeQueue(mergeQueueData);
+
+        // Seed session→featureId map from agent data
+        for (const a of enrichedAgents) {
+          if (a.featureId && a.sessionId) {
+            sessionFeatureMap.set(a.sessionId, a.featureId);
+          }
+        }
+
+        // Load initial activity from event logs
+        for (const pipeline of pipelineData) {
+          try {
+            const events = await client.call("pipeline.events", {
+              featureId: pipeline.featureId,
+              limit: 50,
+            });
+            const entries: ActivityEntry[] = events.map((e) => eventLogToActivity(e));
+            activityRef.current.set(pipeline.featureId, entries);
+          } catch {
+            // best-effort
+          }
+        }
+        setActivityLog(new Map(activityRef.current));
 
         // Subscribe to push events for real-time updates
         client.subscribe((event: RpcEvent) => {
@@ -120,49 +238,108 @@ export function usePipelineData(
       }
     };
 
+    // Map sessionId → featureId for routing activity entries
+    const sessionFeatureMap = new Map<string, string>();
+
     const handleEvent = (event: RpcEvent) => {
       const data = event.data as Record<string, unknown>;
+      const ts = new Date().toISOString();
+      const sessionId = data["sessionId"] as string | undefined;
+      const phase = data["phase"] as string | undefined;
 
       switch (event.event) {
-        case "agent:spawned":
+        case "agent:spawned": {
+          const featureId = (data["featureId"] as string | undefined)
+            ?? (sessionId ? sessionFeatureMap.get(sessionId) : undefined);
+          if (sessionId && featureId) sessionFeatureMap.set(sessionId, featureId);
           setAgents((prev) => [
             ...prev,
             {
-              sessionId: data["sessionId"] as string,
+              sessionId: sessionId ?? "",
               repo: data["repo"] as string,
-              phase: data["phase"] as string,
+              phase: phase ?? "",
               pid: 0,
-              startedAt: new Date().toISOString(),
+              startedAt: ts,
               isRunning: true,
+              featureId,
             },
           ]);
+          if (featureId) {
+            pushActivity(featureId, {
+              timestamp: ts,
+              type: "agent-spawn",
+              phase,
+              agentSessionId: sessionId,
+              detail: `Agent spawned for ${phase ?? "unknown"} phase`,
+            });
+          }
           break;
+        }
 
-        case "agent:progress":
+        case "agent:progress": {
+          const toolName = data["toolName"] as string | undefined;
+          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
           setAgents((prev) =>
             prev.map((a) =>
-              a.sessionId === data["sessionId"]
-                ? { ...a, lastToolUse: (data["toolName"] as string) ?? a.lastToolUse }
+              a.sessionId === sessionId
+                ? { ...a, lastToolUse: toolName ?? a.lastToolUse }
                 : a,
             ),
           );
+          if (featureId && toolName) {
+            pushActivity(featureId, {
+              timestamp: ts,
+              type: "agent-progress",
+              phase: undefined, // agent:progress doesn't carry phase
+              agentSessionId: sessionId,
+              detail: toolName,
+            });
+          }
           break;
+        }
 
-        case "agent:completed":
+        case "agent:completed": {
+          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
           setAgents((prev) =>
-            prev.map((a) =>
-              a.sessionId === data["sessionId"] ? { ...a, isRunning: false } : a,
-            ),
+            prev.map((a) => (a.sessionId === sessionId ? { ...a, isRunning: false } : a)),
           );
+          if (featureId) {
+            const summary = data["summary"] as string | undefined;
+            pushActivity(featureId, {
+              timestamp: ts,
+              type: "agent-complete",
+              phase,
+              agentSessionId: sessionId,
+              detail: summary ?? `${phase ?? "Agent"} phase completed`,
+            });
+          }
           break;
+        }
 
-        case "agent:failed":
+        case "agent:failed": {
+          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
           setAgents((prev) =>
-            prev.map((a) =>
-              a.sessionId === data["sessionId"] ? { ...a, isRunning: false } : a,
-            ),
+            prev.map((a) => (a.sessionId === sessionId ? { ...a, isRunning: false } : a)),
           );
+          if (featureId) {
+            const errorMsg = data["errorMessage"] as string | undefined;
+            pushActivity(featureId, {
+              timestamp: ts,
+              type: "agent-fail",
+              phase,
+              agentSessionId: sessionId,
+              detail: errorMsg ?? `${phase ?? "Agent"} phase failed`,
+            });
+          }
           break;
+        }
+
+        case "workflow:phase-changed": {
+          const state = data["state"] as string | undefined;
+          // We need featureId — look it up from pipelines
+          // Phase changes don't carry sessionId, so route via latest pipeline match
+          break;
+        }
       }
     };
 
@@ -265,9 +442,7 @@ export function usePipelineData(
       if (existsSync(file)) {
         const raw: unknown = JSON.parse(readFileSync(file, "utf-8"));
         if (Array.isArray(raw)) {
-          const filtered = raw.filter(
-            (p: Record<string, unknown>) => p["featureId"] !== featureId,
-          );
+          const filtered = raw.filter((p: Record<string, unknown>) => p["featureId"] !== featureId);
           writeFileSync(file, `${JSON.stringify(filtered, null, 2)}\n`, { mode: 0o600 });
           return true;
         }
@@ -293,6 +468,7 @@ export function usePipelineData(
     agents,
     pendingDecisions,
     mergeQueue,
+    activityLog,
     beadsAvailable,
     daemonConnected,
     startPipeline,

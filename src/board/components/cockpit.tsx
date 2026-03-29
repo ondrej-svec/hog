@@ -143,48 +143,11 @@ export function Cockpit({ config }: CockpitProps) {
   // Free-text decision input
   const decisionTextRef = useRef("");
 
-  // Pipeline log entries from daemon decision log
-  const [logEntries, setLogEntries] = useState<string[]>([]);
-  useEffect(() => {
-    const selected = pipelineData.pipelines[selectedIndex];
-    if (!selected) {
-      setLogEntries([]);
-      return;
-    }
-
-    let cancelled = false;
-    const fetchLog = async () => {
-      try {
-        const { tryConnectDaemon } = await import("../../daemon/client.js");
-        const client = await tryConnectDaemon();
-        if (!client || cancelled) return;
-        const review = await client.call("pipeline.review", {
-          featureId: selected.featureId,
-        });
-        client.close();
-        if (cancelled) return;
-        if (review) {
-          setLogEntries(
-            review.decisionLog
-              .slice(-20)
-              .map(
-                (e) =>
-                  `[${e.timestamp}] ${e.action}: ${e.detail.slice(0, 80)}`,
-              ),
-          );
-        } else {
-          setLogEntries([]);
-        }
-      } catch {
-        setLogEntries([]);
-      }
-    };
-
-    fetchLog();
-    return () => {
-      cancelled = true;
-    };
-  }, [pipelineData.pipelines, selectedIndex]);
+  // Activity log for selected pipeline (from hook's accumulated events)
+  const selected = pipelineData.pipelines[selectedIndex];
+  const activityEntries = selected
+    ? (pipelineData.activityLog.get(selected.featureId) ?? [])
+    : [];
 
   // ── Keyboard Handling ──
 
@@ -268,7 +231,8 @@ export function Cockpit({ config }: CockpitProps) {
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
           const spec = selected.description ?? selected.title;
-          const { prompt: resolvedBsPrompt, usingSkill: bsUsingSkill } = resolvePromptForRole("brainstorm");
+          const { prompt: resolvedBsPrompt, usingSkill: bsUsingSkill } =
+            resolvePromptForRole("brainstorm");
           const brainstormPrompt = bsUsingSkill
             ? resolvedBsPrompt
             : resolvedBsPrompt
@@ -301,7 +265,11 @@ export function Cockpit({ config }: CockpitProps) {
           const pipelinesDir = join(process.env["HOME"] ?? "", ".config", "hog", "pipelines");
           const perPipelineLog = join(pipelinesDir, `${selected.featureId}.events.jsonl`);
           const sharedLog = join(pipelinesDir, "events.jsonl");
-          const logFile = existsSync(perPipelineLog) ? perPipelineLog : existsSync(sharedLog) ? sharedLog : null;
+          const logFile = existsSync(perPipelineLog)
+            ? perPipelineLog
+            : existsSync(sharedLog)
+              ? sharedLog
+              : null;
 
           if (logFile) {
             // Try tmux first, fall back to spawning in a new terminal
@@ -439,10 +407,11 @@ export function Cockpit({ config }: CockpitProps) {
                 completionAction: { type: "closeIssue" },
               } as RepoConfig;
             }
-            const title = description
-              .split(/[.!?\n]/)[0]
-              ?.trim()
-              .slice(0, 60) ?? description.slice(0, 60);
+            const title =
+              description
+                .split(/[.!?\n]/)[0]
+                ?.trim()
+                .slice(0, 60) ?? description.slice(0, 60);
             pipelineData
               .startPipeline(repoName, targetRepo, title, description)
               .then((result) => {
@@ -460,7 +429,8 @@ export function Cockpit({ config }: CockpitProps) {
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "");
                   const spec = description;
-                  const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } = resolvePromptForRole("brainstorm");
+                  const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } =
+                    resolvePromptForRole("brainstorm");
                   const brainstormPrompt = bsUsingSkill2
                     ? resolvedBsPrompt2
                     : resolvedBsPrompt2
@@ -474,12 +444,16 @@ export function Cockpit({ config }: CockpitProps) {
                     issue: { number: 0, title: pipeline.title, url: "" },
                     promptTemplate: brainstormPrompt,
                     launchMode: config.pipeline.launchMode ?? "auto",
-                    ...(config.pipeline.terminalApp ? { terminalApp: config.pipeline.terminalApp } : {}),
+                    ...(config.pipeline.terminalApp
+                      ? { terminalApp: config.pipeline.terminalApp }
+                      : {}),
                   });
                   if (launchResult.ok) {
                     toast.info("Brainstorm session opened");
                   } else {
-                    toast.error(`Brainstorm launch failed: ${launchResult.error.message}. Press Z to retry.`);
+                    toast.error(
+                      `Brainstorm launch failed: ${launchResult.error.message}. Press Z to retry.`,
+                    );
                   }
                 }
               })
@@ -504,7 +478,6 @@ export function Cockpit({ config }: CockpitProps) {
   // Build context-sensitive hints
   const hasDecisions = pipelineData.pendingDecisions.length > 0;
   const hasPipelines = pipelineData.pipelines.length > 0;
-  const selected = pipelineData.pipelines[selectedIndex];
   const canPauseResume = selected?.status === "running" || selected?.status === "paused";
 
   // Normal: pipeline view + hint bar
@@ -517,7 +490,7 @@ export function Cockpit({ config }: CockpitProps) {
           pendingDecisions: pipelineData.pendingDecisions,
           mergeQueue: pipelineData.mergeQueue,
           selectedIndex,
-          logEntries,
+          activityEntries,
         }}
         cols={termSize.cols}
         rows={termSize.rows - 4}
@@ -538,7 +511,9 @@ export function Cockpit({ config }: CockpitProps) {
             hasDecisions ? "1-9:pick" : "",
             "?:help",
             "q:quit",
-          ].filter(Boolean).join("  ")}
+          ]
+            .filter(Boolean)
+            .join("  ")}
         </Text>
       </Box>
     </Box>

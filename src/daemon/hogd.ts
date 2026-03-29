@@ -20,9 +20,9 @@ import { Refinery } from "../engine/refinery.js";
 import { WorktreeManager } from "../engine/worktree.js";
 import {
   isRpcRequest,
+  PROTOCOL_VERSION,
   RPC_ERRORS,
   type RpcEvent,
-  PROTOCOL_VERSION,
   type RpcMethods,
   type RpcRequest,
 } from "./protocol.js";
@@ -279,6 +279,20 @@ export class HogDaemon {
         break;
       }
 
+      case "pipeline.events": {
+        const params = req.params as RpcMethods["pipeline.events"]["params"];
+        import("./event-log.js").then(({ readEventLog }) => {
+          const entries = readEventLog({
+            featureId: params.featureId,
+            limit: params.limit ?? 50,
+          });
+          this.send(socket, req.id, entries);
+        }).catch(() => {
+          this.send(socket, req.id, []);
+        });
+        break;
+      }
+
       case "decision.list":
         this.send(socket, req.id, this.conductor.getQuestionQueue().questions);
         break;
@@ -353,7 +367,8 @@ export class HogDaemon {
     socket: Socket,
     req: RpcRequest<"pipeline.create">,
   ): Promise<void> {
-    const { repo, title, description, brainstormDone, localPath, storiesPath, architecturePath } = req.params;
+    const { repo, title, description, brainstormDone, localPath, storiesPath, architecturePath } =
+      req.params;
 
     // Resolve repo config — fall back to ad-hoc repo from localPath
     const targetRepo = this.resolveRepo(repo, localPath);
@@ -515,9 +530,7 @@ export class HogDaemon {
   private resolveRepo(nameOrShort: string, localPath?: string): RepoConfig | undefined {
     const { resolved } = resolveProfile(this.config);
     // Match by short name or full name
-    const found = resolved.repos.find(
-      (r) => r.shortName === nameOrShort || r.name === nameOrShort,
-    );
+    const found = resolved.repos.find((r) => r.shortName === nameOrShort || r.name === nameOrShort);
     if (found) return found;
 
     // Ad-hoc repo from name — no GitHub config needed, just needs localPath

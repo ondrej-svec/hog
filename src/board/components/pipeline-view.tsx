@@ -6,10 +6,10 @@
  */
 
 import { Box, Text } from "ink";
-import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Pipeline, PipelineStatus } from "../../engine/conductor.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
+import type { ActivityEntry, DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import { agentName, formatElapsed, humanizeTool, timeAgo } from "../humanize.js";
 import { Panel } from "./panel.js";
 
@@ -21,7 +21,7 @@ export interface PipelineViewData {
   readonly pendingDecisions: Question[];
   readonly mergeQueue: readonly MergeQueueEntry[];
   readonly selectedIndex: number;
-  readonly logEntries?: readonly string[] | undefined;
+  readonly activityEntries?: readonly ActivityEntry[] | undefined;
 }
 
 interface PipelineViewProps {
@@ -44,12 +44,20 @@ const PHASE_LABELS: Record<string, string> = {
   merge: "merge",
 };
 
-const PHASE_ORDER = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"] as const;
+const PHASE_ORDER = [
+  "brainstorm",
+  "stories",
+  "scaffold",
+  "test",
+  "impl",
+  "redteam",
+  "merge",
+] as const;
 
 // ── Main Component ──
 
 export function PipelineView({ data, cols, rows }: PipelineViewProps) {
-  const { pipelines, agents, pendingDecisions, selectedIndex, logEntries } = data;
+  const { pipelines, agents, pendingDecisions, selectedIndex, activityEntries } = data;
 
   if (pipelines.length === 0) {
     return <EmptyState cols={cols} rows={rows} />;
@@ -91,7 +99,7 @@ export function PipelineView({ data, cols, rows }: PipelineViewProps) {
             pipeline={selectedPipeline}
             agents={agents}
             pendingDecisions={pendingDecisions}
-            logEntries={logEntries}
+            activityEntries={activityEntries}
             width={showLeftPanel ? rightWidth : cols}
             rows={detailRows}
           />
@@ -134,7 +142,7 @@ function PipelineList({
 
   return (
     <Box flexDirection="column">
-      {hasLess ? <Text dimColor>  ↑ {startIdx} more</Text> : null}
+      {hasLess ? <Text dimColor> ↑ {startIdx} more</Text> : null}
       {visiblePipelines.map((p, vi) => (
         <PipelineListItem
           key={p.featureId}
@@ -142,20 +150,14 @@ function PipelineList({
           selected={startIdx + vi === selectedIndex}
         />
       ))}
-      {hasMore ? <Text dimColor>  ↓ {pipelines.length - endIdx} more</Text> : null}
+      {hasMore ? <Text dimColor> ↓ {pipelines.length - endIdx} more</Text> : null}
     </Box>
   );
 }
 
 // ── Pipeline List Item ──
 
-function PipelineListItem({
-  pipeline,
-  selected,
-}: {
-  pipeline: Pipeline;
-  selected: boolean;
-}) {
+function PipelineListItem({ pipeline, selected }: { pipeline: Pipeline; selected: boolean }) {
   const completed = pipeline.completedBeads ?? 0;
   const pct = Math.round((completed / 6) * 100);
   const phase = pipeline.activePhase ?? "";
@@ -169,12 +171,17 @@ function PipelineListItem({
     <Box flexDirection="column">
       <Text wrap="truncate">
         {selected ? (
-          <Text color="cyan" bold>► {title}</Text>
+          <Text color="cyan" bold>
+            ► {title}
+          </Text>
         ) : (
-          <Text>  {title}</Text>
+          <Text> {title}</Text>
         )}
       </Text>
-      <Text dimColor wrap="truncate">    {bar} {pct}% {phase}</Text>
+      <Text dimColor wrap="truncate">
+        {" "}
+        {bar} {pct}% {phase}
+      </Text>
     </Box>
   );
 }
@@ -185,25 +192,25 @@ function PipelineDetail({
   pipeline,
   agents,
   pendingDecisions,
-  logEntries,
+  activityEntries,
   width,
   rows,
 }: {
   pipeline: Pipeline;
   agents: readonly DaemonAgentInfo[];
   pendingDecisions: Question[];
-  logEntries?: readonly string[] | undefined;
+  activityEntries?: readonly ActivityEntry[] | undefined;
   width: number;
   rows: number;
 }) {
   const pipelineAgents = agents.filter(
-    (a) => a.featureId === pipeline.featureId || (!a.featureId && a.isRunning && a.repo === pipeline.repo),
+    (a) =>
+      a.featureId === pipeline.featureId ||
+      (!a.featureId && a.isRunning && a.repo === pipeline.repo),
   );
   const activeAgents = pipelineAgents.filter((a) => a.isRunning);
   const activeAgent = activeAgents[0];
-  const pipelineDecisions = pendingDecisions.filter(
-    (q) => q.featureId === pipeline.featureId,
-  );
+  const pipelineDecisions = pendingDecisions.filter((q) => q.featureId === pipeline.featureId);
 
   // Decision panel takes priority when blocked
   if (pipelineDecisions.length > 0) {
@@ -240,8 +247,8 @@ function PipelineDetail({
 
       {/* Activity panel — fills remaining space */}
       <Panel title="Activity" isActive={false} width={width} flexGrow={1}>
-        {logEntries && logEntries.length > 0 ? (
-          <ActivityFeed entries={logEntries} width={width - 4} />
+        {activityEntries && activityEntries.length > 0 ? (
+          <ActivityFeed entries={activityEntries} width={width - 4} />
         ) : (
           <Text dimColor>No activity yet</Text>
         )}
@@ -293,8 +300,10 @@ function StatusSection({
   if (pipeline.status === "failed") {
     return (
       <Box flexDirection="column">
-        <Text color="red" bold>✗ Pipeline failed</Text>
-        <Text dimColor>  Check the activity log for details</Text>
+        <Text color="red" bold>
+          ✗ Pipeline failed
+        </Text>
+        <Text dimColor> Check the activity log for details</Text>
       </Box>
     );
   }
@@ -316,8 +325,7 @@ function PhaseBar({ pipeline, width }: { pipeline: Pipeline; width?: number }) {
         const beadKey = phase === "test" ? "tests" : phase;
         const isCompleted = i < completed;
         const isActive =
-          phase === pipeline.activePhase ||
-          (phase === "test" && pipeline.activePhase === "test");
+          phase === pipeline.activePhase || (phase === "test" && pipeline.activePhase === "test");
 
         const sep = i < PHASE_ORDER.length - 1 ? connector : "";
 
@@ -332,7 +340,9 @@ function PhaseBar({ pipeline, width }: { pipeline: Pipeline; width?: number }) {
         if (isActive) {
           return (
             <Text key={beadKey}>
-              <Text color="yellow" bold>{label} ◐</Text>
+              <Text color="yellow" bold>
+                {label} ◐
+              </Text>
               <Text dimColor>{sep}</Text>
             </Text>
           );
@@ -368,12 +378,14 @@ function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
   return (
     <Box flexDirection="column">
       <Text wrap="truncate">
-        <Text color="cyan" bold>◐ {name}</Text>
+        <Text color="cyan" bold>
+          ◐ {name}
+        </Text>
         <Text> is </Text>
         <Text bold>{activity}</Text>
-        <Text dimColor>  {elapsed}</Text>
+        <Text dimColor> {elapsed}</Text>
       </Text>
-      <Text dimColor>  {phaseLabel} phase</Text>
+      <Text dimColor> {phaseLabel} phase</Text>
     </Box>
   );
 }
@@ -422,46 +434,116 @@ function CompletedPhases({
 
 // ── Activity Feed ──
 
-function ActivityFeed({ entries, width }: { entries: readonly string[]; width?: number }) {
-  const meaningful = entries
-    .filter((e) => {
-      if (e.includes("preparing:")) return false;
-      if (e.includes("beads-reconciled")) return false;
-      if (e.includes("baseline-captured")) return false;
-      if (e.includes("bead-unstuck")) return false;
-      if (e.includes("context:test-captured")) return false;
-      if (e.includes("worktree:")) return false;
-      if (e.includes("model:divergence")) return false;
-      if (e.includes("tdd:red-verified")) return false;
-      if (e.includes("quality:stub-info")) return false;
-      if (e.includes("session-map")) return false;
-      return true;
-    })
-    .slice(-12);
+/** Icon and color for each activity type. */
+const ACTIVITY_STYLE: Record<
+  string,
+  { icon: string; color?: string }
+> = {
+  "phase-start": { icon: "▶", color: "yellow" },
+  "phase-complete": { icon: "✓", color: "green" },
+  "agent-spawn": { icon: "●", color: "cyan" },
+  "agent-progress": { icon: " " },
+  "agent-complete": { icon: "✓", color: "green" },
+  "agent-fail": { icon: "✗", color: "red" },
+};
 
-  if (meaningful.length === 0) return <Text dimColor>No activity yet</Text>;
+function ActivityFeed({
+  entries,
+}: {
+  entries: readonly ActivityEntry[];
+  width?: number;
+}) {
+  // Deduplicate rapid agent:progress events — keep last per agent within 2s windows
+  const deduplicated = deduplicateProgress(entries);
+  const visible = deduplicated.slice(-20);
+
+  if (visible.length === 0) return <Text dimColor>No activity yet</Text>;
 
   return (
     <Box flexDirection="column">
-      {meaningful.map((entry, i) => {
-        const tsMatch = entry.match(/^\[([^\]]+)\]\s+(.*)/);
-        const ts = tsMatch?.[1] ? formatTime(tsMatch[1]) : "";
-        const rest = tsMatch?.[2] ?? entry;
-        const colonSpaceIdx = rest.indexOf(": ");
-        const detail = colonSpaceIdx > 0 ? rest.slice(colonSpaceIdx + 2) : rest;
-        const humanDetail = humanizeLogEntry(detail);
-
-        if (!humanDetail || humanDetail.length < 3) return null;
+      {visible.map((entry, i) => {
+        const ts = formatTime(entry.timestamp);
+        const style = ACTIVITY_STYLE[entry.type] ?? { icon: "·" };
+        const name = entry.agentSessionId ? agentName(entry.agentSessionId) : undefined;
+        const detail = formatActivityDetail(entry, name);
 
         return (
           <Text key={`${i}`} wrap="truncate">
-            <Text dimColor>{ts ? `${ts} ` : "     "}</Text>
-            <Text>{humanDetail}</Text>
+            <Text dimColor>{ts} </Text>
+            {style.color ? (
+              <Text color={style.color}>{style.icon} </Text>
+            ) : (
+              <Text dimColor>{style.icon} </Text>
+            )}
+            {name && entry.type === "agent-progress" ? (
+              <Text>
+                <Text color="cyan">{name}</Text>
+                <Text> {detail}</Text>
+              </Text>
+            ) : (
+              <Text>{detail}</Text>
+            )}
           </Text>
         );
       })}
     </Box>
   );
+}
+
+/** Collapse rapid agent:progress events — keep only the latest per agent within 2s windows. */
+function deduplicateProgress(entries: readonly ActivityEntry[]): ActivityEntry[] {
+  const result: ActivityEntry[] = [];
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    if (entry.type !== "agent-progress") {
+      result.push(entry);
+      continue;
+    }
+    // Look ahead: if the next entry is also progress from the same agent within 2s, skip this one
+    const next = entries[i + 1];
+    if (
+      next?.type === "agent-progress" &&
+      next.agentSessionId === entry.agentSessionId
+    ) {
+      const gap = new Date(next.timestamp).getTime() - new Date(entry.timestamp).getTime();
+      if (gap < 2000) continue; // skip — next one is more recent
+    }
+    result.push(entry);
+  }
+  return result;
+}
+
+/** Humanize an activity entry's detail for display. */
+function formatActivityDetail(entry: ActivityEntry, name: string | undefined): string {
+  switch (entry.type) {
+    case "phase-start":
+      return `${capitalize(entry.phase ?? "Phase")} started`;
+    case "phase-complete":
+      return `${capitalize(entry.phase ?? "Phase")} complete`;
+    case "agent-spawn":
+      return name
+        ? `${name} joined — ${capitalize(entry.phase ?? "unknown")} phase`
+        : `Agent spawned for ${entry.phase ?? "unknown"}`;
+    case "agent-progress":
+      return humanizeTool(entry.detail);
+    case "agent-complete": {
+      // Clean markdown from summaries
+      const clean = entry.detail
+        .replace(/\*\*/g, "")
+        .replace(/^#+\s*/gm, "")
+        .split("\n")[0]
+        ?.slice(0, 80) ?? "";
+      return name ? `${name} finished — ${clean}` : clean;
+    }
+    case "agent-fail":
+      return name ? `${name} failed — ${entry.detail.slice(0, 60)}` : entry.detail.slice(0, 60);
+    default:
+      return entry.detail;
+  }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function formatTime(iso: string): string {
@@ -471,17 +553,6 @@ function formatTime(iso: string): string {
   } catch {
     return iso.slice(11, 16);
   }
-}
-
-function humanizeLogEntry(detail: string): string {
-  return (
-    detail
-      .replace(/\(session:\s*[\w-]+\)/g, "")
-      .replace(/for bead \S+/g, "")
-      .replace(/Spawned (\w[\w ]+) agent\s*/g, "$1 started")
-      .replace(/\s{2,}/g, " ")
-      .trim()
-  );
 }
 
 // ── Quality Gates Row ──
@@ -505,9 +576,13 @@ function QualityGatesRow({ pipeline }: { pipeline: Pipeline }) {
       <Text dimColor> gates: </Text>
       {gates.map((gate) =>
         gate.done ? (
-          <Text key={gate.name} color="green">✓ {gate.name}  </Text>
+          <Text key={gate.name} color="green">
+            ✓ {gate.name}{" "}
+          </Text>
         ) : (
-          <Text key={gate.name} dimColor>○ {gate.name}  </Text>
+          <Text key={gate.name} dimColor>
+            ○ {gate.name}{" "}
+          </Text>
         ),
       )}
     </Box>
@@ -522,13 +597,17 @@ function DecisionPanel({ decisions }: { decisions: Question[] }) {
 
   return (
     <Box flexDirection="column">
-      <Text color="red" bold>⚠ DECISION NEEDED</Text>
+      <Text color="red" bold>
+        ⚠ DECISION NEEDED
+      </Text>
       <Text> </Text>
       <Text>{decision.question}</Text>
       <Text> </Text>
       {(decision.options ?? []).map((option, i) => (
         <Box key={option}>
-          <Text color="cyan" bold>[{i + 1}]</Text>
+          <Text color="cyan" bold>
+            [{i + 1}]
+          </Text>
           <Text> {option}</Text>
         </Box>
       ))}
@@ -549,7 +628,8 @@ function CompletionSummary({
 }) {
   const elapsed = pipeline.completedAt
     ? (() => {
-        const ms = new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime();
+        const ms =
+          new Date(pipeline.completedAt).getTime() - new Date(pipeline.startedAt).getTime();
         const mins = Math.floor(ms / 60_000);
         if (mins < 60) return `${mins}m`;
         return `${Math.floor(mins / 60)}h ${mins % 60}m`;
@@ -558,8 +638,13 @@ function CompletionSummary({
 
   return (
     <Box flexDirection="column">
-      <Text color="green" bold>✓ Pipeline complete</Text>
-      <Text dimColor>  {elapsed} total · {agents.length} agents used</Text>
+      <Text color="green" bold>
+        ✓ Pipeline complete
+      </Text>
+      <Text dimColor>
+        {" "}
+        {elapsed} total · {agents.length} agents used
+      </Text>
     </Box>
   );
 }
@@ -578,12 +663,14 @@ function EmptyState({ cols, rows }: { cols: number; rows: number }) {
       <Text bold>What do you want to build?</Text>
       <Text> </Text>
       <Text>
-        Press <Text color="cyan" bold>P</Text> to start a new pipeline
+        Press{" "}
+        <Text color="cyan" bold>
+          P
+        </Text>{" "}
+        to start a new pipeline
       </Text>
       <Text> </Text>
-      <Text dimColor>
-        brainstorm → stories → scaffold → tests → implement → red team → merge
-      </Text>
+      <Text dimColor>brainstorm → stories → scaffold → tests → implement → red team → merge</Text>
     </Box>
   );
 }

@@ -49,6 +49,14 @@ export interface RpcMethods {
       }>;
     } | null;
   };
+  "pipeline.events": {
+    params: { featureId: string; limit?: number | undefined };
+    result: Array<{
+      timestamp: string;
+      event: string;
+      data: Record<string, unknown>;
+    }>;
+  };
   "decision.list": { params: Record<string, never>; result: Question[] };
   "decision.resolve": {
     params: { questionId: string; answer: string };
@@ -63,6 +71,7 @@ export interface RpcMethods {
       pid: number;
       startedAt: string;
       lastToolUse?: string;
+      featureId?: string;
     }>;
   };
   "mergeQueue.list": { params: Record<string, never>; result: MergeQueueEntry[] };

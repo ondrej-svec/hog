@@ -3,9 +3,9 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
 import type { Pipeline } from "../../engine/conductor.js";
-import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
 
