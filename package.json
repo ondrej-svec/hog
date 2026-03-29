@@ -1,6 +1,6 @@
 {
   "name": "@ondrej-svec/hog",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "description": "The Rails of agent-assisted development — TDD-enforced AI pipelines with structural role separation",
   "author": "Ondrej Svec",
   "repository": {
