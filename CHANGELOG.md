@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.1](https://github.com/ondrej-svec/hog/compare/hog-v1.29.0...hog-v1.29.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* auto-cleanup orphaned beads when creating new pipeline ([672f954](https://github.com/ondrej-svec/hog/commit/672f954a618534c154da20808bf35d986d727dba))
+
 ## [1.29.0](https://github.com/ondrej-svec/hog/compare/hog-v1.28.1...hog-v1.29.0) (2026-03-29)
 
 
