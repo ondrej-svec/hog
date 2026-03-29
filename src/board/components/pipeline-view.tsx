@@ -347,8 +347,7 @@ function ActivityFeed({ entries }: { entries: readonly string[] }) {
       if (e.includes("baseline-captured")) return false;
       if (e.includes("bead-unstuck")) return false;
       if (e.includes("context:test-captured")) return false;
-      if (e.includes("worktree:created")) return false;
-      if (e.includes("worktree:fallback")) return false;
+      if (e.includes("worktree:")) return false; // All worktree internals (created, failed, fallback)
       if (e.includes("model:divergence")) return false;
       if (e.includes("tdd:red-verified")) return false; // Only show if RED FAILS
       if (e.includes("quality:stub-info")) return false;

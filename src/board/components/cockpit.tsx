@@ -290,28 +290,34 @@ export function Cockpit({ config }: CockpitProps) {
         return;
       }
 
-      // l — open log in tmux
+      // l — open log
       if (input === "l") {
         const selected = pipelineData.pipelines[selectedIndex];
         if (selected) {
-          const logFile = join(
-            process.env["HOME"] ?? "",
-            ".config",
-            "hog",
-            "pipelines",
-            `${selected.featureId}.log`,
-          );
-          if (existsSync(logFile)) {
-            try {
-              const child = spawn(
-                "tmux",
-                ["new-window", "-n", "pipeline-log", "tail", "-f", logFile],
-                { stdio: "ignore", detached: true },
-              );
-              child.unref();
-              toast.info("Log opened in tmux window");
-            } catch {
-              toast.error("tmux required for log view");
+          // Try per-pipeline event log first, fall back to shared log
+          const pipelinesDir = join(process.env["HOME"] ?? "", ".config", "hog", "pipelines");
+          const perPipelineLog = join(pipelinesDir, `${selected.featureId}.events.jsonl`);
+          const sharedLog = join(pipelinesDir, "events.jsonl");
+          const logFile = existsSync(perPipelineLog) ? perPipelineLog : existsSync(sharedLog) ? sharedLog : null;
+
+          if (logFile) {
+            // Try tmux first, fall back to spawning in a new terminal
+            const isInTmux = !!process.env["TMUX"];
+            if (isInTmux) {
+              try {
+                const child = spawn(
+                  "tmux",
+                  ["new-window", "-n", "pipeline-log", "tail", "-f", logFile],
+                  { stdio: "ignore", detached: true },
+                );
+                child.unref();
+                toast.info("Log opened in tmux window");
+              } catch {
+                toast.error("Failed to open log in tmux");
+              }
+            } else {
+              // Without tmux, just show the path
+              toast.info(`Log: ${logFile}`);
             }
           } else {
             toast.info("No log file yet");
