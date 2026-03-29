@@ -300,8 +300,11 @@ async function runWizard(opts: InitOptions): Promise<void> {
     default: true,
   });
   if (!acceptPermissions) {
-    console.log("\n  Using restrictive mode (acceptEdits). Agents may prompt for shell commands.");
-    console.log("  You can change later: hog config set pipeline.permissionMode bypassPermissions");
+    console.log("\n  ⚠ Using restrictive mode (acceptEdits).");
+    console.log("  Agents CAN edit files but WILL FAIL on shell commands (npm install, etc.).");
+    console.log("  There is no way to approve commands — agents run unattended.");
+    console.log("  Most pipelines will not complete in this mode.");
+    console.log("  Change later: hog config set pipeline.permissionMode bypassPermissions");
   }
 
   // Step 4: GitHub integration (optional, de-emphasized)
