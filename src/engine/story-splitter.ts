@@ -1,11 +1,15 @@
 /**
  * Story Splitter — divides pipeline work into parallel chunks.
  *
- * Reads the stories file, extracts story IDs, and groups them
- * into chunks for parallel agent execution.
+ * Reads the stories file, extracts story IDs, groups them into chunks,
+ * and writes filtered stories files so each agent sees only its stories.
+ *
+ * Key principle: the orchestrator prepares inputs. Skills stay standalone.
+ * Each parallel agent gets a filtered stories file — the skill doesn't
+ * know or care about parallelism.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface StoryChunk {
@@ -13,11 +17,12 @@ export interface StoryChunk {
   readonly storyIds: string[];
   /** Human-readable label for this chunk. */
   readonly label: string;
-  /** Prompt suffix scoping the agent to these stories. */
-  readonly scopeInstruction: string;
+  /** Path to a filtered stories file containing only this chunk's stories. */
+  readonly filteredStoriesPath: string;
 }
 
 const STORY_ID_RE = /STORY-\d{3,}/g;
+const STORY_SECTION_RE = /^## STORY-\d{3,}/;
 
 /** Extract all story IDs from a stories file. */
 export function extractStoryIds(storiesPath: string): string[] {
@@ -63,58 +68,110 @@ export function findStoriesFile(localPath: string, slug: string): string | undef
 }
 
 /**
- * Split stories into chunks for parallel execution.
+ * Write a filtered stories file containing only the specified story sections.
  *
+ * Parses the markdown by `## STORY-NNN` headings. Everything before the first
+ * story heading (title, preamble) is included in every filtered file. Each
+ * `## STORY-NNN` section is included only if its ID is in the storyIds list.
+ */
+export function writeFilteredStories(
+  fullStoriesPath: string,
+  storyIds: Set<string>,
+  outputPath: string,
+): void {
+  const content = readFileSync(fullStoriesPath, "utf-8");
+  const lines = content.split("\n");
+
+  const preambleLines: string[] = [];
+  const sections: Array<{ id: string; lines: string[] }> = [];
+  let currentSection: { id: string; lines: string[] } | undefined;
+
+  for (const line of lines) {
+    if (STORY_SECTION_RE.test(line)) {
+      // Start of a new story section
+      if (currentSection) sections.push(currentSection);
+      const idMatch = line.match(STORY_ID_RE);
+      currentSection = { id: idMatch?.[0] ?? "UNKNOWN", lines: [line] };
+    } else if (currentSection) {
+      currentSection.lines.push(line);
+    } else {
+      preambleLines.push(line);
+    }
+  }
+  if (currentSection) sections.push(currentSection);
+
+  // Build filtered content: preamble + matching sections
+  const filtered = [
+    ...preambleLines,
+    ...sections.filter((s) => storyIds.has(s.id)).flatMap((s) => s.lines),
+  ].join("\n");
+
+  const dir = join(outputPath, "..");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(outputPath, filtered, "utf-8");
+}
+
+/**
+ * Split stories into chunks for parallel execution.
+ * Writes a filtered stories file for each chunk.
+ *
+ * @param storiesPath - Path to the full stories file
  * @param storyIds - All story IDs to distribute
- * @param maxChunks - Maximum number of parallel chunks (typically maxConcurrentAgents)
- * @param phase - The phase name (for prompt construction)
- * @returns Array of StoryChunks, each with scoped instructions
+ * @param maxChunks - Maximum number of parallel chunks
+ * @param outputDir - Directory for filtered stories files (e.g., .hog/parallel/)
+ * @param phase - The phase name (for file naming)
  */
 export function splitIntoChunks(
+  storiesPath: string,
   storyIds: string[],
   maxChunks: number,
-  phase: "test" | "impl",
+  outputDir: string,
+  phase: string,
 ): StoryChunk[] {
   if (storyIds.length === 0) return [];
+
+  mkdirSync(outputDir, { recursive: true });
+
+  const distribute = (ids: string[], index: number): StoryChunk => {
+    const first = ids[0]!;
+    const last = ids[ids.length - 1]!;
+    const filteredPath = join(outputDir, `${phase}-${index}-stories.md`);
+    writeFilteredStories(storiesPath, new Set(ids), filteredPath);
+    return {
+      storyIds: ids,
+      label: ids.length === 1 ? first : `${first}–${last}`,
+      filteredStoriesPath: filteredPath,
+    };
+  };
+
   if (storyIds.length <= maxChunks) {
-    // Fewer stories than chunks — one story per chunk
-    return storyIds.map((id) => ({
-      storyIds: [id],
-      label: id,
-      scopeInstruction: buildScopeInstruction([id], phase),
-    }));
+    return storyIds.map((id, i) => distribute([id], i));
   }
 
-  // Distribute evenly across chunks
   const chunkSize = Math.ceil(storyIds.length / maxChunks);
   const chunks: StoryChunk[] = [];
 
   for (let i = 0; i < storyIds.length; i += chunkSize) {
     const ids = storyIds.slice(i, i + chunkSize);
-    const first = ids[0]!;
-    const last = ids[ids.length - 1]!;
-    chunks.push({
-      storyIds: ids,
-      label: ids.length === 1 ? first : `${first}–${last}`,
-      scopeInstruction: buildScopeInstruction(ids, phase),
-    });
+    chunks.push(distribute(ids, chunks.length));
   }
 
   return chunks;
 }
 
-function buildScopeInstruction(storyIds: string[], phase: "test" | "impl"): string {
-  const idList = storyIds.join(", ");
-  if (phase === "test") {
-    return `\n\nIMPORTANT: You are only responsible for stories: ${idList}.\nWrite tests ONLY for these stories. Other stories are handled by parallel agents.`;
+/**
+ * Clean up filtered stories files after a phase completes.
+ */
+export function cleanupParallelFiles(localPath: string): void {
+  const dir = join(localPath, ".hog", "parallel");
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // best-effort
   }
-  return `\n\nIMPORTANT: You are only responsible for tests matching stories: ${idList}.\nImplement code ONLY for these tests. Other tests are handled by parallel agents.`;
 }
 
 /** Check if a phase supports parallel execution. */
 export function isParallelizablePhase(phase: string): boolean {
-  // Only test phase parallelizes — each agent creates independent test files.
-  // Impl stays serial: shared types, utilities, and config make parallel impl
-  // produce duplicated code and merge conflicts, even with worktree isolation.
   return phase === "test";
 }

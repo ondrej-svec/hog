@@ -935,19 +935,23 @@ export class Conductor {
         this.config.pipeline?.maxConcurrentAgents > 1 &&
         !this.pendingParallelAgents.has(bead.id)
       ) {
-        const slug = pipeline.title
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/^-|-$/g, "");
-        const storiesFile = findStoriesFile(pipeline.localPath, slug);
-        const storyIds = storiesFile ? extractStoryIds(storiesFile) : [];
+        const resolvedStories =
+          pipeline.storiesPath ??
+          findStoriesFile(
+            pipeline.localPath,
+            pipeline.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          );
+        const storyIds = resolvedStories ? extractStoryIds(resolvedStories) : [];
 
-        if (storyIds.length > 1) {
+        if (storyIds.length > 1 && resolvedStories) {
           const maxAgents = this.config.pipeline.maxConcurrentAgents;
+          const outputDir = join(pipeline.localPath, ".hog", "parallel");
           const chunks = splitIntoChunks(
+            resolvedStories,
             storyIds,
             maxAgents,
-            role as "test" | "impl",
+            outputDir,
+            role,
           );
 
           if (chunks.length > 1) {
@@ -961,13 +965,14 @@ export class Conductor {
             this.log(
               pipeline.featureId,
               `parallel:${role}`,
-              `Splitting ${storyIds.length} stories into ${chunks.length} parallel agents`,
+              `Splitting ${storyIds.length} stories into ${chunks.length} parallel agents (filtered files)`,
             );
             this.pendingParallelAgents.set(bead.id, chunks.length);
 
             for (let ci = 0; ci < chunks.length; ci++) {
               const chunk = chunks[ci]!;
-              await this.spawnForRole(pipeline, bead, role, chunk.scopeInstruction, true, ci);
+              // Each agent gets its own filtered stories file as STORIES_PATH
+              await this.spawnForRole(pipeline, bead, role, undefined, true, ci, chunk.filteredStoriesPath);
             }
             continue; // Don't fall through to single spawn
           }
@@ -986,9 +991,10 @@ export class Conductor {
     pipeline: Pipeline,
     bead: Bead,
     role: PipelineRole,
-    scopeSuffix?: string,
+    _unused?: undefined,
     skipClaim?: boolean,
     parallelIndex?: number,
+    storiesPathOverride?: string,
   ): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
@@ -1151,7 +1157,7 @@ export class Conductor {
       retrySection = `\n\n## Retry Context (attempt ${feedback.attempt})\n\nYour previous run did not complete all required work.\n\nIssue: ${feedback.reason}\nMissing: ${feedback.missing.slice(0, 20).join(", ")}\n\nPrevious agent's summary:\n> ${feedback.previousSummary.slice(0, 300)}\n\nFocus on completing the missing work. Do not redo work that was already done.\n`;
     }
 
-    const prompt = basePrompt + (contextSection ?? "") + retrySection + (scopeSuffix ?? "");
+    const prompt = basePrompt + (contextSection ?? "") + retrySection;
 
     // Build env vars for skill context using contract-based wiring
     const pipelineEnv: Record<string, string> = {
@@ -1165,9 +1171,9 @@ export class Conductor {
     // BRAINSTORM_PATH is handled by contract-based wiring below (wirePhaseInputs).
     // Do NOT set it from phaseSummaries — that's a truncated summary string, not a file path.
 
-    // For parallel agents: pass story scope as env var so skills can read it
-    if (usingSkill && scopeSuffix) {
-      pipelineEnv["STORY_SCOPE"] = scopeSuffix.trim();
+    // For parallel agents: override STORIES_PATH with the filtered file
+    if (storiesPathOverride) {
+      pipelineEnv["STORIES_PATH"] = storiesPathOverride;
     }
 
     // Contract-based wiring: auto-wire outputs from previous phases as inputs
@@ -1632,9 +1638,11 @@ export class Conductor {
           }
         }
 
-        // After test phase: detect test command and test files for subsequent stages
+        // After test phase: detect test command and clean up parallel files
         if (phase === "test") {
           await this.captureTestContext(pipeline);
+          const { cleanupParallelFiles } = await import("./story-splitter.js");
+          cleanupParallelFiles(pipeline.localPath);
         }
 
         // GREEN verification after impl completes (Farley)
