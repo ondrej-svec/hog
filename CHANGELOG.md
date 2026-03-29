@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.30.1](https://github.com/ondrej-svec/hog/compare/hog-v1.30.0...hog-v1.30.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* remove orchestrator-managed parallel agents — let skills handle it ([fe94087](https://github.com/ondrej-svec/hog/commit/fe94087276eea0559fbdbbf86c6bfcf6b618f6b0))
+
 ## [1.30.0](https://github.com/ondrej-svec/hog/compare/hog-v1.29.2...hog-v1.30.0) (2026-03-29)
 
 
