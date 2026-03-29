@@ -526,7 +526,7 @@ function EmptyState({ cols, rows }: { cols: number; rows: number }) {
         Describe a feature and hog will:
       </Text>
       <Text dimColor>
-        brainstorm → stories → tests → implement → red team → merge
+        brainstorm → stories → scaffold → tests → implement → red team → merge
       </Text>
     </Box>
   );

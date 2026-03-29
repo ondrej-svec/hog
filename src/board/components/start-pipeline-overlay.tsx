@@ -56,7 +56,7 @@ export function StartPipelineOverlay({
         <Text dimColor>Describe the feature — a pipeline will be created with:</Text>
       </Box>
       <Box>
-        <Text dimColor>stories → tests → implementation → red team → merge</Text>
+        <Text dimColor>stories → scaffold → tests → implementation → red team → merge</Text>
       </Box>
       <Box marginTop={1}>
         <Text color="cyan">→ </Text>
