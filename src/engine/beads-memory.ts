@@ -120,6 +120,7 @@ export class MemoryBeadsClient {
   ): Promise<{
     brainstorm: Bead;
     stories: Bead;
+    scaffold: Bead;
     tests: Bead;
     impl: Bead;
     redteam: Bead;
@@ -136,6 +137,11 @@ export class MemoryBeadsClient {
     const stories = await this.create("", {
       title: `[hog:stories] ${shortTitle}`,
       description: featureDescription,
+      type: "task",
+      priority: 1,
+    });
+    const scaffold = await this.create("", {
+      title: `[hog:scaffold] ${shortTitle}`,
       type: "task",
       priority: 1,
     });
@@ -160,13 +166,14 @@ export class MemoryBeadsClient {
       priority: 1,
     });
 
-    // Set up blocking dependencies: brainstorm → stories → tests → impl → redteam → merge
+    // Set up blocking dependencies: brainstorm → stories → scaffold → tests → impl → redteam → merge
     await this.addDependency("", stories.id, brainstorm.id, "blocks");
-    await this.addDependency("", tests.id, stories.id, "blocks");
+    await this.addDependency("", scaffold.id, stories.id, "blocks");
+    await this.addDependency("", tests.id, scaffold.id, "blocks");
     await this.addDependency("", impl.id, tests.id, "blocks");
     await this.addDependency("", redteam.id, impl.id, "blocks");
     await this.addDependency("", merge.id, redteam.id, "blocks");
 
-    return { brainstorm, stories, tests, impl, redteam, merge };
+    return { brainstorm, stories, scaffold, tests, impl, redteam, merge };
   }
 }

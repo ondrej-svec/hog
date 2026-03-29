@@ -37,13 +37,14 @@ export interface Pipeline {
   readonly beadIds: {
     brainstorm: string;
     stories: string;
+    scaffold: string;
     tests: string;
     impl: string;
     redteam: string;
     merge: string;
   };
   status: PipelineStatus;
-  /** Number of completed (closed) beads out of 6. Updated by conductor tick. */
+  /** Number of completed (closed) beads out of 7. Updated by conductor tick. */
   completedBeads: number;
   /** Currently active phase (if any agent is running). */
   activePhase?: string | undefined;
@@ -351,6 +352,7 @@ export class Conductor {
       beadIds: {
         brainstorm: dag.brainstorm.id,
         stories: dag.stories.id,
+        scaffold: dag.scaffold.id,
         tests: dag.tests.id,
         impl: dag.impl.id,
         redteam: dag.redteam.id,
@@ -964,7 +966,7 @@ export class Conductor {
           `Stories already exist (from brainstorm) — skipping to tests`,
         );
         await this.beads.close(pipeline.localPath, bead.id, "Stories already written by brainstorm");
-        pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
+        pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
         this.store.save();
         return;
       }
@@ -1449,7 +1451,7 @@ export class Conductor {
     this.beads
       .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
       .then(async () => {
-        pipeline.completedBeads = Math.min(6, pipeline.completedBeads + 1);
+        pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
         const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
         const summaryLine = summary
           ? ` — ${summary.split("\n")[0]?.slice(0, 150)}`
@@ -1694,6 +1696,8 @@ export class Conductor {
         return pipeline.beadIds.brainstorm;
       case "stories":
         return pipeline.beadIds.stories;
+      case "scaffold":
+        return pipeline.beadIds.scaffold;
       case "test":
         return pipeline.beadIds.tests;
       case "impl":

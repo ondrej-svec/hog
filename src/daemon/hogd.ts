@@ -408,6 +408,7 @@ export class HogDaemon {
       const beadIdToPhase: Record<string, string> = {
         [pipeline.beadIds.brainstorm]: "brainstorm",
         [pipeline.beadIds.stories]: "stories",
+        ...(pipeline.beadIds.scaffold ? { [pipeline.beadIds.scaffold]: "scaffold" } : {}),
         [pipeline.beadIds.tests]: "test",
         [pipeline.beadIds.impl]: "impl",
         [pipeline.beadIds.redteam]: "redteam",
@@ -433,6 +434,7 @@ export class HogDaemon {
     const beadIdMap: Record<string, string> = {
       brainstorm: pipeline.beadIds.brainstorm,
       stories: pipeline.beadIds.stories,
+      scaffold: pipeline.beadIds.scaffold,
       test: pipeline.beadIds.tests,
       impl: pipeline.beadIds.impl,
       redteam: pipeline.beadIds.redteam,

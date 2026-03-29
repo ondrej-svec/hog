@@ -47,6 +47,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
     beadIds: {
       brainstorm: "bd-b1",
       stories: "bd-s1",
+      scaffold: "bd-sc1",
       tests: "bd-t1",
       impl: "bd-i1",
       redteam: "bd-r1",

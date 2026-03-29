@@ -62,6 +62,7 @@ function createMockBeadsClient(): BeadsClient {
     createFeatureDAG: vi.fn().mockImplementation(async (_cwd: string, title: string) => ({
       brainstorm: makeBead({ id: "bd-brainstorm", title: `[hog:brainstorm] Brainstorm: ${title}` }),
       stories: makeBead({ id: "bd-stories", title: `[hog:stories] User stories: ${title}` }),
+      scaffold: makeBead({ id: "bd-scaffold", title: `[hog:scaffold] Scaffold: ${title}` }),
       tests: makeBead({ id: "bd-tests", title: `[hog:test] Acceptance tests: ${title}` }),
       impl: makeBead({ id: "bd-impl", title: `[hog:impl] Implement: ${title}` }),
       redteam: makeBead({ id: "bd-redteam", title: `[hog:redteam] Red team: ${title}` }),

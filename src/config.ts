@@ -141,6 +141,7 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
     .object({
       brainstorm: z.string().optional(),
       stories: z.string().optional(),
+      scaffold: z.string().optional(),
       test: z.string().optional(),
       impl: z.string().optional(),
       redteam: z.string().optional(),

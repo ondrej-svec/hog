@@ -75,6 +75,7 @@ function createMockBeadsClient(): BeadsClient {
     createFeatureDAG: vi.fn().mockImplementation(async (_cwd: string, title: string) => ({
       brainstorm: makeBead({ id: "bd-brainstorm", title: `[hog:brainstorm] ${title}` }),
       stories: makeBead({ id: "bd-stories", title: `[hog:stories] ${title}` }),
+      scaffold: makeBead({ id: "bd-scaffold", title: `[hog:scaffold] ${title}` }),
       tests: makeBead({ id: "bd-tests", title: `[hog:test] ${title}` }),
       impl: makeBead({ id: "bd-impl", title: `[hog:impl] ${title}` }),
       redteam: makeBead({ id: "bd-redteam", title: `[hog:redteam] ${title}` }),
@@ -289,6 +290,7 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
         beadIds: {
           brainstorm: "bd-brainstorm",
           stories: "bd-stories",
+          scaffold: "bd-scaffold",
           tests: "bd-tests",
           impl: "bd-impl",
           redteam: "bd-redteam",
@@ -355,6 +357,7 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
         beadIds: {
           brainstorm: "b1",
           stories: "b2",
+          scaffold: "b-sc",
           tests: "b3",
           impl: "b4",
           redteam: "b5",
@@ -421,6 +424,7 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
         beadIds: {
           brainstorm: "b1",
           stories: "b2",
+          scaffold: "b-sc",
           tests: "b3",
           impl: "b4",
           redteam: "b5",

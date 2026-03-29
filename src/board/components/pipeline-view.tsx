@@ -36,13 +36,14 @@ const LEFT_PANEL_WIDTH = 26;
 const PHASE_LABELS: Record<string, string> = {
   brainstorm: "brainstorm",
   stories: "stories",
+  scaffold: "scaffold",
   test: "tests",
   impl: "impl",
   redteam: "redteam",
   merge: "merge",
 };
 
-const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
+const PHASE_ORDER = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"] as const;
 
 // ── Main Component ──
 

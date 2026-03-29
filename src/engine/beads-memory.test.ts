@@ -54,6 +54,7 @@ describe("MemoryBeadsClient", () => {
     const order = [
       dag.brainstorm,
       dag.stories,
+      dag.scaffold,
       dag.tests,
       dag.impl,
       dag.redteam,

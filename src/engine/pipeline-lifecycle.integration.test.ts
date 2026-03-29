@@ -79,6 +79,7 @@ function makeBead(overrides: Partial<Bead> = {}): Bead {
 const PHASE_BEADS = {
   brainstorm: makeBead({ id: "bd-brainstorm", title: "[hog:brainstorm] Brainstorm: Auth" }),
   stories: makeBead({ id: "bd-stories", title: "[hog:stories] User stories: Auth" }),
+  scaffold: makeBead({ id: "bd-scaffold", title: "[hog:scaffold] Scaffold: Auth" }),
   tests: makeBead({ id: "bd-tests", title: "[hog:test] Acceptance tests: Auth" }),
   impl: makeBead({ id: "bd-impl", title: "[hog:impl] Implement: Auth" }),
   redteam: makeBead({ id: "bd-redteam", title: "[hog:redteam] Red team: Auth" }),
@@ -101,7 +102,7 @@ function createMockBeads(): BeadsClient {
       ),
     ready: vi.fn().mockImplementation(async () => {
       // Simulate DAG: return beads whose dependencies are all closed
-      const order = ["brainstorm", "stories", "tests", "impl", "redteam", "merge"] as const;
+      const order = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"] as const;
       const result: Bead[] = [];
       for (const phase of order) {
         const bead = PHASE_BEADS[phase];
@@ -142,6 +143,7 @@ function createMockBeads(): BeadsClient {
     createFeatureDAG: vi.fn().mockImplementation(async () => ({
       brainstorm: PHASE_BEADS.brainstorm,
       stories: PHASE_BEADS.stories,
+      scaffold: PHASE_BEADS.scaffold,
       tests: PHASE_BEADS.tests,
       impl: PHASE_BEADS.impl,
       redteam: PHASE_BEADS.redteam,
@@ -245,7 +247,7 @@ describe("Pipeline Lifecycle Integration", () => {
     });
   });
 
-  it("LIFECYCLE-001: full pipeline advances from creation through all 6 phases to completion", async () => {
+  it("LIFECYCLE-001: full pipeline advances from creation through all 7 phases to completion", async () => {
     // Step 1: Create pipeline (brainstorm auto-closed with --brainstorm-done pattern)
     const result = await conductor.startPipeline(
       "owner/repo",
@@ -274,39 +276,45 @@ describe("Pipeline Lifecycle Integration", () => {
     // Step 3: Complete stories agent
     await completeAgent(eventBus, "session-1", "stories");
 
-    // Step 4: Tick — test bead should now be ready
+    // Step 4: Tick — scaffold bead should now be ready
     await tick(conductor);
 
-    // Verify test agent was spawned (session-2)
+    // Verify scaffold agent was spawned (session-2)
     expect(vi.mocked(agents.launchAgent).mock.calls.length).toBeGreaterThanOrEqual(2);
 
-    // Step 5: Complete test agent
-    await completeAgent(eventBus, "session-2", "test");
+    // Step 5: Complete scaffold agent
+    await completeAgent(eventBus, "session-2", "scaffold");
 
-    // Step 6: Tick — impl bead ready (RED state assumed verified in mock)
+    // Step 6: Tick — test bead should now be ready
     await tick(conductor);
 
-    // Step 7: Complete impl
-    await completeAgent(eventBus, "session-3", "impl");
+    // Step 7: Complete test agent
+    await completeAgent(eventBus, "session-3", "test");
+
+    // Step 8: Tick — impl bead ready (RED state assumed verified in mock)
     await tick(conductor);
 
-    // Step 8: Complete redteam
-    await completeAgent(eventBus, "session-4", "redteam");
+    // Step 9: Complete impl
+    await completeAgent(eventBus, "session-4", "impl");
     await tick(conductor);
 
-    // Step 9: Complete merge
-    await completeAgent(eventBus, "session-5", "merge");
+    // Step 10: Complete redteam
+    await completeAgent(eventBus, "session-5", "redteam");
+    await tick(conductor);
+
+    // Step 11: Complete merge
+    await completeAgent(eventBus, "session-6", "merge");
     // Tick to process the completion and run checkPipelineCompletion
     await tick(conductor);
     // One more tick — checkPipelineCompletion runs inside tickPipeline,
     // which needs all beads to report "closed" via beads.show()
     await tick(conductor);
 
-    // Step 10: Pipeline should be completed
+    // Step 12: Pipeline should be completed
     const pipelines = conductor.getPipelines();
     const completedPipeline = pipelines.find((p) => p.featureId === result.featureId);
     expect(completedPipeline?.status).toBe("completed");
-    expect(completedPipeline?.completedBeads).toBe(6);
+    expect(completedPipeline?.completedBeads).toBe(7);
   }, 15_000);
 
   it("LIFECYCLE-002: pipeline blocks on questions and resumes after resolution", async () => {

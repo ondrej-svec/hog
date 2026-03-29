@@ -22,6 +22,7 @@ describe("PipelineStore field coverage", () => {
     beadIds: {
       brainstorm: "b-1",
       stories: "b-2",
+      scaffold: "b-sc",
       tests: "b-3",
       impl: "b-4",
       redteam: "b-5",

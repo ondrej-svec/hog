@@ -8,11 +8,12 @@
 import { MemoryBeadsClient } from "../engine/beads-memory.js";
 import { EventBus } from "../engine/event-bus.js";
 
-const PHASE_ORDER = ["brainstorm", "stories", "test", "impl", "redteam", "merge"] as const;
+const PHASE_ORDER = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"] as const;
 
 const PHASE_LABELS: Record<string, string> = {
   brainstorm: "Zaphod (brainstorm)",
   stories: "Ford (stories)",
+  scaffold: "Trillian (scaffold)",
   test: "Arthur (tests)",
   impl: "Arthur (impl)",
   redteam: "Marvin (redteam)",
@@ -22,6 +23,7 @@ const PHASE_LABELS: Record<string, string> = {
 const PHASE_MESSAGES: Record<string, string> = {
   brainstorm: "Zaphod has set the course. Two heads are better than one.",
   stories: "Ford has filed his research. The Guide entry is ready.",
+  scaffold: "Project structure prepared. Test framework ready.",
   test: "Tests failing. The question is good. Proceeding.",
   impl: "Arthur has built it. Tests green.",
   redteam: "Marvin: Nothing found. I find this deeply suspicious.",
@@ -31,6 +33,7 @@ const PHASE_MESSAGES: Record<string, string> = {
 const MOCK_TOOLS: Record<string, string[]> = {
   brainstorm: ["Read", "Grep", "Write"],
   stories: ["Read", "Write", "Glob"],
+  scaffold: ["Read", "Bash", "Write"],
   test: ["Read", "Write", "Bash"],
   impl: ["Read", "Edit", "Write", "Bash"],
   redteam: ["Read", "Grep", "Write", "Bash"],
@@ -55,6 +58,7 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
   const beadIds = {
     brainstorm: dag.brainstorm.id,
     stories: dag.stories.id,
+    scaffold: dag.scaffold.id,
     tests: dag.tests.id,
     impl: dag.impl.id,
     redteam: dag.redteam.id,

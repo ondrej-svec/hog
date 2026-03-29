@@ -63,6 +63,7 @@ function createMockBeads(overrides: Partial<BeadsClient> = {}): BeadsClient {
     createFeatureDAG: vi.fn().mockResolvedValue({
       brainstorm: makeBead("bd-b", "[hog:brainstorm] Brainstorm"),
       stories: makeBead("bd-s", "[hog:stories] Stories"),
+      scaffold: makeBead("bd-sc", "[hog:scaffold] Scaffold"),
       tests: makeBead("bd-t", "[hog:test] Tests"),
       impl: makeBead("bd-i", "[hog:impl] Impl"),
       redteam: makeBead("bd-r", "[hog:redteam] Red team"),

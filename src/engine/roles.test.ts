@@ -38,9 +38,9 @@ describe("roles", () => {
     expect(beadToRole({ title: "[hog:test] Tests", labels: ["hog:impl"] })).toBe("test");
   });
 
-  it("all 6 pipeline roles have prompts", () => {
+  it("all 7 pipeline roles have prompts", () => {
     const roles = Object.keys(PIPELINE_ROLES);
-    expect(roles).toHaveLength(6);
+    expect(roles).toHaveLength(7);
     for (const role of roles) {
       const config = PIPELINE_ROLES[role as keyof typeof PIPELINE_ROLES];
       expect(config.promptTemplate.length).toBeGreaterThan(50);

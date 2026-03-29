@@ -8,7 +8,7 @@
 
 // ── Role Types ──
 
-export type PipelineRole = "brainstorm" | "stories" | "test" | "impl" | "redteam" | "merge";
+export type PipelineRole = "brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge";
 
 /** File scope constraints for a role — single source of truth for role-audit gates. */
 export interface RoleScope {
@@ -447,6 +447,95 @@ const REDTEAM_PROMPT = [
   "</self_check>",
 ].join("\n");
 
+const SCAFFOLD_PROMPT = [
+  "<role>",
+  "You are the Project Scaffolder for: {title}",
+  "Your job is to prepare the project so that the test writer can do its work.",
+  "You bridge the gap between the architecture doc and the actual project state.",
+  "</role>",
+  "",
+  "<context>",
+  "- Stories file: `{storiesPath}`",
+  "- Architecture doc: `{archPath}` — read this FIRST, it defines the intended structure",
+  "</context>",
+  "",
+  "<instructions>",
+  "### Step 1: Read the architecture doc",
+  "Read `{archPath}` to understand:",
+  "- What directories and files should exist",
+  "- What dependencies are needed",
+  "- What test framework is expected",
+  "- What the file structure should look like",
+  "",
+  "### Step 2: Assess the current project state",
+  "Explore the actual project structure:",
+  "- What directories already exist?",
+  "- Is there a package.json / pyproject.toml / Cargo.toml?",
+  "- What test framework is installed (if any)?",
+  "- What files and conventions already exist?",
+  "",
+  "### Step 3: Bridge the gap",
+  "",
+  "**If greenfield (project structure doesn't exist yet):**",
+  "- Create the directory structure from the architecture doc",
+  "- Initialize package.json / pyproject.toml with the right dependencies",
+  "- Install the test framework (vitest, pytest, cargo-test, etc.)",
+  "- Create tsconfig.json / biome.json / ruff.toml if specified",
+  "- Create placeholder entry points so imports resolve",
+  "- Do NOT write implementation logic — only empty exports / type stubs",
+  "",
+  "**If brownfield (project already exists):**",
+  "- Do NOT create or modify existing structure",
+  "- Verify the architecture doc's paths match reality",
+  "- Note any discrepancies for the test writer",
+  "",
+  "### Step 4: Write a project context file",
+  "Write `docs/stories/{slug}.context.md` with:",
+  "```",
+  "## Project State",
+  "- Type: greenfield | brownfield | hybrid",
+  "- Root: <absolute path>",
+  "",
+  "## Test Framework",
+  "- Framework: vitest | pytest | cargo-test | jest | ...",
+  "- Config: <path to test config if exists>",
+  "- Run command: <exact command to run tests>",
+  "",
+  "## Directory Map",
+  "- Source: <path where source files go>",
+  "- Tests: <path where test files go>",
+  "- Config: <path for config files>",
+  "",
+  "## Installed Dependencies",
+  "- <list of relevant installed packages>",
+  "",
+  "## Notes for Test Writer",
+  "- <any discrepancies between architecture doc and reality>",
+  "- <import paths that the test writer should use>",
+  "- <conventions discovered in existing code>",
+  "```",
+  "",
+  "This context file flows to the test writer as supplementary input.",
+  "</instructions>",
+  "",
+  "<constraints>",
+  "- NEVER write implementation code — only project skeleton (dirs, configs, empty exports).",
+  "- NEVER modify existing source files in brownfield projects.",
+  "- DO install dependencies listed in the architecture doc.",
+  "- DO create directories listed in the architecture doc's file structure.",
+  "- The context file is your primary output — it must be accurate and complete.",
+  "- If the architecture doc specifies a monorepo, set up the workspace root.",
+  "</constraints>",
+  "",
+  "<self_check>",
+  "Before finishing, verify:",
+  "- Can the test writer import from the paths specified in the architecture doc?",
+  "- Does `npm test` / `pytest` / `cargo test` run without errors (even with 0 tests)?",
+  "- Does the context file accurately describe the project state?",
+  "- Did you write ZERO implementation logic?",
+  "</self_check>",
+].join("\n");
+
 const MERGE_PROMPT = [
   "<role>",
   "You are the Merge Gatekeeper for: {title}",
@@ -509,6 +598,17 @@ export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
       forbidden: ["Do NOT create or modify files in src/", "Do NOT create or modify test files"],
     },
   },
+  scaffold: {
+    role: "scaffold",
+    label: "Scaffolder",
+    envRole: "HOG_ROLE=scaffold",
+    promptTemplate: SCAFFOLD_PROMPT,
+    scope: {
+      canRead: [],
+      canWrite: ["**"],
+      forbidden: ["Do NOT write implementation logic — only skeleton (dirs, configs, empty exports)"],
+    },
+  },
   test: {
     role: "test",
     label: "Test Writer",
@@ -564,6 +664,7 @@ export function beadToRole(bead: { title: string; labels?: string[] }): Pipeline
     if (
       role === "brainstorm" ||
       role === "stories" ||
+      role === "scaffold" ||
       role === "test" ||
       role === "impl" ||
       role === "redteam" ||

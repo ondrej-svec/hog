@@ -15,6 +15,7 @@ import type { Pipeline, PipelineStatus } from "./conductor.js";
 const BEAD_IDS_SCHEMA = z.object({
   brainstorm: z.string(),
   stories: z.string(),
+  scaffold: z.string().optional().default(""),
   tests: z.string(),
   impl: z.string(),
   redteam: z.string(),
@@ -73,6 +74,7 @@ export interface PipelineSnapshot {
   readonly beadIds: {
     readonly brainstorm: string;
     readonly stories: string;
+    readonly scaffold: string;
     readonly tests: string;
     readonly impl: string;
     readonly redteam: string;
