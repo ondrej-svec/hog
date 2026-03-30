@@ -422,32 +422,30 @@ export function Cockpit({ config }: CockpitProps) {
                   return;
                 }
                 // Auto-launch brainstorm session — no Z step needed
-                if (!("error" in result)) {
-                  const pipeline = result;
-                  const localPath = pipeline.localPath || cwd;
-                  const bs = buildBrainstormLaunchContext({
-                    title: pipeline.title,
-                    description,
-                    featureId: pipeline.featureId,
-                  });
+                const pipeline = result;
+                const localPath = pipeline.localPath || cwd;
+                const bs = buildBrainstormLaunchContext({
+                  title: pipeline.title,
+                  description,
+                  featureId: pipeline.featureId,
+                });
 
-                  const launchResult = launchClaude({
-                    localPath,
-                    issue: { number: 0, title: pipeline.title, url: "" },
-                    promptTemplate: bs.prompt,
-                    env: bs.env,
-                    launchMode: config.pipeline.launchMode ?? "auto",
-                    ...(config.pipeline.terminalApp
-                      ? { terminalApp: config.pipeline.terminalApp }
-                      : {}),
-                  });
-                  if (launchResult.ok) {
-                    toast.info("Brainstorm session opened");
-                  } else {
-                    toast.error(
-                      `Brainstorm launch failed: ${launchResult.error.message}. Press Z to retry.`,
-                    );
-                  }
+                const launchResult = launchClaude({
+                  localPath,
+                  issue: { number: 0, title: pipeline.title, url: "" },
+                  promptTemplate: bs.prompt,
+                  env: bs.env,
+                  launchMode: config.pipeline.launchMode ?? "auto",
+                  ...(config.pipeline.terminalApp
+                    ? { terminalApp: config.pipeline.terminalApp }
+                    : {}),
+                });
+                if (launchResult.ok) {
+                  toast.info("Brainstorm session opened");
+                } else {
+                  toast.error(
+                    `Brainstorm launch failed: ${launchResult.error.message}. Press Z to retry.`,
+                  );
                 }
               })
               .catch(() => setMode("normal"));
