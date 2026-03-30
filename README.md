@@ -131,16 +131,20 @@ Each gate has a retry limit before escalating to the human.
 `hog cockpit` opens a terminal dashboard showing pipeline status:
 
 ```
-▶ ◐ Add user auth    ████░░░░ 50%    ┌─────────────────────────────┐
-  ✓ Search feature    ████████ 100%   │ brainstorm ✓ → stories ✓   │
-  ⚠ Rate limiting     ██░░░░░░ 13%   │ → tests ✓ → impl ● →       │
-                                       │ redteam ○ → merge ○ →      │
-  Agents (1)                           │ ship ○                      │
-  impl · Read · 3m                     │                             │
-                                       │ ⚠ DECISION NEEDED          │
-1 pipeline · 1 agent                   │ Should auth use OAuth?      │
-                                       │ [1] OAuth  [2] API keys    │
+┌─ Add user authentication ─────────────────────────────────┐
+│ brainstorm ◐ → stories · → scaffold · → tests · →        │
+│ impl · → redteam · → merge · → ship ·                    │
+│                                                           │
+│ Brainstorm session should be open — press Z to reopen     │
+├─ Activity ────────────────────────────────────────────────┤
+│ No activity yet                                           │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+ gates: ○ lint ○ typecheck ○ security ○ mutation ○ suite
+P:new  j/k:nav  Z:brainstorm  x:pause  d:cancel  l:log  ?:help  q:quit
 ```
+
+With multiple pipelines, a list panel appears on the left with progress bars. Decisions show inline with numbered options (`1-9` to answer).
 
 | Key | Action |
 |-----|--------|
