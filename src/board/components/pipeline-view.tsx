@@ -227,10 +227,12 @@ function PipelineDetail({
     );
   }
 
-  // Count fixed rows: status panel ~8 lines, gates 1 line — rest goes to activity
+  // Count fixed rows: status panel, gates 1 line — rest goes to activity
   const completedCount = pipeline.completedBeads ?? 0;
-  // Status panel height: title border(2) + phase(1) + spacer(1) + agent(2) + completed(completedCount+1) + border(1)
+  // Status panel: top border(1) + phase(1) + spacer(1) + agent(2) + completed lines + bottom border(1)
   const statusHeight = Math.min(rows - 6, 4 + 2 + (completedCount > 0 ? completedCount + 1 : 0));
+  // Activity panel usable lines: total - status panel - gates(1) - activity panel borders(3: top line + side borders + bottom border)
+  const activityLines = Math.max(3, rows - statusHeight - 1 - 3);
 
   return (
     <Box flexDirection="column" width={width} height={rows} overflow="hidden">
@@ -249,7 +251,7 @@ function PipelineDetail({
       {/* Activity panel — fills remaining space */}
       <Panel title="Activity" isActive={false} width={width} flexGrow={1}>
         {activityEntries && activityEntries.length > 0 ? (
-          <ActivityFeed entries={activityEntries} />
+          <ActivityFeed entries={activityEntries} maxLines={activityLines} />
         ) : (
           <Text dimColor>No activity yet</Text>
         )}
@@ -450,19 +452,24 @@ const ACTIVITY_STYLE: Record<
 
 function ActivityFeed({
   entries,
+  maxLines,
 }: {
   entries: readonly ActivityEntry[];
+  maxLines?: number | undefined;
 }) {
   // Deduplicate rapid agent:progress events — keep last per agent within 2s windows
   const deduplicated = deduplicateProgress(entries);
-  const maxVisible = 30;
-  const visible = deduplicated.slice(-maxVisible);
+  // Show as many entries as fit the panel, reserving 1 line for the "older" indicator if needed
+  const limit = maxLines ?? 30;
+  const hasOlder = deduplicated.length > limit;
+  const visibleLimit = hasOlder ? limit - 1 : limit;
+  const visible = deduplicated.slice(-visibleLimit);
   const olderCount = deduplicated.length - visible.length;
 
   if (visible.length === 0) return <Text dimColor>No activity yet</Text>;
 
   return (
-    <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+    <Box flexDirection="column">
       {olderCount > 0 ? (
         <Text dimColor>  ↑ {olderCount} older entries (press l for full log)</Text>
       ) : null}
