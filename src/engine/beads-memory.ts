@@ -157,15 +157,21 @@ export class MemoryBeadsClient {
       type: "task",
       priority: 1,
     });
+    const ship = await this.create("", {
+      title: `[hog:ship] ${shortTitle}`,
+      type: "task",
+      priority: 1,
+    });
 
-    // Set up blocking dependencies: brainstorm → stories → scaffold → tests → impl → redteam → merge
+    // Set up blocking dependencies: brainstorm → stories → scaffold → tests → impl → redteam → merge → ship
     await this.addDependency("", stories.id, brainstorm.id, "blocks");
     await this.addDependency("", scaffold.id, stories.id, "blocks");
     await this.addDependency("", tests.id, scaffold.id, "blocks");
     await this.addDependency("", impl.id, tests.id, "blocks");
     await this.addDependency("", redteam.id, impl.id, "blocks");
     await this.addDependency("", merge.id, redteam.id, "blocks");
+    await this.addDependency("", ship.id, merge.id, "blocks");
 
-    return { brainstorm, stories, scaffold, tests, impl, redteam, merge };
+    return { brainstorm, stories, scaffold, tests, impl, redteam, merge, ship };
   }
 }

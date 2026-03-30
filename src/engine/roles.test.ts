@@ -26,6 +26,10 @@ describe("roles", () => {
     expect(beadToRole({ title: "[hog:merge] Refinery merge: Auth" })).toBe("merge");
   });
 
+  it("maps [hog:ship] title prefix to ship role", () => {
+    expect(beadToRole({ title: "[hog:ship] Ship: Auth" })).toBe("ship");
+  });
+
   it("returns undefined for titles without role prefix", () => {
     expect(beadToRole({ title: "Fix login bug" })).toBeUndefined();
   });
@@ -42,9 +46,9 @@ describe("roles", () => {
     expect(beadToRole({ title: "[hog:test] Tests", labels: ["hog:impl"] })).toBe("test");
   });
 
-  it("all 7 pipeline roles have skill names and fallback prompts", () => {
+  it("all 8 pipeline roles have skill names and fallback prompts", () => {
     const roles = Object.keys(PIPELINE_ROLES);
-    expect(roles).toHaveLength(7);
+    expect(roles).toHaveLength(8);
     for (const role of roles) {
       const config = PIPELINE_ROLES[role as keyof typeof PIPELINE_ROLES];
       expect(config.skill).toBeTruthy();
@@ -62,6 +66,7 @@ describe("roles", () => {
     expect(PIPELINE_ROLES.impl.skill).toBe("marvin:work");
     expect(PIPELINE_ROLES.redteam.skill).toBe("marvin:redteam");
     expect(PIPELINE_ROLES.merge.skill).toBe("marvin:review");
+    expect(PIPELINE_ROLES.ship.skill).toBe("marvin:ship");
   });
 
   it("loads fallback prompts from bundled files", () => {

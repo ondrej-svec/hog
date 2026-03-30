@@ -129,9 +129,10 @@ function createMockBeads() {
     impl: makeBead({ id: "bd-impl", title: "[hog:impl] Test" }),
     redteam: makeBead({ id: "bd-redteam", title: "[hog:redteam] Test" }),
     merge: makeBead({ id: "bd-merge", title: "[hog:merge] Test" }),
+    ship: makeBead({ id: "bd-ship", title: "[hog:ship] Test" }),
   };
 
-  const phaseOrder = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"] as const;
+  const phaseOrder = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge", "ship"] as const;
 
   return {
     isInstalled: vi.fn().mockReturnValue(true),

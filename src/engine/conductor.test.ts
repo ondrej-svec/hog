@@ -67,6 +67,7 @@ function createMockBeadsClient(): BeadsClient {
       impl: makeBead({ id: "bd-impl", title: `[hog:impl] Implement: ${title}` }),
       redteam: makeBead({ id: "bd-redteam", title: `[hog:redteam] Red team: ${title}` }),
       merge: makeBead({ id: "bd-merge", title: `[hog:merge] Refinery merge: ${title}` }),
+      ship: makeBead({ id: "bd-ship", title: `[hog:ship] Ship: ${title}` }),
     })),
   } as unknown as BeadsClient;
 }
@@ -165,6 +166,7 @@ describe("Conductor Pipeline", () => {
       expect(result.beadIds["impl"]).toBe("bd-impl");
       expect(result.beadIds["redteam"]).toBe("bd-redteam");
       expect(result.beadIds["merge"]).toBe("bd-merge");
+      expect(result.beadIds["ship"]).toBe("bd-ship");
     });
 
     it("calls createFeatureDAG with the title and description", async () => {

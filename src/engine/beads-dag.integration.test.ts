@@ -50,14 +50,14 @@ describe.skipIf(!bdAvailable)("Beads DAG integration", () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
-  it("creates a standard 7-node DAG", async () => {
+  it("creates a standard 8-node DAG", async () => {
     const dag = await client.createFeatureDAG(
       TEST_DIR,
       "Test Feature",
       "Integration test feature",
     );
 
-    // All 7 beads created
+    // All 8 beads created
     expect(dag["brainstorm"]!.id).toBeDefined();
     expect(dag["stories"]!.id).toBeDefined();
     expect(dag["scaffold"]!.id).toBeDefined();
@@ -65,6 +65,7 @@ describe.skipIf(!bdAvailable)("Beads DAG integration", () => {
     expect(dag["impl"]!.id).toBeDefined();
     expect(dag["redteam"]!.id).toBeDefined();
     expect(dag["merge"]!.id).toBeDefined();
+    expect(dag["ship"]!.id).toBeDefined();
 
     // Store as Record<string, string> — flexible format
     const beadIds: Record<string, string> = {
@@ -75,6 +76,7 @@ describe.skipIf(!bdAvailable)("Beads DAG integration", () => {
       impl: dag["impl"]!.id,
       redteam: dag["redteam"]!.id,
       merge: dag["merge"]!.id,
+      ship: dag["ship"]!.id,
     };
 
     // Verify only brainstorm is ready (head of the chain)

@@ -8,13 +8,13 @@ import {
 } from "./retry-engine.js";
 
 describe("retry-engine", () => {
-  it("defines 7 gate configurations", () => {
-    expect(GATE_CONFIGS).toHaveLength(7);
+  it("defines 8 gate configurations", () => {
+    expect(GATE_CONFIGS).toHaveLength(8);
   });
 
-  it("all gates have max 2-3 retries", () => {
+  it("all gates have max 1-3 retries", () => {
     for (const gate of GATE_CONFIGS) {
-      expect(gate.maxRetries).toBeGreaterThanOrEqual(2);
+      expect(gate.maxRetries).toBeGreaterThanOrEqual(1);
       expect(gate.maxRetries).toBeLessThanOrEqual(3);
     }
   });
@@ -59,16 +59,35 @@ describe("retry-engine", () => {
     }
   });
 
-  it("redteam gate reopens merge bead too", () => {
+  it("redteam gate reopens merge and ship beads too", () => {
     const redteam = GATE_CONFIGS.find((g) => g.id === "redteam-gate");
     expect(redteam?.alsoReopen).toContain("merge");
-    expect(redteam?.decrementBeads).toBe(2);
+    expect(redteam?.alsoReopen).toContain("ship");
+    expect(redteam?.decrementBeads).toBe(3);
   });
 
-  it("merge gate reopens merge bead (itself) for re-run", () => {
+  it("merge gate reopens merge and ship beads for re-run", () => {
     const merge = GATE_CONFIGS.find((g) => g.id === "merge-gate");
     expect(merge?.alsoReopen).toContain("merge");
-    expect(merge?.decrementBeads).toBe(2);
+    expect(merge?.alsoReopen).toContain("ship");
+    expect(merge?.decrementBeads).toBe(3);
+  });
+
+  it("ship gate reopens full chain (redteam + merge + ship)", () => {
+    const ship = GATE_CONFIGS.find((g) => g.id === "ship-gate");
+    expect(ship?.phases).toEqual(["ship"]);
+    expect(ship?.retryRole).toBe("impl");
+    expect(ship?.alsoReopen).toContain("redteam");
+    expect(ship?.alsoReopen).toContain("merge");
+    expect(ship?.alsoReopen).toContain("ship");
+    expect(ship?.decrementBeads).toBe(4);
+    expect(ship?.maxRetries).toBe(1);
+  });
+
+  it("returns correct gates for ship phase", () => {
+    const gates = gatesForPhase("ship");
+    expect(gates).toHaveLength(1);
+    expect(gates[0]?.id).toBe("ship-gate");
   });
 
   describe("evaluateGate", () => {
@@ -116,11 +135,12 @@ describe("retry-engine", () => {
       }
     });
 
-    it("redteam gate retry includes alsoReopen", () => {
+    it("redteam gate retry includes alsoReopen with ship", () => {
       const decision = evaluateGate("redteam-gate", failed, 0);
       if (decision.action === "retry") {
         expect(decision.retries[0]?.alsoReopen).toContain("merge");
-        expect(decision.retries[0]?.decrementBeads).toBe(2);
+        expect(decision.retries[0]?.alsoReopen).toContain("ship");
+        expect(decision.retries[0]?.decrementBeads).toBe(3);
       }
     });
 

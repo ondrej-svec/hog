@@ -22,9 +22,9 @@ const FAILURE_PATTERNS: readonly FailurePattern[] = [
   { pattern: /manual intervention/i },
   { pattern: /unable to complete/i },
   // "FAILED" is normal in redteam/test context (tests are supposed to fail)
-  // "BLOCK"/"FAILED" is expected in merge — the merge-gate handles it with auto-retry
-  { pattern: /\bFAILED\b/i, excludePhases: ["redteam", "test", "merge"] },
-  { pattern: /\bblocked\b/i, excludePhases: ["redteam", "merge"] },
+  // "BLOCK"/"FAILED" is expected in merge/ship — their gates handle retry
+  { pattern: /\bFAILED\b/i, excludePhases: ["redteam", "test", "merge", "ship"] },
+  { pattern: /\bblocked\b/i, excludePhases: ["redteam", "merge", "ship"] },
 ];
 
 // ── Public API ──

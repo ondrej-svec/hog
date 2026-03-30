@@ -68,6 +68,7 @@ function createMockBeads(overrides: Partial<BeadsClient> = {}): BeadsClient {
       impl: makeBead("bd-i", "[hog:impl] Impl"),
       redteam: makeBead("bd-r", "[hog:redteam] Red team"),
       merge: makeBead("bd-m", "[hog:merge] Merge"),
+      ship: makeBead("bd-sh", "[hog:ship] Ship"),
     }),
     ...overrides,
   } as unknown as BeadsClient;

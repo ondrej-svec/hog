@@ -419,7 +419,7 @@ describe("PipelineView", () => {
 
     it("shows quality gates as done after impl phase", () => {
       const { lastFrame } = renderPipelineView({
-        pipelines: [makePipeline({ completedBeads: 4 })],
+        pipelines: [makePipeline({ completedBeads: 5 })],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("✓ lint");

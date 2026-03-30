@@ -12,15 +12,12 @@ import type { Pipeline, PipelineStatus } from "./conductor.js";
 
 // ── Zod Schema ──
 
-const BEAD_IDS_SCHEMA = z.object({
-  brainstorm: z.string(),
-  stories: z.string(),
-  scaffold: z.string().optional().default(""),
-  tests: z.string(),
-  impl: z.string(),
-  redteam: z.string(),
-  merge: z.string(),
-});
+/**
+ * Flexible bead IDs — accepts any string keys so new phases (e.g. "ship")
+ * load transparently without schema migration. Old 7-key pipelines parse
+ * identically since z.record() is a superset of the prior z.object() shape.
+ */
+const BEAD_IDS_SCHEMA = z.record(z.string(), z.string());
 
 const PIPELINE_SCHEMA = z.object({
   featureId: z.string(),

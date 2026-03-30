@@ -334,13 +334,21 @@ export function Cockpit({ config }: CockpitProps) {
     { isActive: mode === "normal" },
   );
 
+  // If we're in decisionText mode but the decision was resolved externally,
+  // reset to normal mode via an effect (not during render).
+  const hasDecision = pipelineData.pendingDecisions.length > 0;
+  useEffect(() => {
+    if (mode === "decisionText" && !hasDecision) {
+      setMode("normal");
+    }
+  }, [mode, hasDecision]);
+
   // ── Render ──
 
   // Free-text decision input mode
   if (mode === "decisionText") {
     const decision = pipelineData.pendingDecisions[0];
     if (!decision) {
-      setMode("normal");
       return null;
     }
     return (

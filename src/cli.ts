@@ -452,7 +452,7 @@ pipelineCommand
       return;
     }
 
-    const phases = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"];
+    const phases = Object.keys(pipeline.beadIds);
     const completed = pipeline.completedBeads ?? 0;
 
     if (useJson()) {
@@ -463,7 +463,7 @@ pipelineCommand
       console.log(`Status:   ${pipeline.status}`);
       console.log(`Repo:     ${pipeline.repo}`);
       console.log(`Started:  ${pipeline.startedAt}`);
-      console.log(`Progress: ${completed}/7 phases`);
+      console.log(`Progress: ${completed}/${phases.length} phases`);
       console.log("");
 
       // DAG visualization
@@ -605,17 +605,9 @@ pipelineCommand
       return;
     }
 
-    const phases = [
-      "brainstorm",
-      "stories",
-      "scaffold",
-      "tests",
-      "impl",
-      "redteam",
-      "merge",
-    ] as const;
+    const phases = Object.keys(pipeline.beadIds);
     const phaseStatus = phases.map((p) => {
-      const beadId = pipeline.beadIds[p === "tests" ? "tests" : p];
+      const beadId = pipeline.beadIds[p];
       return { phase: p, beadId };
     });
 
@@ -646,7 +638,7 @@ pipelineCommand
       console.log(
         `Status: ${pipeline.status} (${elapsed}m${pipeline.completedAt ? " total" : " elapsed"})`,
       );
-      console.log(`Progress: ${pipeline.completedBeads}/7 phases`);
+      console.log(`Progress: ${pipeline.completedBeads}/${phases.length} phases`);
       console.log("");
       console.log("Phases:");
       for (const ps of phaseStatus) {
@@ -724,10 +716,12 @@ pipelineCommand
     const PHASE_LABELS: Record<string, string> = {
       brainstorm: "Brainstorm",
       stories: "Stories",
+      scaffold: "Scaffold",
       test: "Tests",
       impl: "Implementation",
       redteam: "Red Team",
       merge: "Merge",
+      ship: "Ship",
     };
 
     // Subscribe to events
@@ -777,7 +771,7 @@ pipelineCommand
           console.log("Pipeline completed successfully!");
           sendOsNotification({
             title: "hog pipeline",
-            body: "Pipeline complete! All 7 phases done.",
+            body: "Pipeline complete! All phases done.",
           });
           clearInterval(checkInterval);
           client.close();
@@ -828,10 +822,12 @@ pipelineCommand
     const PHASE_LABELS: Record<string, string> = {
       brainstorm: "Brainstorm",
       stories: "Stories",
+      scaffold: "Scaffold",
       test: "Tests",
       impl: "Implementation",
       redteam: "Red Team",
       merge: "Merge",
+      ship: "Ship",
     };
 
     console.log(`Replaying pipeline ${featureId} at ${speed}x speed...\n`);
@@ -1008,8 +1004,8 @@ pipelineCommand
     // Phase plan
     console.log("\n## Phases\n");
     const roles: Array<
-      "brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge"
-    > = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"];
+      "brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge" | "ship"
+    > = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge", "ship"];
 
     for (const role of roles) {
       const config = PIPELINE_ROLES[role];
@@ -2772,7 +2768,7 @@ workflowCommand
         console.log("Template validated successfully:\n");
         console.log(`  Name: ${result.name}`);
         if (result.description) console.log(`  Description: ${result.description}`);
-        const phases = ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
+        const phases = ["brainstorm", "stories", "test", "impl", "redteam", "merge", "ship"];
         console.log(`  Phases: ${phases.join(", ")}`);
         console.log(`  Mode: ${result.workflow.mode}`);
         if (result.staleness) {

@@ -35,6 +35,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
       impl: "bd-i1",
       redteam: "bd-r1",
       merge: "bd-m1",
+      ship: "bd-sh1",
     },
     status: "running",
     completedBeads: 0,
@@ -152,14 +153,14 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
       isRunning: true,
     });
 
-    it("shows 17% progress (1/6 beads done) in list panel", () => {
+    it("shows 13% progress (1/8 beads done) in list panel", () => {
       // List panel appears when there are 2+ pipelines
       const { lastFrame } = renderView({
         pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
         agents: [agent],
       });
       const frame = lastFrame() ?? "";
-      expect(frame).toContain("17%");
+      expect(frame).toContain("13%");
     });
 
     it("shows test agent activity", () => {
@@ -224,7 +225,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
   describe("Flow 5: Pipeline completed — celebration", () => {
     const pipeline = makePipeline({
       status: "completed",
-      completedBeads: 6,
+      completedBeads: 8,
       completedAt: new Date().toISOString(),
     });
 

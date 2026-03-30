@@ -48,7 +48,7 @@ export interface Pipeline {
   readonly repoConfig: RepoConfig;
   readonly beadIds: Record<string, string>;
   status: PipelineStatus;
-  /** Number of completed (closed) beads out of 7. Updated by conductor tick. */
+  /** Number of completed (closed) beads. Updated by conductor tick. */
   completedBeads: number;
   /** Currently active phase (if any agent is running). */
   activePhase?: string | undefined;
@@ -674,8 +674,8 @@ export class Conductor {
     const lines: string[] = [];
     let hasContext = false;
 
-    // impl, redteam, merge need test context
-    if ((role === "impl" || role === "redteam" || role === "merge") && ctx.testCommand) {
+    // impl, redteam, merge, ship need test context
+    if ((role === "impl" || role === "redteam" || role === "merge" || role === "ship") && ctx.testCommand) {
       if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
       lines.push("<test_environment>");
       if (ctx.testCommand) {
@@ -700,10 +700,10 @@ export class Conductor {
       lines.push("</test_environment>");
     }
 
-    // impl and redteam get summaries from earlier phases
-    if ((role === "impl" || role === "redteam") && ctx.phaseSummaries) {
+    // impl, redteam, and ship get summaries from earlier phases
+    if ((role === "impl" || role === "redteam" || role === "ship") && ctx.phaseSummaries) {
       if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
-      const relevantPhases = role === "impl" ? ["test"] : ["test", "impl"];
+      const relevantPhases = role === "impl" ? ["test"] : role === "redteam" ? ["test", "impl"] : ["test", "impl", "redteam", "merge"];
       for (const phase of relevantPhases) {
         const summary = ctx.phaseSummaries[phase];
         if (summary) {
@@ -712,8 +712,8 @@ export class Conductor {
       }
     }
 
-    // impl gets inline architecture doc content (don't make the agent discover it)
-    if (role === "impl" && pipeline.architecturePath && existsSync(pipeline.architecturePath)) {
+    // impl and ship get inline architecture doc content (don't make the agent discover it)
+    if ((role === "impl" || role === "ship") && pipeline.architecturePath && existsSync(pipeline.architecturePath)) {
       if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
       try {
         const archContent = readFileSync(pipeline.architecturePath, "utf-8").slice(0, 3000);
@@ -1054,7 +1054,7 @@ export class Conductor {
           bead.id,
           "Stories already written by brainstorm",
         );
-        pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
+        pipeline.completedBeads = Math.min(Object.keys(pipeline.beadIds).length, pipeline.completedBeads + 1);
         this.store.save();
         return;
       }
@@ -1436,7 +1436,7 @@ export class Conductor {
         this.log(
           pipeline.featureId,
           "pipeline:completed",
-          `Pan Galactic Gargle Blaster served. ${pipeline.title} is ready to merge.`,
+          `Pan Galactic Gargle Blaster served. ${pipeline.title} — pipeline complete.`,
         );
       }
     } catch {
@@ -1663,7 +1663,7 @@ export class Conductor {
     } catch {
       return; // try/finally releases the lock
     }
-        pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
+        pipeline.completedBeads = Math.min(Object.keys(pipeline.beadIds).length, pipeline.completedBeads + 1);
         const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
         // Strip session markers (from user's CLAUDE.md) from agent summary
         const cleanSummary = summary
@@ -1685,7 +1685,7 @@ export class Conductor {
         this.log(
           pipeline.featureId,
           `phase:completed:${phase}`,
-          `${phaseLabel} done (${pipeline.completedBeads}/7)${summaryLine}`,
+          `${phaseLabel} done (${pipeline.completedBeads}/${Object.keys(pipeline.beadIds).length})${summaryLine}`,
         );
 
         // Store phase summary in pipeline context
@@ -1842,20 +1842,68 @@ export class Conductor {
           const upperSummary = summary?.toUpperCase() ?? "";
           const mergeBlocked = upperSummary.includes("BLOCK") || upperSummary.includes("FAIL");
           if (mergeBlocked) {
+            // Extract a concise reason from the merge agent's summary.
+            // First non-empty line that isn't just "BLOCK" or "FAIL" gives
+            // the human a clue about what actually went wrong.
+            const mergeReason = summary
+              ?.split("\n")
+              .map((l) => l.trim())
+              .find((l) => l.length > 10 && !/^(BLOCK|FAIL)\b/i.test(l))
+              ?? "Merge review reported issues";
             const blocked = await this.runGate(
               pipeline,
               beadId,
               "merge-gate",
               {
                 passed: false,
-                reason: "Merge review reported BLOCK. Fix the issues and make all tests pass.",
-                ...(summary ? { context: summary.slice(0, 300) } : {}),
+                reason: mergeReason,
+                ...(summary ? { context: summary.slice(0, 500) } : {}),
               },
               summary,
               "decisionLog",
               "merge:impl-loop",
             );
             if (blocked) return;
+          }
+        }
+
+        // Ship operational readiness gate
+        // After ship phase, check if code changes are needed (impl loop)
+        if (phase === "ship") {
+          const { checkOperationalReadiness, detectDeploymentNeed } = await import("./ship-detection.js");
+          let archDoc: string | undefined;
+          if (pipeline.architecturePath && existsSync(pipeline.architecturePath)) {
+            try { archDoc = readFileSync(pipeline.architecturePath, "utf-8").slice(0, 5000); } catch { /* best-effort */ }
+          }
+          const deployResult = detectDeploymentNeed(pipeline.localPath, archDoc);
+          const readiness = checkOperationalReadiness(pipeline.localPath, {
+            hasDeploymentConfig: deployResult.needed,
+          });
+          if (readiness.gaps.needsImpl.length > 0) {
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "ship-gate",
+              {
+                passed: false,
+                reason: `Operational readiness gaps require code changes: ${readiness.gaps.needsImpl.join(", ")}`,
+                ...(summary ? { context: summary.slice(0, 500) } : {}),
+              },
+              summary,
+              "retryFeedback",
+              "ship:impl-loop",
+            );
+            if (blocked) return;
+          }
+
+          // Fallback README verification
+          const readmePath = join(pipeline.localPath, "README.md");
+          if (!existsSync(readmePath)) {
+            this.log(
+              pipeline.featureId,
+              "ship:warning",
+              "Ship completed but README.md not found — manual documentation may be needed",
+            );
           }
         }
 
@@ -2066,6 +2114,9 @@ export class Conductor {
     if (retry.decrementBeads > 0) {
       pipeline.completedBeads = Math.max(0, pipeline.completedBeads - retry.decrementBeads);
     }
+    // Update activePhase immediately so the cockpit reflects the regression
+    // without waiting for the next heal-loop tick.
+    pipeline.activePhase = retry.retryRole;
     this.store.save();
   }
 
@@ -2120,11 +2171,17 @@ export class Conductor {
     if (decision.action === "retry") {
       const retry = decision.retries[0];
       if (!retry) return false;
-      this.log(
-        pipeline.featureId,
-        logAction,
-        `${result.reason ?? gateId} (attempt ${currentAttempts + 1}/${GATE_CONFIGS_LOOKUP[gateId]?.maxRetries ?? 2})`,
-      );
+      const attemptLabel = `attempt ${currentAttempts + 1}/${GATE_CONFIGS_LOOKUP[gateId]?.maxRetries ?? 2}`;
+      // Find the first substantive line from context — skip short preamble lines
+      const contextHint = result.context
+        ?.split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.length > 20 && !/^(all data|here's the|verdict|summary)/i.test(l))
+        ?.slice(0, 150) ?? "";
+      const detail = contextHint
+        ? `${result.reason ?? gateId} — ${contextHint} (${attemptLabel})`
+        : `${result.reason ?? gateId} (${attemptLabel})`;
+      this.log(pipeline.featureId, logAction, detail);
       await this.applyRetry(pipeline, beadId, retry, summary);
       return true;
     }

@@ -52,6 +52,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
       impl: "bd-i1",
       redteam: "bd-r1",
       merge: "bd-m1",
+      ship: "bd-sh1",
     },
     status: "running",
     completedBeads: 0,
@@ -118,13 +119,14 @@ describe("GitHubSync", () => {
     expect(addLabelAsync).not.toHaveBeenCalled();
   });
 
-  it("triggers completion action on merge phase", async () => {
+  it("triggers completion action when all phases done", async () => {
     const pipeline = makePipeline({
       repoConfig: { ...REPO_CONFIG, completionAction: { type: "closeIssue" } },
+      completedBeads: 8,
     });
     const sync = new GitHubSync({ triggerCompletionAction: true });
 
-    await sync.onPhaseCompleted(pipeline, "merge", "owner/repo", 42);
+    await sync.onPhaseCompleted(pipeline, "ship", "owner/repo", 42);
 
     expect(closeIssueAsync).toHaveBeenCalledWith("owner/repo", 42);
   });

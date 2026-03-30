@@ -30,6 +30,7 @@ const PHASE_ORDER: PipelineRole[] = [
   "impl",
   "redteam",
   "merge",
+  "ship",
 ];
 
 // ── GitHubSync ──
@@ -67,8 +68,9 @@ export class GitHubSync {
       await this.postPhaseComment(githubRepo, issueNumber, pipeline, phase);
     }
 
-    // Completion action on merge
-    if (role === "merge" && this.config.triggerCompletionAction) {
+    // Completion action on final phase (ship, or merge if ship is absent)
+    const totalBeads = Object.keys(pipeline.beadIds).length;
+    if (pipeline.completedBeads >= totalBeads && this.config.triggerCompletionAction) {
       await this.triggerCompletion(pipeline, githubRepo, issueNumber);
     }
   }
@@ -113,7 +115,8 @@ export class GitHubSync {
     phase: string,
   ): Promise<void> {
     try {
-      const msg = `Pipeline phase \`${phase}\` completed for "${pipeline.title}" (${pipeline.completedBeads}/7 phases done).`;
+      const totalBeads = Object.keys(pipeline.beadIds).length;
+      const msg = `Pipeline phase \`${phase}\` completed for "${pipeline.title}" (${pipeline.completedBeads}/${totalBeads} phases done).`;
       await addCommentAsync(repo, issueNumber, msg);
     } catch {
       // Best-effort

@@ -520,6 +520,7 @@ export class BeadsClient {
     { id: "impl", label: "impl", dependsOn: ["tests"] },
     { id: "redteam", label: "redteam", dependsOn: ["impl"] },
     { id: "merge", label: "merge", dependsOn: ["redteam"] },
+    { id: "ship", label: "ship", dependsOn: ["merge"] },
   ];
 
   /**

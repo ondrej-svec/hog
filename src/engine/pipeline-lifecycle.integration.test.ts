@@ -48,6 +48,12 @@ vi.mock("./safety-rules.js", () => ({
   writeSafetyRules: vi.fn().mockResolvedValue(undefined),
 }));
 
+// Mock ship-detection — prevent file I/O in tests
+vi.mock("./ship-detection.js", () => ({
+  detectDeploymentNeed: vi.fn().mockReturnValue({ needed: false, signals: [] }),
+  checkOperationalReadiness: vi.fn().mockReturnValue({ ready: true, gaps: { fixableByShip: [], needsImpl: [] } }),
+}));
+
 // Mock role-context — writeRoleClaudeMd writes to worktree directories
 vi.mock("./role-context.js", () => ({
   writeRoleClaudeMd: vi.fn(),
@@ -99,6 +105,7 @@ const PHASE_BEADS = {
   impl: makeBead({ id: "bd-impl", title: "[hog:impl] Implement: Auth" }),
   redteam: makeBead({ id: "bd-redteam", title: "[hog:redteam] Red team: Auth" }),
   merge: makeBead({ id: "bd-merge", title: "[hog:merge] Refinery merge: Auth" }),
+  ship: makeBead({ id: "bd-ship", title: "[hog:ship] Ship: Auth" }),
 };
 
 function createMockBeads(): BeadsClient {
@@ -125,6 +132,7 @@ function createMockBeads(): BeadsClient {
         "impl",
         "redteam",
         "merge",
+        "ship",
       ] as const;
       const result: Bead[] = [];
       for (const phase of order) {
@@ -171,6 +179,7 @@ function createMockBeads(): BeadsClient {
       impl: PHASE_BEADS.impl,
       redteam: PHASE_BEADS.redteam,
       merge: PHASE_BEADS.merge,
+      ship: PHASE_BEADS.ship,
     })),
     // Expose internals for test assertions
     _closedBeads: closedBeads,
@@ -270,7 +279,7 @@ describe("Pipeline Lifecycle Integration", () => {
     });
   });
 
-  it("LIFECYCLE-001: full pipeline advances from creation through all 7 phases to completion", async () => {
+  it("LIFECYCLE-001: full pipeline advances from creation through all 8 phases to completion", async () => {
     // Step 1: Create pipeline (brainstorm auto-closed with --brainstorm-done pattern)
     const result = await conductor.startPipeline(
       "owner/repo",
@@ -331,14 +340,20 @@ describe("Pipeline Lifecycle Integration", () => {
     await completeAgent(eventBus, "session-6", "merge");
     await new Promise((r) => setTimeout(r, 50));
     await tick(conductor);
+
+    // Step 12: Complete ship
+    await completeAgent(eventBus, "session-7", "ship");
+    await new Promise((r) => setTimeout(r, 100));
+    await tick(conductor);
+    await new Promise((r) => setTimeout(r, 50));
     await tick(conductor);
     await tick(conductor);
 
-    // Step 12: Pipeline should be completed
+    // Step 13: Pipeline should be completed
     const pipelines = conductor.getPipelines();
     const completedPipeline = pipelines.find((p) => p.featureId === result.featureId);
     expect(completedPipeline?.status).toBe("completed");
-    expect(completedPipeline?.completedBeads).toBe(7);
+    expect(completedPipeline?.completedBeads).toBe(8);
   }, 15_000);
 
   it("LIFECYCLE-002: pipeline blocks on questions and resumes after resolution", async () => {

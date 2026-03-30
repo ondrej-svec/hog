@@ -148,6 +148,7 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
       impl: z.string().optional(),
       redteam: z.string().optional(),
       merge: z.string().optional(),
+      ship: z.string().optional(),
     })
     .optional(),
   permissionMode: z

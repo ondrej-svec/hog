@@ -44,6 +44,7 @@ function makePipeline(overrides: Partial<Pipeline> = {}): Pipeline {
       impl: "bd-i1",
       redteam: "bd-r1",
       merge: "bd-m1",
+      ship: "bd-sh1",
     },
     status: "running",
     completedBeads: 0,
@@ -112,8 +113,8 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
       pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
     });
     const frame = lastFrame() ?? "";
-    // Must show real percentage (50% for 3/6), not hardcoded
-    expect(frame).toContain("50%");
+    // Must show real percentage (38% for 3/8), not hardcoded
+    expect(frame).toContain("38%");
   });
 
   // Replaces: comment input for communicating with issue

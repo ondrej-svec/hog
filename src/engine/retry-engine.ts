@@ -118,8 +118,8 @@ export const GATE_CONFIGS: readonly RetryGateConfig[] = [
     id: "redteam-gate",
     phases: ["redteam"],
     retryRole: "impl",
-    alsoReopen: ["merge"],
-    decrementBeads: 2,
+    alsoReopen: ["merge", "ship"],
+    decrementBeads: 3,
     maxRetries: 2,
     trackingMethod: "decisionLog",
   },
@@ -127,10 +127,19 @@ export const GATE_CONFIGS: readonly RetryGateConfig[] = [
     id: "merge-gate",
     phases: ["merge"],
     retryRole: "impl",
-    alsoReopen: ["merge"],
-    decrementBeads: 2,
+    alsoReopen: ["merge", "ship"],
+    decrementBeads: 3,
     maxRetries: 2,
     trackingMethod: "decisionLog",
+  },
+  {
+    id: "ship-gate",
+    phases: ["ship"],
+    retryRole: "impl",
+    alsoReopen: ["redteam", "merge", "ship"],
+    decrementBeads: 4,
+    maxRetries: 1,
+    trackingMethod: "retryFeedback",
   },
 ] as const;
 
@@ -161,6 +170,8 @@ export function buildEscalationOptions(gateId: string): readonly string[] {
       return ["Retry impl", "Skip redteam issues", "Cancel pipeline"];
     case "merge-gate":
       return ["Retry impl", "Force merge", "Cancel pipeline"];
+    case "ship-gate":
+      return ["Retry impl", "Ship anyway", "Cancel pipeline"];
     default:
       return ["Retry", "Skip", "Cancel pipeline"];
   }
@@ -201,12 +212,20 @@ export function evaluateGate(
     };
   }
 
+  // Build a detailed escalation question that includes the failure reason
+  // and any available context (e.g., test output, merge review details).
+  const reasonLine = result.reason ?? `${gateId} failed`;
+  const contextSnippet = result.context?.slice(0, 400);
+  const question = contextSnippet
+    ? `${reasonLine} (${config.maxRetries} retries exhausted)\n\n${contextSnippet}`
+    : `${reasonLine} after ${config.maxRetries} retries`;
+
   return {
     action: "escalate",
     escalations: [
       {
         gateId,
-        question: result.reason ?? `${gateId} failed after ${config.maxRetries} retries`,
+        question,
         options: [...buildEscalationOptions(gateId)],
       },
     ],

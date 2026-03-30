@@ -22,7 +22,8 @@ export type PipelineRole =
   | "test"
   | "impl"
   | "redteam"
-  | "merge";
+  | "merge"
+  | "ship";
 
 /** File scope constraints for a role — single source of truth for role-audit gates. */
 export interface RoleScope {
@@ -182,7 +183,7 @@ export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
     fallbackPromptFile: "work",
     scope: {
       canRead: ["*.test.*", "docs/stories/**", "package.json"],
-      canWrite: ["src/**", "package.json", "*.config.*"],
+      canWrite: ["src/**", "package.json", "*.config.*", ".env.example"],
       forbidden: [
         "Do NOT modify test files",
         "Do NOT read brainstorm/plan documents",
@@ -218,6 +219,21 @@ export const PIPELINE_ROLES: Record<PipelineRole, RoleConfig> = {
         "Do NOT modify source files",
         "Do NOT modify test files",
         "Do NOT skip failing tests",
+      ],
+    },
+  },
+  ship: {
+    role: "ship",
+    label: "Ship",
+    envRole: "HOG_ROLE=ship",
+    skill: "marvin:ship",
+    fallbackPromptFile: "ship",
+    scope: {
+      canRead: [],
+      canWrite: ["README.md", "docs/**", "CHANGELOG.md", ".env.example"],
+      forbidden: [
+        "Do NOT modify source code in src/",
+        "Do NOT modify test files",
       ],
     },
   },
@@ -295,7 +311,8 @@ export function beadToRole(bead: { title: string; labels?: string[] }): Pipeline
       role === "test" ||
       role === "impl" ||
       role === "redteam" ||
-      role === "merge"
+      role === "merge" ||
+      role === "ship"
     ) {
       return role;
     }
@@ -311,6 +328,7 @@ export function beadToRole(bead: { title: string; labels?: string[] }): Pipeline
       if (label === "hog:impl") return "impl";
       if (label === "hog:redteam") return "redteam";
       if (label === "hog:merge") return "merge";
+      if (label === "hog:ship") return "ship";
     }
   }
   return undefined;

@@ -303,8 +303,14 @@ describe.skipIf(!bdAvailable)("Pipeline E2E with real Beads", () => {
     expect(agents._launches.length).toBe(7);
     expect(agents._launches[6]?.["phase"]).toBe("merge");
 
-    // ── Step 12: Complete merge → pipeline done ──
+    // ── Step 12: Complete merge → ship spawns ──
     await completeAgent(eventBus, "e2e-session-7", "merge");
+    await tick(conductor);
+    expect(agents._launches.length).toBe(8);
+    expect(agents._launches[7]?.["phase"]).toBe("ship");
+
+    // ── Step 13: Complete ship → pipeline done ──
+    await completeAgent(eventBus, "e2e-session-8", "ship");
 
     // Verify all beads are closed
     for (const [key, beadId] of Object.entries(pipeline.beadIds)) {

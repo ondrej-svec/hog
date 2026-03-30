@@ -26,7 +26,7 @@ export interface IssueWorkflowState {
 // ── Pure helpers ──
 
 export function resolvePhases(_config: HogConfig, _repoConfig?: RepoConfig): string[] {
-  return ["brainstorm", "stories", "test", "impl", "redteam", "merge"];
+  return ["brainstorm", "stories", "test", "impl", "redteam", "merge", "ship"];
 }
 
 export function derivePhaseStatus(phaseName: string, sessions: AgentSession[]): PhaseStatus {

@@ -2,7 +2,7 @@
 title: "feat: ship phase — post-merge documentation, knowledge capture & operational readiness"
 type: plan
 date: 2026-03-30
-status: approved
+status: complete
 brainstorm: docs/brainstorms/2026-03-30-ship-phase-brainstorm.md
 confidence: high
 codex-review: 12 findings addressed (2 critical, 5 high, 5 medium)
@@ -57,77 +57,77 @@ Ship can flag blockers. Two categories:
 
 The pipeline store, conductor, and multiple consumers hardcode 7-phase assumptions. These must be data-driven before adding an 8th phase.
 
-- [ ] 0.1 Update `pipeline-store.ts` Zod schema — `beadIds` must accept any string keys, not a fixed 7-key shape. Add migration: old 7-key objects load transparently into flexible format.
-- [ ] 0.2 Remove hardcoded `Math.min(7, ...)` clamps in conductor (`completedBeads` increment) — derive max from `Object.keys(pipeline.beadIds).length`
-- [ ] 0.3 Update `beads-memory.ts` — `createFeatureDAG` return type and topology to match the 8-node default
-- [ ] 0.4 Update GitHub sync (`github-sync.ts`) — issue close/label should trigger on pipeline completion, not on `merge` phase specifically
-- [ ] 0.5 Update CLI phase display — derive phase list from pipeline metadata, not hardcoded array
-- [ ] 0.6 Update conductor completion message — "ready to merge" → "pipeline complete" (merge is no longer the final phase)
-- [ ] 0.7 Add `ship` to summary-parser exclusions — prevent sentiment gate from intercepting "BLOCK"/"FAIL" in ship summaries (same pattern as merge exclusion)
+- [x] 0.1 Update `pipeline-store.ts` Zod schema — `beadIds` must accept any string keys, not a fixed 7-key shape. Add migration: old 7-key objects load transparently into flexible format.
+- [x] 0.2 Remove hardcoded `Math.min(7, ...)` clamps in conductor (`completedBeads` increment) — derive max from `Object.keys(pipeline.beadIds).length`
+- [x] 0.3 Update `beads-memory.ts` — `createFeatureDAG` return type and topology to match the 8-node default
+- [x] 0.4 Update GitHub sync (`github-sync.ts`) — issue close/label should trigger on pipeline completion, not on `merge` phase specifically
+- [x] 0.5 Update CLI phase display — derive phase list from pipeline metadata, not hardcoded array
+- [x] 0.6 Update conductor completion message — "ready to merge" → "pipeline complete" (merge is no longer the final phase)
+- [x] 0.7 Add `ship` to summary-parser exclusions — prevent sentiment gate from intercepting "BLOCK"/"FAIL" in ship summaries (same pattern as merge exclusion)
 
 ### Phase 1: Ship role in hog
 
-- [ ] 1.1 Add `ship` role to `roles.ts`:
+- [x] 1.1 Add `ship` role to `roles.ts`:
   - skill: `"marvin:ship"`
   - fallbackPromptFile: `"ship"`
   - scope.canWrite: `["README.md", "docs/**", "CHANGELOG.md", ".env.example"]` — ship can fix operational gaps within its scope
   - scope.forbidden: `["Do NOT modify source code in src/", "Do NOT modify test files"]`
-- [ ] 1.2 Add `ship.md` fallback prompt to `fallback-prompts/`
-- [ ] 1.3 Add `ship` CLAUDE.md template to `role-context.ts` fallback templates
-- [ ] 1.4 Add `ship` to `beadToRole` title mapping in `roles.ts`
-- [ ] 1.5 Add skill contract for `marvin:ship` in `skill-contract.ts` — inputs: all phase summaries, architecture doc; outputs: README path
-- [ ] 1.6 Update `createFeatureDAG` `DEFAULT_TOPOLOGY` — add `{ id: "ship", label: "ship", dependsOn: ["merge"] }`
-- [ ] 1.7 Add `ship` to cockpit `PHASE_LABELS` and `DEFAULT_PHASE_ORDER`
+- [x] 1.2 Add `ship.md` fallback prompt to `fallback-prompts/`
+- [x] 1.3 Add `ship` CLAUDE.md template to `role-context.ts` fallback templates
+- [x] 1.4 Add `ship` to `beadToRole` title mapping in `roles.ts`
+- [x] 1.5 Add skill contract for `marvin:ship` in `skill-contract.ts` — inputs: all phase summaries, architecture doc; outputs: README path
+- [x] 1.6 Update `createFeatureDAG` `DEFAULT_TOPOLOGY` — add `{ id: "ship", label: "ship", dependsOn: ["merge"] }`
+- [x] 1.7 Add `ship` to cockpit `PHASE_LABELS` and `DEFAULT_PHASE_ORDER`
 
 ### Phase 2: Ship-gate with correct retry semantics
 
 The ship-gate must reopen impl AND all downstream phases (redteam, merge, ship) when it loops, otherwise the pipeline completes without re-running quality checks on the fixed code.
 
-- [ ] 2.1 Add `ship-gate` to `retry-engine.ts`:
+- [x] 2.1 Add `ship-gate` to `retry-engine.ts`:
   - phases: `["ship"]`
   - retryRole: `"impl"`
   - alsoReopen: `["redteam", "merge", "ship"]` — full re-verification chain
   - decrementBeads: 4 (impl + redteam + merge + ship)
   - maxRetries: 1
   - trackingMethod: `"retryFeedback"`
-- [ ] 2.2 Add escalation options: `["Retry impl", "Ship anyway", "Cancel pipeline"]`
-- [ ] 2.3 Expand impl role `canWrite` scope — add `".env.example"` so impl can fix operational readiness gaps when looped from ship
+- [x] 2.2 Add escalation options: `["Retry impl", "Ship anyway", "Cancel pipeline"]`
+- [x] 2.3 Expand impl role `canWrite` scope — add `".env.example"` so impl can fix operational readiness gaps when looped from ship
 
 ### Phase 3: Detection logic
 
-- [ ] 3.1 Add `detectDeploymentNeed()` to new file `src/engine/ship-detection.ts` — checks architecture doc sections + file patterns. Returns `{ needed: boolean, signals: string[] }`
-- [ ] 3.2 Add `checkOperationalReadiness()` to `ship-detection.ts` — scans for:
+- [x] 3.1 Add `detectDeploymentNeed()` to new file `src/engine/ship-detection.ts` — checks architecture doc sections + file patterns. Returns `{ needed: boolean, signals: string[] }`
+- [x] 3.2 Add `checkOperationalReadiness()` to `ship-detection.ts` — scans for:
   - Missing `.env.example` when `process.env.` is used in source
   - Hardcoded secrets (API keys, tokens in source, not env vars)
   - No health check endpoint when deployment config exists
   - Returns `{ ready: boolean, gaps: { fixableByShip: string[], needsImpl: string[] } }`
-- [ ] 3.3 Tests for both detection functions
+- [x] 3.3 Tests for both detection functions
 
 ### Phase 4: Ship skill in heart-of-gold-toolkit
 
-- [ ] 4.1 Create `/marvin:ship` skill in `plugins/marvin/skills/ship/SKILL.md` — 4 phases:
+- [x] 4.1 Create `/marvin:ship` skill in `plugins/marvin/skills/ship/SKILL.md` — 4 phases:
   1. **Analyze** — read all phase summaries, architecture doc, test results, redteam findings, merge verdict
   2. **Produce** — write/update README.md (merge with existing), deployment guide (if triggered), what-changed summary, knowledge docs
   3. **Fix** — if operational gaps are within scope (.env.example, docs), fix them directly. If outside scope (code changes), report as blocker.
   4. **Report** — summary of artifacts produced + any gaps that need impl
-- [ ] 4.2 Add Stop hook — verify README exists and is non-empty
-- [ ] 4.3 Handle `HOG_PIPELINE=1` — skip AskUserQuestion in pipeline mode
+- [x] 4.2 Add Stop hook — verify README exists and is non-empty
+- [x] 4.3 Handle `HOG_PIPELINE=1` — skip AskUserQuestion in pipeline mode
 
 ### Phase 5: Wire into conductor
 
-- [ ] 5.1 Update conductor `onAgentCompleted` — for `ship` phase, run `checkOperationalReadiness()`. If `needsImpl` gaps found, use `ship-gate` to loop back (reopening impl + redteam + merge + ship). If only `fixableByShip` gaps, let ship handle them.
-- [ ] 5.2 Update `buildContextSection()` — ship role gets ALL phase summaries (test, impl, redteam, merge), plus architecture doc content inline. Not just 2 phases.
-- [ ] 5.3 Pass deployment detection result in the ship agent's prompt context
-- [ ] 5.4 Add fallback README verification in conductor — if ship completes without README.md existing (fallback mode, no Stop hook), log a warning
+- [x] 5.1 Update conductor `onAgentCompleted` — for `ship` phase, run `checkOperationalReadiness()`. If `needsImpl` gaps found, use `ship-gate` to loop back (reopening impl + redteam + merge + ship). If only `fixableByShip` gaps, let ship handle them.
+- [x] 5.2 Update `buildContextSection()` — ship role gets ALL phase summaries (test, impl, redteam, merge), plus architecture doc content inline. Not just 2 phases.
+- [x] 5.3 Pass deployment detection result in the ship agent's prompt context
+- [x] 5.4 Add fallback README verification in conductor — if ship completes without README.md existing (fallback mode, no Stop hook), log a warning
 
 ### Phase 6: Tests
 
-- [ ] 6.1 Unit tests for `detectDeploymentNeed()` — vercel.json, Dockerfile, architecture doc sections, no signals
-- [ ] 6.2 Unit tests for `checkOperationalReadiness()` — missing .env.example, hardcoded secrets, gaps split by fixability
-- [ ] 6.3 Update existing tests — conductor test `createFeatureDAG` call expects 8-node topology, retry-engine test expects updated gate count
-- [ ] 6.4 Integration test — pipeline with ship phase completes end-to-end (mocked beads), README produced
-- [ ] 6.5 E2E test — ship detects hardcoded secret, loops to impl, impl fixes, full chain re-runs (real Dolt)
-- [ ] 6.6 Migration test — 7-phase pipeline loads correctly in 8-phase codebase
+- [x] 6.1 Unit tests for `detectDeploymentNeed()` — vercel.json, Dockerfile, architecture doc sections, no signals
+- [x] 6.2 Unit tests for `checkOperationalReadiness()` — missing .env.example, hardcoded secrets, gaps split by fixability
+- [x] 6.3 Update existing tests — conductor test `createFeatureDAG` call expects 8-node topology, retry-engine test expects updated gate count
+- [x] 6.4 Integration test — pipeline with ship phase completes end-to-end (mocked beads), README produced
+- [x] 6.5 E2E test — ship detects hardcoded secret, loops to impl, impl fixes, full chain re-runs (real Dolt)
+- [x] 6.6 Migration test — 7-phase pipeline loads correctly in 8-phase codebase
 
 ## Decision Rationale
 

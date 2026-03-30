@@ -92,6 +92,15 @@ export const SKILL_CONTRACTS: Readonly<Record<string, SkillContract>> = {
     },
     outputs: {},
   },
+  "marvin:ship": {
+    inputs: {
+      ARCH_PATH: { required: false, fallback: "search" },
+      STORIES_PATH: { required: false, fallback: "search" },
+    },
+    outputs: {
+      readme: "README.md",
+    },
+  },
 };
 
 // ── Validation ──

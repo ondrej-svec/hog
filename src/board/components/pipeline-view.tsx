@@ -42,6 +42,7 @@ const PHASE_LABELS: Record<string, string> = {
   impl: "impl",
   redteam: "redteam",
   merge: "merge",
+  ship: "ship",
 };
 
 /** Default phase order — used as fallback when pipeline doesn't specify its own. */
@@ -53,6 +54,7 @@ const DEFAULT_PHASE_ORDER = [
   "impl",
   "redteam",
   "merge",
+  "ship",
 ] as const;
 
 // ── Main Component ──
@@ -160,10 +162,11 @@ function PipelineList({
 
 function PipelineListItem({ pipeline, selected }: { pipeline: Pipeline; selected: boolean }) {
   const completed = pipeline.completedBeads ?? 0;
-  const pct = Math.round((completed / 6) * 100);
+  const totalPhases = Object.keys(pipeline.beadIds).length || DEFAULT_PHASE_ORDER.length;
+  const pct = Math.round((completed / totalPhases) * 100);
   const phase = pipeline.activePhase ?? "";
   const barWidth = 10;
-  const filled = Math.round((completed / 6) * barWidth);
+  const filled = Math.round((completed / totalPhases) * barWidth);
   const bar = "█".repeat(filled) + "░".repeat(barWidth - filled);
 
   const title = pipeline.title.length > 18 ? `${pipeline.title.slice(0, 16)}..` : pipeline.title;
@@ -375,6 +378,7 @@ function ActiveAgentCard({ agent }: { agent: DaemonAgentInfo }) {
     impl: "Implementer",
     redteam: "Red Team",
     merge: "Merge Gatekeeper",
+    ship: "Ship Agent",
   };
   const phaseLabel = ROLE_LABELS[agent.phase] ?? agent.phase;
 
@@ -539,12 +543,15 @@ function formatActivityDetail(entry: ActivityEntry, name: string | undefined): s
     case "agent-progress":
       return humanizeTool(entry.detail);
     case "agent-complete": {
-      // Clean markdown from summaries
-      const clean = entry.detail
+      // Clean markdown and find the first substantive line — skip preamble
+      const lines = entry.detail
         .replace(/\*\*/g, "")
         .replace(/^#+\s*/gm, "")
-        .split("\n")[0]
-        ?.slice(0, 80) ?? "";
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      const substantive = lines.find((l) => l.length > 15) ?? lines[0] ?? "";
+      const clean = substantive.slice(0, 80);
       return name ? `${name} finished — ${clean}` : clean;
     }
     case "agent-fail":
@@ -571,9 +578,10 @@ function formatTime(iso: string): string {
 
 function QualityGatesRow({ pipeline }: { pipeline: Pipeline }) {
   const completed = pipeline.completedBeads ?? 0;
-  const implDone = completed >= 4;
-  const redteamDone = completed >= 5;
-  const mergeDone = completed >= 6;
+  // Phase indices: brainstorm(0), stories(1), scaffold(2), tests(3), impl(4), redteam(5), merge(6), ship(7)
+  const implDone = completed >= 5;
+  const redteamDone = completed >= 6;
+  const mergeDone = completed >= 7;
 
   const gates = [
     { name: "lint", done: implDone },
@@ -613,7 +621,17 @@ function DecisionPanel({ decisions }: { decisions: Question[] }) {
         ⚠ DECISION NEEDED
       </Text>
       <Text> </Text>
-      <Text>{decision.question}</Text>
+      <Text wrap="wrap">{decision.question}</Text>
+      {decision.context ? (
+        <>
+          <Text> </Text>
+          <Text dimColor wrap="wrap">
+            {decision.context.length > 300
+              ? `${decision.context.slice(0, 300)}…`
+              : decision.context}
+          </Text>
+        </>
+      ) : null}
       <Text> </Text>
       {(decision.options ?? []).map((option, i) => (
         <Box key={option}>

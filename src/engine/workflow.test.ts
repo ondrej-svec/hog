@@ -18,6 +18,7 @@ describe("resolvePhases", () => {
       "impl",
       "redteam",
       "merge",
+      "ship",
     ]);
   });
 });

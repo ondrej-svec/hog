@@ -8,15 +8,17 @@ describe("MemoryBeadsClient", () => {
     expect(client.isInitialized("/any")).toBe(true);
   });
 
-  it("creates a feature DAG with 6 beads", async () => {
+  it("creates a feature DAG with 8 beads", async () => {
     const client = new MemoryBeadsClient();
     const dag = await client.createFeatureDAG("/tmp", "Test feature", "A test");
     expect(dag["brainstorm"]!.id).toBeDefined();
     expect(dag["stories"]!.id).toBeDefined();
+    expect(dag["scaffold"]!.id).toBeDefined();
     expect(dag["tests"]!.id).toBeDefined();
     expect(dag["impl"]!.id).toBeDefined();
     expect(dag["redteam"]!.id).toBeDefined();
     expect(dag["merge"]!.id).toBeDefined();
+    expect(dag["ship"]!.id).toBeDefined();
   });
 
   it("only brainstorm is ready initially (dependencies block others)", async () => {
@@ -59,6 +61,7 @@ describe("MemoryBeadsClient", () => {
       dag["impl"]!,
       dag["redteam"]!,
       dag["merge"]!,
+      dag["ship"]!,
     ];
 
     for (const bead of order) {
