@@ -437,17 +437,22 @@ export function Cockpit({ config }: CockpitProps) {
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "");
                   const spec = description;
+                  const storiesPath = `docs/stories/${slug}.md`;
+                  const archPath = `docs/stories/${slug}.architecture.md`;
                   const pipelineCtx = [
                     `<hog_pipeline_context>`,
                     `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
                     `Feature ID: ${pipeline.featureId}`,
                     ``,
-                    `After brainstorming, you MUST:`,
-                    `1. Write user stories to docs/stories/${slug}.md`,
-                    `2. Write architecture doc to docs/stories/${slug}.architecture.md`,
+                    `After brainstorming, you MUST produce these artifacts:`,
+                    `1. Write user stories to ${storiesPath}`,
+                    `   - Each story: unique ID (STORY-001), description, acceptance criteria, edge cases`,
+                    `2. Write architecture doc to ${archPath}`,
+                    `   - Requirements (FR/NFR), ADRs, Dependencies, Integration Pattern, File Structure`,
                     `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
                     ``,
                     `Do NOT skip step 3 — the pipeline cannot advance without it.`,
+                    `These file paths are EXACT — do not use different names.`,
                     `</hog_pipeline_context>`,
                   ].join("\n");
                   const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } =
@@ -460,10 +465,19 @@ export function Cockpit({ config }: CockpitProps) {
                         .replace(/\{spec\}/g, spec)
                         .replace(/\{featureId\}/g, pipeline.featureId);
 
+                  const brainstormEnv: Record<string, string> = {
+                    HOG_PIPELINE: "1",
+                    FEATURE_ID: pipeline.featureId,
+                    HOG_SLUG: slug,
+                    STORIES_PATH: storiesPath,
+                    ARCH_PATH: archPath,
+                  };
+
                   const launchResult = launchClaude({
                     localPath,
                     issue: { number: 0, title: pipeline.title, url: "" },
                     promptTemplate: brainstormPrompt,
+                    env: brainstormEnv,
                     launchMode: config.pipeline.launchMode ?? "auto",
                     ...(config.pipeline.terminalApp
                       ? { terminalApp: config.pipeline.terminalApp }

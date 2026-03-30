@@ -30,6 +30,8 @@ export interface LaunchClaudeOptions {
   readonly repoFullName?: string | undefined;
   readonly promptTemplate?: string | undefined;
   readonly promptVariables?: PromptVariables | undefined;
+  /** Additional environment variables to pass to the Claude session. */
+  readonly env?: Readonly<Record<string, string>> | undefined;
 }
 
 // ── Phase Prompt Templates ──
@@ -162,6 +164,13 @@ function launchViaTmux(opts: LaunchClaudeOptions): LaunchResult {
     tmuxArgs.push("-e", `HOG_REPO=${repoFullName}`);
   }
   tmuxArgs.push("-e", `HOG_ISSUE=${issue.number}`);
+
+  // Pass additional env vars (pipeline context for skills)
+  if (opts.env) {
+    for (const [key, value] of Object.entries(opts.env)) {
+      tmuxArgs.push("-e", `${key}=${value}`);
+    }
+  }
 
   // Build the shell command: command [extraArgs...] -- prompt
   tmuxArgs.push(command, ...extraArgs, "--", prompt);

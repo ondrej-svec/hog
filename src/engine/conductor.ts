@@ -1379,17 +1379,22 @@ export class Conductor {
     const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } =
       resolvePromptForRole("brainstorm");
     const spec = pipeline.description ?? bead.description ?? pipeline.title;
+    const storiesPath = `docs/stories/${slug}.md`;
+    const archPath = `docs/stories/${slug}.architecture.md`;
     const pipelineContext = [
       `<hog_pipeline_context>`,
       `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
       `Feature ID: ${pipeline.featureId}`,
       ``,
-      `After brainstorming, you MUST:`,
-      `1. Write user stories to docs/stories/${slug}.md`,
-      `2. Write architecture doc to docs/stories/${slug}.architecture.md`,
+      `After brainstorming, you MUST produce these artifacts:`,
+      `1. Write user stories to ${storiesPath}`,
+      `   - Each story: unique ID (STORY-001), description, acceptance criteria, edge cases`,
+      `2. Write architecture doc to ${archPath}`,
+      `   - Requirements (FR/NFR), ADRs, Dependencies, Integration Pattern, File Structure`,
       `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
       ``,
       `Do NOT skip step 3 — the pipeline cannot advance without it.`,
+      `These file paths are EXACT — do not use different names.`,
       `</hog_pipeline_context>`,
     ].join("\n");
     const prompt = brainstormUsingSkill
@@ -1400,10 +1405,20 @@ export class Conductor {
           .replace(/\{spec\}/g, spec)
           .replace(/\{featureId\}/g, pipeline.featureId);
 
+    // Pipeline env vars — skills can read these programmatically
+    const brainstormEnv: Record<string, string> = {
+      HOG_PIPELINE: "1",
+      FEATURE_ID: pipeline.featureId,
+      HOG_SLUG: slug,
+      STORIES_PATH: storiesPath,
+      ARCH_PATH: archPath,
+    };
+
     const result = launchClaude({
       localPath: pipeline.localPath,
       issue: { number: 0, title: pipeline.title, url: "" },
       promptTemplate: prompt,
+      env: brainstormEnv,
     });
 
     if (result.ok) {
