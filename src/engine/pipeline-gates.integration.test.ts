@@ -48,6 +48,7 @@ vi.mock("./tdd-enforcement.js", () => ({
   checkTraceability: (...args: unknown[]) => mockCheckTraceability(...args),
   analyzeTestQuality: (...args: unknown[]) => mockAnalyzeTestQuality(...args),
   verifyGreenState: (...args: unknown[]) => mockVerifyGreenState(...args),
+  resolveFullTestCommand: vi.fn().mockReturnValue("npm test"),
 }));
 
 vi.mock("./summary-parser.js", () => ({

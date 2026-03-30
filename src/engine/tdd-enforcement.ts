@@ -157,6 +157,13 @@ export interface TestBaseline {
  * 2. If scoped test files provided: only check those specific tests
  * 3. Falls back to full suite check if no baseline
  */
+export interface GreenStateResult {
+  readonly passed: boolean;
+  readonly detail: string;
+  /** Raw test runner output (first 2000 chars) for feedback injection. */
+  readonly testOutput?: string | undefined;
+}
+
 export async function verifyGreenState(
   cwd: string,
   options?: {
@@ -164,7 +171,7 @@ export async function verifyGreenState(
     baseline?: TestBaseline | undefined;
     scopedTestFiles?: string[] | undefined;
   },
-): Promise<{ passed: boolean; detail: string }> {
+): Promise<GreenStateResult> {
   const cmd = options?.testCommand ?? detectTestCommand(cwd);
   if (!cmd) {
     return { passed: true, detail: "No test command detected — skipping GREEN verification." };
@@ -190,7 +197,7 @@ export async function verifyGreenState(
   const result = await runTestCommand(cwd, cmd);
 
   if (result.passed) {
-    return { passed: true, detail: "GREEN verified: all tests pass." };
+    return { passed: true, detail: "GREEN verified: all tests pass.", testOutput: result.rawOutput };
   }
 
   // Compare against baseline — only NEW failures matter
@@ -203,12 +210,14 @@ export async function verifyGreenState(
       return {
         passed: true,
         detail: `GREEN verified: ${result.failingTests} pre-existing failures (unchanged from baseline of ${baseline.totalFailing}). No new failures introduced.`,
+        testOutput: result.rawOutput,
       };
     }
 
     return {
       passed: false,
       detail: `GREEN failed: ${newFailingFiles.length} new failing test file(s) after implementation: ${newFailingFiles.slice(0, 5).join(", ")}${newFailingFiles.length > 5 ? ` (+${newFailingFiles.length - 5} more)` : ""}`,
+      testOutput: result.rawOutput,
     };
   }
 
@@ -216,6 +225,7 @@ export async function verifyGreenState(
   return {
     passed: false,
     detail: `GREEN failed: ${result.failingTests} test(s) still failing (no baseline to compare against).`,
+    testOutput: result.rawOutput,
   };
 }
 
@@ -227,10 +237,11 @@ async function runTestCommand(
   failingTests: number;
   passingTests: number;
   failingFiles: Set<string>;
+  rawOutput: string;
 }> {
   const [bin, ...args] = cmd.split(" ");
   if (!bin) {
-    return { passed: true, failingTests: 0, passingTests: 0, failingFiles: new Set() };
+    return { passed: true, failingTests: 0, passingTests: 0, failingFiles: new Set(), rawOutput: "" };
   }
 
   try {
@@ -245,6 +256,7 @@ async function runTestCommand(
       failingTests: 0,
       passingTests: countTests(output),
       failingFiles: new Set(),
+      rawOutput: output.slice(0, 2000),
     };
   } catch (err: unknown) {
     const output = getErrorOutput(err);
@@ -253,6 +265,7 @@ async function runTestCommand(
       failingTests: countFailingTests(output),
       passingTests: countTests(output),
       failingFiles: extractFailingFiles(output),
+      rawOutput: output.slice(0, 2000),
     };
   }
 }
@@ -404,6 +417,27 @@ function detectTestCommand(cwd: string): string | undefined {
     // no package.json
   }
   return undefined;
+}
+
+/**
+ * Resolve the broadest test command for a project — prefers `npm test` (runs full suite)
+ * over runner-specific detection (which may only cover a subset).
+ * Used by green-gate to catch ALL test failures including redteam tests.
+ */
+export function resolveFullTestCommand(cwd: string): string | undefined {
+  // Prefer package.json scripts.test — it runs the project's defined full suite
+  try {
+    const pkg = JSON.parse(readFileSync(join(cwd, "package.json"), "utf-8")) as {
+      scripts?: Record<string, string>;
+    };
+    if (pkg.scripts?.["test"] && !pkg.scripts["test"].includes("no test specified")) {
+      return "npm test";
+    }
+  } catch {
+    // no package.json
+  }
+  // Fall back to runner-specific detection
+  return detectTestCommand(cwd);
 }
 
 function detectMutationCommand(cwd: string): string | undefined {

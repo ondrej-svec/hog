@@ -59,6 +59,7 @@ vi.mock("./tdd-enforcement.js", () => ({
   }),
   analyzeTestQuality: (...args: unknown[]) => mockAnalyzeTestQuality(...args),
   verifyGreenState: (...args: unknown[]) => mockVerifyGreenState(...args),
+  resolveFullTestCommand: vi.fn().mockReturnValue("npm test"),
 }));
 
 vi.mock("./summary-parser.js", () => ({
@@ -121,9 +122,10 @@ async function tick(conductor: Conductor): Promise<void> {
 
 async function completeAgent(eventBus: EventBus, sessionId: string, phase: string, summary?: string): Promise<void> {
   eventBus.emit("agent:completed", { sessionId, repo: "owner/repo", issueNumber: 0, phase, summary });
-  // onAgentCompleted is fire-and-forget async — wait for all gates to execute
-  // Real Beads operations are slower than mocks, need more time
-  await new Promise((r) => setTimeout(r, 500));
+  // onAgentCompleted is fire-and-forget async — wait for all gates to execute.
+  // Post-close gates (green, redteam, merge) run inside .then() after beads.close(),
+  // which involves multiple bd CLI operations (close, reopen, verify). Need enough time.
+  await new Promise((r) => setTimeout(r, 2000));
 }
 
 // ── Tests ──
@@ -370,5 +372,143 @@ describe.skipIf(!bdAvailable)("Pipeline E2E with real Beads", () => {
     expect(testBeadReady || agents._launches.length > launchCountBefore).toBe(true);
     expect(agents._launches.length).toBe(launchCountBefore + 1);
     expect(agents._launches[agents._launches.length - 1]?.["phase"]).toBe("test");
+  }, 120_000);
+
+  it("E2E-003: redteam→impl feedback loop — failing redteam tests trigger impl retry with test output", async () => {
+    eventBus = new EventBus();
+    agents = createMockAgents();
+    conductor = new Conductor(config, eventBus, agents, beads);
+
+    const archPath = join(TEST_DIR, "docs", "stories", "test-feature.architecture.md");
+    const result = await conductor.startPipeline("owner/repo", repoConfig, "Redteam Loop Test", "E2E test", undefined, archPath);
+    if ("error" in result) throw new Error(result.error);
+    const pipeline = result;
+
+    // Advance to redteam: close brainstorm → stories → scaffold → test → impl
+    await beads.close(TEST_DIR, pipeline.beadIds["brainstorm"]!, "Done");
+    await tick(conductor); // stories
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "stories");
+    await tick(conductor); // scaffold
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "scaffold");
+
+    // Set test context before test completion
+    writeFileSync(join(TEST_DIR, "loop-spec.test.ts"), `import { handle } from "./src/handler";\nexpect(handle()).toBeDefined();`);
+    execSync("git add loop-spec.test.ts && git commit -q -m 'add loop spec'", { cwd: TEST_DIR });
+    if (!pipeline.context) (pipeline as { context: Pipeline["context"] }).context = {};
+    pipeline.context!.testFiles = ["loop-spec.test.ts"];
+    pipeline.context!.testCommand = "npx vitest run";
+
+    await tick(conductor); // test
+    mockAnalyzeTestQuality.mockReturnValue({ behavioral: ["loop-spec.test.ts"], stringMatching: [], ratio: 1 });
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "test");
+
+    await tick(conductor); // impl
+    // Impl completes with all GREEN
+    mockVerifyGreenState.mockResolvedValue({ passed: true, detail: "All pass", testOutput: "" });
+    mockCheckConformance.mockResolvedValue({ passed: true, missingDeps: [], missingFiles: [], stubs: [], detail: "OK" });
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "impl");
+
+    await tick(conductor); // redteam spawns
+    const redteamLaunchCount = agents._launches.length;
+    expect(agents._launches[redteamLaunchCount - 1]?.["phase"]).toBe("redteam");
+
+    // Redteam completes — simulate green-gate finding new failures from redteam tests
+    mockVerifyGreenState.mockResolvedValue({
+      passed: false,
+      detail: "GREEN failed: 3 new failing test files: redteam-security.test.ts, redteam-stubs.test.ts, redteam-gaps.test.ts",
+      testOutput: "FAIL redteam-security.test.ts > should validate input\nFAIL redteam-stubs.test.ts > lookupFramework should return real content",
+    });
+    await completeAgent(eventBus, agents._launches[redteamLaunchCount - 1]!["sessionId"] as string, "redteam");
+
+    // Verify: impl bead should be reopened (redteam-gate triggered)
+    const implBead = await beads.show(TEST_DIR, pipeline.beadIds["impl"]!);
+    expect(implBead.status).toBe("open");
+
+    // Verify: retry feedback contains test output
+    const feedback = pipeline.context?.retryFeedback?.["redteam-gate"];
+    expect(feedback).toBeDefined();
+    expect(feedback?.previousSummary).toContain("FAIL redteam-security");
+
+    // Verify: impl re-spawns on next tick
+    await tick(conductor);
+    expect(agents._launches.length).toBeGreaterThan(redteamLaunchCount);
+    const reimplLaunch = agents._launches[agents._launches.length - 1]!;
+    expect(reimplLaunch["phase"]).toBe("impl");
+
+    // Verify: retry context is in the re-spawned prompt
+    const reimplPrompt = reimplLaunch["promptTemplate"] as string;
+    expect(reimplPrompt).toContain("Retry Context");
+  }, 120_000);
+
+  it("E2E-004: merge BLOCK→impl loop — merge findings sent back to impl", async () => {
+    eventBus = new EventBus();
+    agents = createMockAgents();
+    conductor = new Conductor(config, eventBus, agents, beads);
+
+    const archPath = join(TEST_DIR, "docs", "stories", "test-feature.architecture.md");
+    const result = await conductor.startPipeline("owner/repo", repoConfig, "Merge Loop Test", "E2E test", undefined, archPath);
+    if ("error" in result) throw new Error(result.error);
+    const pipeline = result;
+
+    // Advance through all phases to merge
+    await beads.close(TEST_DIR, pipeline.beadIds["brainstorm"]!, "Done");
+    await tick(conductor);
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "stories");
+    await tick(conductor);
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "scaffold");
+
+    writeFileSync(join(TEST_DIR, "merge-spec.test.ts"), `import { handle } from "./src/handler";\nexpect(handle()).toBeDefined();`);
+    execSync("git add merge-spec.test.ts && git commit -q -m 'add merge spec'", { cwd: TEST_DIR });
+    if (!pipeline.context) (pipeline as { context: Pipeline["context"] }).context = {};
+    pipeline.context!.testFiles = ["merge-spec.test.ts"];
+    pipeline.context!.testCommand = "npx vitest run";
+
+    await tick(conductor);
+    mockAnalyzeTestQuality.mockReturnValue({ behavioral: ["merge-spec.test.ts"], stringMatching: [], ratio: 1 });
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "test");
+
+    await tick(conductor);
+    mockVerifyGreenState.mockResolvedValue({ passed: true, detail: "All pass", testOutput: "" });
+    mockCheckConformance.mockResolvedValue({ passed: true, missingDeps: [], missingFiles: [], stubs: [], detail: "OK" });
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "impl");
+
+    await tick(conductor);
+    mockVerifyGreenState.mockResolvedValue({ passed: true, detail: "All pass", testOutput: "" });
+    await completeAgent(eventBus, agents._launches[agents._launches.length - 1]!["sessionId"] as string, "redteam");
+
+    await tick(conductor); // merge spawns
+    const mergeLaunchCount = agents._launches.length;
+    expect(agents._launches[mergeLaunchCount - 1]?.["phase"]).toBe("merge");
+
+    // Merge completes with BLOCK — 22 issues found
+    await completeAgent(
+      eventBus,
+      agents._launches[mergeLaunchCount - 1]!["sessionId"] as string,
+      "merge",
+      "MERGE READINESS: BLOCK\n\n8 blocking issues:\n1. userId leaked in response\n2. No input validation\n3. GDPR auth boundary missing",
+    );
+
+    // Verify: impl bead reopened (merge-gate triggered)
+    const implBead = await beads.show(TEST_DIR, pipeline.beadIds["impl"]!);
+    expect(implBead.status).toBe("open");
+
+    // Verify: merge bead also reopened
+    const mergeBead = await beads.show(TEST_DIR, pipeline.beadIds["merge"]!);
+    expect(mergeBead.status).toBe("open");
+
+    // Verify: retry feedback contains merge report
+    const feedback = pipeline.context?.retryFeedback?.["merge-gate"];
+    expect(feedback).toBeDefined();
+    expect(feedback?.reason).toContain("BLOCK");
+
+    // Verify: impl re-spawns
+    await tick(conductor);
+    expect(agents._launches.length).toBeGreaterThan(mergeLaunchCount);
+    expect(agents._launches[agents._launches.length - 1]?.["phase"]).toBe("impl");
+
+    // Verify: retry context in prompt
+    const reimplPrompt = agents._launches[agents._launches.length - 1]!["promptTemplate"] as string;
+    expect(reimplPrompt).toContain("Retry Context");
+    expect(reimplPrompt).toContain("BLOCK");
   }, 120_000);
 });

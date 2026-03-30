@@ -1050,6 +1050,26 @@ export class Conductor {
             `42. But what was the question? Tests pass without implementation — reopening test phase.`,
           );
         }
+
+        // Escalation ceiling: after 5 RED failures, ask human instead of looping forever
+        const redFailCount = this.decisionLog.filter(
+          (e) => e.featureId === pipeline.featureId && e.action === "tdd:red-failed",
+        ).length;
+        if (redFailCount >= 5) {
+          this.log(pipeline.featureId, "tdd:red-exhausted", "Test writer keeps producing passing tests after 5 attempts. Escalating.");
+          const result = enqueueQuestion(this.questionQueue, {
+            featureId: pipeline.featureId,
+            question: `Test writer has produced passing tests 5 times — tests should FAIL before implementation. What should we do?`,
+            options: ["Retry tests", "Skip RED check", "Cancel pipeline"],
+            source: "conductor",
+          });
+          this.questionQueue = result.queue;
+          saveQuestionQueue(this.questionQueue);
+          pipeline.status = "blocked";
+          this.store.save();
+          return;
+        }
+
         // Re-open the test bead so tests get rewritten
         try {
           const testBeadId = pipeline.beadIds["tests"];
@@ -1187,7 +1207,7 @@ export class Conductor {
         const issues = roleFeedback.map((f) => f.reason).join("\n");
         const missing = roleFeedback.flatMap((f) => f.missing).slice(0, 20).join(", ");
         const lastSummary = roleFeedback[roleFeedback.length - 1]?.previousSummary ?? "";
-        retrySection = `\n\n## Retry Context (attempt ${maxAttempt})\n\nYour previous run did not complete all required work.\n\nIssues:\n${issues}\nMissing: ${missing}\n\nPrevious agent's summary:\n> ${lastSummary.slice(0, 300)}\n\nFocus on completing the missing work. Do not redo work that was already done.\n`;
+        retrySection = `\n\n## Retry Context (attempt ${maxAttempt})\n\nYour previous run did not complete all required work.\n\nIssues:\n${issues}\nMissing: ${missing}\n\nPrevious output:\n> ${lastSummary.slice(0, 2000)}\n\nUpdate .hog/impl-plan.md with tasks to fix these issues, then run /marvin:work .hog/impl-plan.md\n`;
       }
     }
 
@@ -1652,16 +1672,17 @@ export class Conductor {
         // captureTestContext already ran pre-close (needed by spec-quality gate)
 
         // GREEN verification after impl completes (Farley)
-        // Uses baseline comparison — only NEW failures count, pre-existing ones are ignored
+        // Uses FULL test suite (not just test-phase command) to catch redteam tests too
         if (phase === "impl") {
-          const { verifyGreenState } = await import("./tdd-enforcement.js");
+          const { verifyGreenState, resolveFullTestCommand } = await import("./tdd-enforcement.js");
           const baseline = this.testBaselines.get(pipeline.featureId);
           const greenCwd = pipeline.context?.workingDir
             ? join(pipeline.localPath, pipeline.context.workingDir)
             : pipeline.localPath;
+          const fullTestCmd = resolveFullTestCommand(greenCwd) ?? pipeline.context?.testCommand;
           const green = await verifyGreenState(greenCwd, {
             baseline,
-            testCommand: pipeline.context?.testCommand,
+            testCommand: fullTestCmd,
           }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
@@ -1674,6 +1695,7 @@ export class Conductor {
               {
                 passed: false,
                 reason: green.detail,
+                ...("testOutput" in green && green.testOutput ? { context: green.testOutput } : {}),
               },
               summary,
               "decisionLog",
@@ -1708,15 +1730,17 @@ export class Conductor {
 
         // Redteam→impl feedback loop (Farley)
         // After redteam, check if new tests are failing. If so, re-open impl.
+        // Uses FULL test suite to catch redteam test files (not just test-phase command).
         if (phase === "redteam") {
-          const { verifyGreenState } = await import("./tdd-enforcement.js");
+          const { verifyGreenState, resolveFullTestCommand } = await import("./tdd-enforcement.js");
           const baseline = this.testBaselines.get(pipeline.featureId);
           const greenCwd = pipeline.context?.workingDir
             ? join(pipeline.localPath, pipeline.context.workingDir)
             : pipeline.localPath;
+          const fullTestCmd = resolveFullTestCommand(greenCwd) ?? pipeline.context?.testCommand;
           const green = await verifyGreenState(greenCwd, {
             baseline,
-            testCommand: pipeline.context?.testCommand,
+            testCommand: fullTestCmd,
           }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
@@ -1729,6 +1753,7 @@ export class Conductor {
               {
                 passed: false,
                 reason: `Redteam wrote failing tests: ${green.detail}`,
+                ...("testOutput" in green && green.testOutput ? { context: green.testOutput } : {}),
               },
               summary,
               "decisionLog",
@@ -1888,6 +1913,41 @@ export class Conductor {
   }
 
   /**
+   * Reopen a bead and verify it's actually open. If verification fails,
+   * escalate to human instead of silently proceeding.
+   */
+  private async reopenAndVerify(pipeline: Pipeline, beadId: string, role: string): Promise<void> {
+    try {
+      await this.beads.updateStatus(pipeline.localPath, beadId, "open");
+      // Verify the bead is actually open
+      const bead = await this.beads.show(pipeline.localPath, beadId);
+      if (bead.status !== "open") {
+        this.log(
+          pipeline.featureId,
+          `bead:reopen-failed:${role}`,
+          `Bead ${beadId} is '${bead.status}' after reopen attempt — expected 'open'. Escalating.`,
+        );
+        const result = enqueueQuestion(this.questionQueue, {
+          featureId: pipeline.featureId,
+          question: `Failed to reopen ${role} bead for retry. Bead is '${bead.status}' instead of 'open'. Manual intervention needed.`,
+          options: ["Retry", "Skip", "Cancel pipeline"],
+          source: "conductor",
+        });
+        this.questionQueue = result.queue;
+        saveQuestionQueue(this.questionQueue);
+        pipeline.status = "blocked";
+        this.store.save();
+      }
+    } catch (err) {
+      this.log(
+        pipeline.featureId,
+        `bead:reopen-error:${role}`,
+        `Failed to reopen bead ${beadId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Apply a retry decision from evaluateGate(): set feedback, reopen beads, decrement.
    * Returns true if retry was applied (caller should return early).
    */
@@ -1903,7 +1963,10 @@ export class Conductor {
     pipeline.context.retryFeedback[retry.gateId] = {
       reason: retry.feedback.reason,
       missing: [...retry.feedback.missing],
-      previousSummary: summary?.slice(0, 300) ?? "",
+      previousSummary: [
+        summary?.slice(0, 300) ?? "",
+        retry.feedback.context ? `\nTest output:\n${retry.feedback.context.slice(0, 1500)}` : "",
+      ].join(""),
       attempt: prevAttempt + 1,
     };
     // Reopen the retryRole bead — NOT the triggering bead.
@@ -1912,14 +1975,14 @@ export class Conductor {
     // infinite claim-failure loops (the closed bead keeps appearing in bd ready).
     const retryBeadId = this.roleToBeadId(pipeline, retry.retryRole);
     if (retryBeadId) {
-      await this.beads.updateStatus(pipeline.localPath, retryBeadId, "open").catch(() => {});
+      await this.reopenAndVerify(pipeline, retryBeadId, retry.retryRole);
     }
     // Reopen additional beads (e.g., merge when impl retries after redteam)
     if (retry.alsoReopen) {
       for (const role of retry.alsoReopen) {
         const roleBeadId = this.roleToBeadId(pipeline, role);
         if (roleBeadId) {
-          await this.beads.updateStatus(pipeline.localPath, roleBeadId, "open").catch(() => {});
+          await this.reopenAndVerify(pipeline, roleBeadId, role);
         }
       }
     }
