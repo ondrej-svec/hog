@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.32.0](https://github.com/ondrej-svec/hog/compare/hog-v1.31.0...hog-v1.32.0) (2026-03-30)
+
+
+### Features
+
+* add ship phase — post-merge docs, knowledge capture, operational readiness ([52f0dd7](https://github.com/ondrej-svec/hog/commit/52f0dd71c15ba2d41b7f58c583a4212f5dafc788))
+
+
+### Bug Fixes
+
+* activity feed featureId resolution for push events ([f108915](https://github.com/ondrej-svec/hog/commit/f1089151dd200a04287bc55743035d407b935c50))
+* activity feed fills panel by computing available lines ([d571a60](https://github.com/ondrej-svec/hog/commit/d571a6077a2d064222efb51afaae1f1dd4aeb0ab))
+* address ALL deferred Codex findings — no known holes remaining ([b864f86](https://github.com/ondrej-svec/hog/commit/b864f8670bdd598337529bfbfa43765e193e3b98))
+* bottom-align activity feed and show older entries indicator ([e88031e](https://github.com/ondrej-svec/hog/commit/e88031e7859ee6d6dc2f5d1b9d02c55791d9bd7a))
+* brainstorm sessions now get full pipeline context and env vars ([ce86b56](https://github.com/ondrej-svec/hog/commit/ce86b564ec41440b16b994101b2d807ca87a2560))
+* close all broken feedback loops — green-gate scope, blind retries, bead verification ([dbb1855](https://github.com/ondrej-svec/hog/commit/dbb18555feb1bc3ec83056d00c25499df2ed21df))
+* exclude merge phase from summary sentiment gate ([612a274](https://github.com/ondrej-svec/hog/commit/612a27499914bf80d112237af6c14cd116b672d7))
+* inject pipeline context into brainstorm skill sessions ([8102f1e](https://github.com/ondrej-svec/hog/commit/8102f1e76bb07fea010f5d090ad24aca5dea7f02))
+* pass user description to brainstorm skill ([e2b9dcd](https://github.com/ondrej-svec/hog/commit/e2b9dcd14078c5bbebcb45b18f5795d5bc5ceda5))
+* prevent duplicate agent spawning via per-pipeline completion lock ([87cb6fc](https://github.com/ondrej-svec/hog/commit/87cb6fc12ef821b95b60d246b6bf47b092a7997a))
+* put brainstorm skill invocation before description context ([914c61b](https://github.com/ondrej-svec/hog/commit/914c61ba8fe7a5b9ffd7362dfe06dcb469f3ec1f))
+* race conditions — tick re-entrancy guard, per-pipeline agent limit, reopen escalation ([2a89a26](https://github.com/ondrej-svec/hog/commit/2a89a26171b741d4d343943a837aa05c89d7df2c))
+* redteam agent must leave tests failing, not fix them ([dfd7344](https://github.com/ondrej-svec/hog/commit/dfd73443a3fc93092e19276d8e590f0cf52cf758))
+* remove dead-code guard in cockpit auto-launch path ([44c9172](https://github.com/ondrej-svec/hog/commit/44c91723a7ef63be548b4faf874f16338ecf067f))
+* update pipeline overlay to show all 8 phases ([1347df2](https://github.com/ondrej-svec/hog/commit/1347df24f33b5749f3bfd538683c354adfca5cd7))
+
 ## [1.31.0](https://github.com/ondrej-svec/hog/compare/hog-v1.30.2...hog-v1.31.0) (2026-03-30)
 
 
