@@ -1380,7 +1380,7 @@ export class Conductor {
       resolvePromptForRole("brainstorm");
     const spec = pipeline.description ?? bead.description ?? pipeline.title;
     const prompt = brainstormUsingSkill
-      ? `${spec}\n\n${resolvedBrainstormPrompt}`
+      ? `${resolvedBrainstormPrompt}\n\n${spec}`
       : resolvedBrainstormPrompt
           .replace(/\{title\}/g, pipeline.title)
           .replace(/\{slug\}/g, slug)

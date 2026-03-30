@@ -440,7 +440,7 @@ export function Cockpit({ config }: CockpitProps) {
                   const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } =
                     resolvePromptForRole("brainstorm");
                   const brainstormPrompt = bsUsingSkill2
-                    ? `${spec}\n\n${resolvedBsPrompt2}`
+                    ? `${resolvedBsPrompt2}\n\n${spec}`
                     : resolvedBsPrompt2
                         .replace(/\{title\}/g, pipeline.title)
                         .replace(/\{slug\}/g, slug)
