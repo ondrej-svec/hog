@@ -48,9 +48,7 @@ export function loadPolicies(projectPath: string): Policy[] {
   const policyDir = join(projectPath, POLICY_DIR);
   if (!existsSync(policyDir)) return [];
 
-  const files = readdirSync(policyDir).filter(
-    (f) => f.endsWith(".yaml") || f.endsWith(".yml"),
-  );
+  const files = readdirSync(policyDir).filter((f) => f.endsWith(".yaml") || f.endsWith(".yml"));
 
   const policies: Policy[] = [];
   for (const file of files) {
@@ -80,13 +78,18 @@ export function policyToGate(policy: Policy): QualityGate {
     isAvailable: () => true, // command-based gates are always "available"
     check: async (repoPath: string, changedFiles: string[]): Promise<GateResult> => {
       // Filter files by glob if specified
-      const files =
-        policy.glob
-          ? changedFiles.filter((f) => matchGlob(f, policy.glob!))
-          : changedFiles;
+      const files = policy.glob
+        ? changedFiles.filter((f) => matchGlob(f, policy.glob!))
+        : changedFiles;
 
       if (files.length === 0 && policy.glob) {
-        return { gate: policy.name, severity: policy.severity as GateSeverity, passed: true, issues: [], detail: "No matching files" };
+        return {
+          gate: policy.name,
+          severity: policy.severity as GateSeverity,
+          passed: true,
+          issues: [],
+          detail: "No matching files",
+        };
       }
 
       try {
@@ -108,17 +111,28 @@ export function policyToGate(policy: Policy): QualityGate {
           env: { ...process.env, HOG_CHANGED_FILES: files.join("\n") },
         });
 
-        return { gate: policy.name, severity: policy.severity as GateSeverity, passed: true, issues: [], detail: "Passed" };
+        return {
+          gate: policy.name,
+          severity: policy.severity as GateSeverity,
+          passed: true,
+          issues: [],
+          detail: "Passed",
+        };
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : String(err);
+        const message = err instanceof Error ? err.message : String(err);
         const issues: GateIssue[] = [
           {
             file: "",
             message: `${policy.message}: ${message.slice(0, 200)}`,
           },
         ];
-        return { gate: policy.name, severity: policy.severity as GateSeverity, passed: false, issues, detail: policy.message };
+        return {
+          gate: policy.name,
+          severity: policy.severity as GateSeverity,
+          passed: false,
+          issues,
+          detail: policy.message,
+        };
       }
     },
   };
@@ -305,8 +319,6 @@ function policyToYaml(policy: Policy): string {
 
 /** Simple glob matching (supports * wildcard). */
 function matchGlob(filepath: string, pattern: string): boolean {
-  const regex = new RegExp(
-    `^${pattern.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`,
-  );
+  const regex = new RegExp(`^${pattern.replace(/\./g, "\\.").replace(/\*/g, ".*")}$`);
   return regex.test(filepath);
 }

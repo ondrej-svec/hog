@@ -3,9 +3,9 @@ import {
   installPreset,
   loadPolicies,
   mergeWithBuiltinGates,
-  policyToGate,
-  PRESETS,
   type Policy,
+  PRESETS,
+  policyToGate,
 } from "./policy.js";
 import type { QualityGate } from "./quality-gates.js";
 
@@ -112,7 +112,13 @@ describe("Policy-as-Code Engine", () => {
           name: "linting",
           severity: "warning",
           isAvailable: () => true,
-          check: async () => ({ gate: "linting", severity: "warning" as const, passed: true, issues: [], detail: "ok" }),
+          check: async () => ({
+            gate: "linting",
+            severity: "warning" as const,
+            passed: true,
+            issues: [],
+            detail: "ok",
+          }),
         },
       ];
 

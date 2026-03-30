@@ -90,7 +90,11 @@ export function readEventLog(options?: { featureId?: string; limit?: number }): 
     }
 
     // If reading from shared file with featureId filter, apply session-based matching
-    if (options?.featureId && targetFile.endsWith("events.jsonl") && !targetFile.includes(options.featureId)) {
+    if (
+      options?.featureId &&
+      targetFile.endsWith("events.jsonl") &&
+      !targetFile.includes(options.featureId)
+    ) {
       entries = entries.filter((e) => {
         const sessionId = e.data["sessionId"] as string | undefined;
         return sessionId?.includes(options.featureId!) ?? false;

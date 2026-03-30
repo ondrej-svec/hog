@@ -45,7 +45,8 @@ describe("Performance Benchmarks", () => {
   it("summary-parser checks are under 0.1ms per check", async () => {
     const { checkSummaryForFailure } = await import("../engine/summary-parser.js");
 
-    const summary = "I was unable to complete the implementation due to missing dependencies. The build FAILED with 3 errors. Manual intervention is required.";
+    const summary =
+      "I was unable to complete the implementation due to missing dependencies. The build FAILED with 3 errors. Manual intervention is required.";
     const iterations = 1000;
 
     const start = performance.now();

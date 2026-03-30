@@ -52,10 +52,7 @@ export class ClaudeAdapter implements WorkerAdapter {
  * adapter interface. AgentManager spawns the process; this wraps it as
  * an AgentHandle for consumers that expect the adapter interface.
  */
-export function wrapAsAgentHandle(
-  sessionId: string,
-  pid: number | undefined,
-): AgentHandle {
+export function wrapAsAgentHandle(sessionId: string, pid: number | undefined): AgentHandle {
   let running = true;
   const progressCallbacks: Array<(p: AgentProgress) => void> = [];
   const completeCallbacks: Array<(r: AgentResult) => void> = [];

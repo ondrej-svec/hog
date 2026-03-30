@@ -12,11 +12,11 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
 import type { Pipeline } from "../../engine/conductor.js";
-import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
 import type { PipelineViewData } from "../components/pipeline-view.js";
 import { PipelineView } from "../components/pipeline-view.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 
 // ── Helpers (reuse cockpit-e2e patterns) ──
 
@@ -109,10 +109,7 @@ describe("PARITY GATE: Cockpit covers all board workflows", () => {
     const pipeline = makePipeline({ completedBeads: 3 });
     // List panel with progress % appears when there are 2+ pipelines
     const { lastFrame } = renderView({
-      pipelines: [
-        pipeline,
-        makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
-      ],
+      pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
     });
     const frame = lastFrame() ?? "";
     // Must show real percentage (50% for 3/6), not hardcoded

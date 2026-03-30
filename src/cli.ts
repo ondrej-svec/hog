@@ -156,7 +156,8 @@ program
       );
     }
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const startCommand =
+      rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
     const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
     const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
@@ -245,9 +246,7 @@ pipelineCommand
       let repoName: string;
 
       if (opts.repo) {
-        const targetRepo = cfg.repos.find(
-          (r) => r.shortName === opts.repo || r.name === opts.repo,
-        );
+        const targetRepo = cfg.repos.find((r) => r.shortName === opts.repo || r.name === opts.repo);
         if (!targetRepo) {
           console.error(`Repo not found: ${opts.repo}`);
           process.exitCode = 1;
@@ -374,7 +373,9 @@ pipelineCommand
         }
         console.log("  Daemon:  hogd advancing phases automatically");
         console.log("");
-        console.log("Run `hog cockpit` for visual progress, or `hog pipeline list` to check status.");
+        console.log(
+          "Run `hog cockpit` for visual progress, or `hog pipeline list` to check status.",
+        );
       }
     },
   );
@@ -604,7 +605,15 @@ pipelineCommand
       return;
     }
 
-    const phases = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"] as const;
+    const phases = [
+      "brainstorm",
+      "stories",
+      "scaffold",
+      "tests",
+      "impl",
+      "redteam",
+      "merge",
+    ] as const;
     const phaseStatus = phases.map((p) => {
       const beadId = pipeline.beadIds[p === "tests" ? "tests" : p];
       return { phase: p, beadId };
@@ -861,7 +870,9 @@ pipelineCommand
       }
     }
 
-    console.log(`\nReplay complete. ${summary.agentCount} agents across ${summary.phaseCount} phases.`);
+    console.log(
+      `\nReplay complete. ${summary.agentCount} agents across ${summary.phaseCount} phases.`,
+    );
     console.log(`Total duration: ${Math.round(summary.totalDurationMs / 1000)}s`);
   });
 
@@ -894,17 +905,25 @@ pipelineCommand
       const s = Math.round(ms / 1000);
       return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
     };
-    const cost = (n: number | undefined) => n !== undefined ? `$${n.toFixed(2)}` : "-";
+    const cost = (n: number | undefined) => (n !== undefined ? `$${n.toFixed(2)}` : "-");
 
     console.log("Pipeline Comparison\n");
     console.log(`${"Metric".padEnd(20)} ${id1.slice(0, 20).padEnd(22)} ${id2.slice(0, 20)}`);
     console.log("-".repeat(64));
     console.log(`${"Phases".padEnd(20)} ${String(s1.phaseCount).padEnd(22)} ${s2.phaseCount}`);
     console.log(`${"Agents".padEnd(20)} ${String(s1.agentCount).padEnd(22)} ${s2.agentCount}`);
-    console.log(`${"Duration".padEnd(20)} ${fmt(s1.totalDurationMs).padEnd(22)} ${fmt(s2.totalDurationMs)}`);
-    console.log(`${"Beads completed".padEnd(20)} ${String(p1?.completedBeads ?? "-").padEnd(22)} ${p2?.completedBeads ?? "-"}`);
-    console.log(`${"Status".padEnd(20)} ${String(p1?.status ?? "-").padEnd(22)} ${p2?.status ?? "-"}`);
-    console.log(`${"Total cost".padEnd(20)} ${cost(p1?.totalCost).padEnd(22)} ${cost(p2?.totalCost)}`);
+    console.log(
+      `${"Duration".padEnd(20)} ${fmt(s1.totalDurationMs).padEnd(22)} ${fmt(s2.totalDurationMs)}`,
+    );
+    console.log(
+      `${"Beads completed".padEnd(20)} ${String(p1?.completedBeads ?? "-").padEnd(22)} ${p2?.completedBeads ?? "-"}`,
+    );
+    console.log(
+      `${"Status".padEnd(20)} ${String(p1?.status ?? "-").padEnd(22)} ${p2?.status ?? "-"}`,
+    );
+    console.log(
+      `${"Total cost".padEnd(20)} ${cost(p1?.totalCost).padEnd(22)} ${cost(p2?.totalCost)}`,
+    );
 
     // Test file counts from event log
     const testTools1 = s1.phases.find((p) => p.phase === "test")?.tools.length ?? 0;
@@ -913,10 +932,7 @@ pipelineCommand
     console.log("");
 
     // Phase-by-phase comparison
-    const allPhases = new Set([
-      ...s1.phases.map((p) => p.phase),
-      ...s2.phases.map((p) => p.phase),
-    ]);
+    const allPhases = new Set([...s1.phases.map((p) => p.phase), ...s2.phases.map((p) => p.phase)]);
 
     console.log("Per-phase durations:");
     for (const phase of allPhases) {
@@ -975,7 +991,9 @@ pipelineCommand
   .option("--stories <path>", "Path to stories file")
   .option("--architecture <path>", "Path to architecture doc")
   .action(async (title: string, opts: { stories?: string; architecture?: string }) => {
-    const { PIPELINE_ROLES, resolvePromptForRole, checkSkillInstalled } = await import("./engine/roles.js");
+    const { PIPELINE_ROLES, resolvePromptForRole, checkSkillInstalled } = await import(
+      "./engine/roles.js"
+    );
     const { SKILL_CONTRACTS, validateContract } = await import("./engine/skill-contract.js");
     const { GATE_CONFIGS, gatesForPhase } = await import("./engine/retry-engine.js");
 
@@ -989,18 +1007,16 @@ pipelineCommand
 
     // Phase plan
     console.log("\n## Phases\n");
-    const roles: Array<"brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge"> = [
-      "brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge",
-    ];
+    const roles: Array<
+      "brainstorm" | "stories" | "scaffold" | "test" | "impl" | "redteam" | "merge"
+    > = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"];
 
     for (const role of roles) {
       const config = PIPELINE_ROLES[role];
       const { usingSkill } = resolvePromptForRole(role);
       const mode = usingSkill ? `skill: ${config.skill}` : "fallback prompt";
       const gates = gatesForPhase(role);
-      const gateInfo = gates.length > 0
-        ? ` → gates: ${gates.map((g) => g.id).join(", ")}`
-        : "";
+      const gateInfo = gates.length > 0 ? ` → gates: ${gates.map((g) => g.id).join(", ")}` : "";
       console.log(`  ${config.label.padEnd(16)} [${mode}]${gateInfo}`);
     }
 
@@ -1037,7 +1053,9 @@ pipelineCommand
     // Retry loops
     console.log("\n## Retry Loops\n");
     for (const gate of GATE_CONFIGS) {
-      console.log(`  ${gate.id.padEnd(16)} retry: ${gate.retryRole} (max ${gate.maxRetries}x) → escalation: human`);
+      console.log(
+        `  ${gate.id.padEnd(16)} retry: ${gate.retryRole} (max ${gate.maxRetries}x) → escalation: human`,
+      );
     }
 
     // Toolkit status
@@ -1045,7 +1063,9 @@ pipelineCommand
     const plugins = ["deep-thought", "marvin"];
     for (const plugin of plugins) {
       const installed = checkSkillInstalled(`${plugin}:check`);
-      console.log(`  ${plugin.padEnd(16)} ${installed ? "✓ installed" : "✗ not installed (using fallback prompts)"}`);
+      console.log(
+        `  ${plugin.padEnd(16)} ${installed ? "✓ installed" : "✗ not installed (using fallback prompts)"}`,
+      );
     }
 
     console.log(`\n${"─".repeat(60)}`);
@@ -2536,7 +2556,8 @@ workflowCommand
 
     const phaseTemplate = DEFAULT_PHASE_PROMPTS[opts.phase];
 
-    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const startCommand =
+      rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
 
     const result = spawnBackgroundAgent({
       localPath: rc.localPath,
@@ -2620,7 +2641,8 @@ workflowCommand
     const { fetchIssueAsync } = await import("./github.js");
 
     const issue = await fetchIssueAsync(rc.name, ref.issueNumber);
-    const startCommand = rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
+    const startCommand =
+      rc.claudeStartCommand ?? cfg.board?.claudeStartCommand ?? cfg.pipeline?.claudeStartCommand;
     const launchMode = cfg.board?.claudeLaunchMode ?? cfg.pipeline?.launchMode ?? "auto";
     const terminalApp = cfg.board?.claudeTerminalApp ?? cfg.pipeline?.terminalApp;
 
@@ -2901,10 +2923,14 @@ daemonCommand
       // Force-clean PID file and socket in case shutdown handler didn't run
       try {
         if (existsSync(PID_FILE)) rmSync(PID_FILE);
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
       try {
         if (existsSync(SOCKET_PATH)) rmSync(SOCKET_PATH);
-      } catch { /* best-effort */ }
+      } catch {
+        /* best-effort */
+      }
 
       console.log(`Daemon stopped (pid: ${pid}).`);
     } else {
@@ -2936,11 +2962,15 @@ daemonCommand
 
       for (const line of recent) {
         try {
-          const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+          const entry = JSON.parse(line) as {
+            timestamp: string;
+            event: string;
+            data: Record<string, unknown>;
+          };
           const time = entry.timestamp.slice(11, 19);
-          const phase = entry.data["phase"] as string ?? "";
-          const tool = entry.data["toolName"] as string ?? "";
-          const text = entry.data["text"] as string ?? "";
+          const phase = (entry.data["phase"] as string) ?? "";
+          const tool = (entry.data["toolName"] as string) ?? "";
+          const text = (entry.data["text"] as string) ?? "";
           const summary = tool || (text ? text.slice(0, 100) : "");
 
           console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
@@ -2962,14 +2992,20 @@ daemonCommand
           const newContent = content.slice(lastSize);
           for (const line of newContent.trim().split("\n").filter(Boolean)) {
             try {
-              const entry = JSON.parse(line) as { timestamp: string; event: string; data: Record<string, unknown> };
+              const entry = JSON.parse(line) as {
+                timestamp: string;
+                event: string;
+                data: Record<string, unknown>;
+              };
               const time = entry.timestamp.slice(11, 19);
-              const phase = entry.data["phase"] as string ?? "";
-              const tool = entry.data["toolName"] as string ?? "";
-              const text = entry.data["text"] as string ?? "";
+              const phase = (entry.data["phase"] as string) ?? "";
+              const tool = (entry.data["toolName"] as string) ?? "";
+              const text = (entry.data["text"] as string) ?? "";
               const summary = tool || (text ? text.slice(0, 80) : "");
               console.log(`  ${time}  ${entry.event.padEnd(22)} ${phase.padEnd(10)} ${summary}`);
-            } catch { /* skip */ }
+            } catch {
+              /* skip */
+            }
           }
         }
         lastSize = content.length;

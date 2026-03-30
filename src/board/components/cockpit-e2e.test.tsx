@@ -3,9 +3,9 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import type { RepoConfig } from "../../config.js";
 import type { Pipeline } from "../../engine/conductor.js";
-import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { Question } from "../../engine/question-queue.js";
 import type { MergeQueueEntry } from "../../engine/refinery.js";
+import type { DaemonAgentInfo } from "../hooks/use-pipeline-data.js";
 import type { PipelineViewData } from "./pipeline-view.js";
 import { PipelineView } from "./pipeline-view.js";
 
@@ -110,10 +110,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows pipeline with 0% progress in list panel", () => {
       // List panel appears when there are 2+ pipelines
       const { lastFrame } = renderView({
-        pipelines: [
-          pipeline,
-          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
-        ],
+        pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
         agents: [agent],
       });
       const frame = lastFrame() ?? "";
@@ -158,10 +155,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows 17% progress (1/6 beads done) in list panel", () => {
       // List panel appears when there are 2+ pipelines
       const { lastFrame } = renderView({
-        pipelines: [
-          pipeline,
-          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
-        ],
+        pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
         agents: [agent],
       });
       const frame = lastFrame() ?? "";
@@ -243,10 +237,7 @@ describe("Cockpit E2E: User sees the right thing at every stage", () => {
     it("shows 100% progress in list panel", () => {
       // List panel appears when there are 2+ pipelines
       const { lastFrame } = renderView({
-        pipelines: [
-          pipeline,
-          makePipeline({ featureId: "feat-002", title: "Rate limiting" }),
-        ],
+        pipelines: [pipeline, makePipeline({ featureId: "feat-002", title: "Rate limiting" })],
       });
       const frame = lastFrame() ?? "";
       expect(frame).toContain("100%");

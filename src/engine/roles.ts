@@ -234,7 +234,7 @@ const skillAvailabilityCache = new Map<string, boolean>();
  */
 export function checkSkillInstalled(skillName: string): boolean {
   const [pluginName] = skillName.split(":");
-  if (!pluginName || !/^[a-z0-9_-]+$/i.test(pluginName)) return false;
+  if (!(pluginName && /^[a-z0-9_-]+$/i.test(pluginName))) return false;
 
   const cached = skillAvailabilityCache.get(pluginName);
   if (cached !== undefined) return cached;

@@ -259,10 +259,9 @@ async function runWizard(opts: InitOptions): Promise<void> {
     if (marvinOk && deepThoughtOk) {
       console.log("  ✓ Heart of Gold toolkit: marvin + deep-thought plugins installed\n");
     } else {
-      const missing = [
-        !marvinOk ? "marvin" : "",
-        !deepThoughtOk ? "deep-thought" : "",
-      ].filter(Boolean);
+      const missing = [!marvinOk ? "marvin" : "", !deepThoughtOk ? "deep-thought" : ""].filter(
+        Boolean,
+      );
       console.log(`  ⚠ Heart of Gold toolkit: ${missing.join(", ")} plugin(s) not found`);
       console.log("  Pipeline will use fallback prompts (no Stop hooks or knowledge dirs)\n");
       console.log("  To install:");

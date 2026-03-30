@@ -6,7 +6,7 @@
  * not by the orchestrator — keeping hog simple and skills standalone.
  */
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const STORY_ID_RE = /STORY-\d{3,}/g;

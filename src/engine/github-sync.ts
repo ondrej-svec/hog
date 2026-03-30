@@ -22,7 +22,15 @@ export interface GitHubSyncConfig {
 }
 
 /** Ordered pipeline phases for label cleanup. */
-const PHASE_ORDER: PipelineRole[] = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"];
+const PHASE_ORDER: PipelineRole[] = [
+  "brainstorm",
+  "stories",
+  "scaffold",
+  "test",
+  "impl",
+  "redteam",
+  "merge",
+];
 
 // ── GitHubSync ──
 

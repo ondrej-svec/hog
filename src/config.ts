@@ -153,7 +153,9 @@ const PIPELINE_CONFIG_SCHEMA = z.object({
   permissionMode: z
     .enum(["auto", "acceptEdits", "bypassPermissions"])
     .optional()
-    .describe("Claude Code permission mode for pipeline agents. Default: 'auto' (classifier-backed safety). 'bypassPermissions' only in isolated environments."),
+    .describe(
+      "Claude Code permission mode for pipeline agents. Default: 'auto' (classifier-backed safety). 'bypassPermissions' only in isolated environments.",
+    ),
   budget: z
     .object({
       perPipeline: z.number().optional(),
