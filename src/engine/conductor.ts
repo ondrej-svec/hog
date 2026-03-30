@@ -159,6 +159,8 @@ export class Conductor {
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  /** Pipelines currently processing agent completion — tick() skips them to prevent races. */
+  private readonly completionInProgress: Set<string> = new Set();
   private readonly pollIntervalMs: number;
   private readonly maxConcurrentPipelines: number;
   private readonly onPhaseCompleted?: ConductorOptions["onPhaseCompleted"];
@@ -532,6 +534,9 @@ export class Conductor {
    * Runs on every tick — all operations are idempotent.
    */
   private async healPipeline(pipeline: Pipeline): Promise<void> {
+    // Skip pipelines with ongoing agent completion — prevents reopening beads mid-completion
+    if (this.completionInProgress.has(pipeline.featureId)) return;
+
     // 1. Reconcile completedBeads from actual bead state
     try {
       let closedCount = 0;
@@ -943,6 +948,10 @@ export class Conductor {
 
   /** Check a single pipeline for ready beads and spawn agents. */
   private async tickPipeline(pipeline: Pipeline): Promise<void> {
+    // Skip pipelines with ongoing agent completion — prevents race conditions where
+    // tick sees reopened beads before onAgentCompleted finishes gate processing
+    if (this.completionInProgress.has(pipeline.featureId)) return;
+
     let readyBeads: Bead[];
     try {
       readyBeads = await this.beads.ready(pipeline.localPath);
@@ -1424,6 +1433,12 @@ export class Conductor {
     const beadId = this.roleToBeadId(pipeline, phase as PipelineRole);
     if (!beadId) return;
 
+    // Lock: prevent tick() from spawning agents or healing beads for this pipeline
+    // while we process gates and potentially reopen beads for retry.
+    // Released in the finally block at the end of this method.
+    this.completionInProgress.add(pipeline.featureId);
+    try {
+
     this.sessionToPipeline.delete(sessionId);
 
     // Capture worktree info now — submission to refinery deferred until gates pass
@@ -1602,9 +1617,11 @@ export class Conductor {
     }
 
     // Close the bead (all pre-close gates passed)
-    this.beads
-      .close(pipeline.localPath, beadId, `Completed by ${phase} agent`)
-      .then(async () => {
+    try {
+      await this.beads.close(pipeline.localPath, beadId, `Completed by ${phase} agent`);
+    } catch {
+      return; // try/finally releases the lock
+    }
         pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
         const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
         // Strip session markers (from user's CLAUDE.md) from agent summary
@@ -1798,10 +1815,10 @@ export class Conductor {
             );
           }
         }
-      })
-      .catch(() => {
-        // best-effort
-      });
+    } finally {
+      // Release completion lock — tick() can now process this pipeline again
+      this.completionInProgress.delete(pipeline.featureId);
+    }
   }
 
   private onAgentFailed(
@@ -1821,6 +1838,7 @@ export class Conductor {
 
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
+    if (featureId) this.completionInProgress.add(featureId);
     this.sessionToPipeline.delete(sessionId);
     this.persistSessionMaps();
 
@@ -1902,6 +1920,8 @@ export class Conductor {
         `${phaseLabel} failed ${failureCount} times — waiting for your decision`,
       );
     }
+    // Release completion lock
+    if (featureId) this.completionInProgress.delete(featureId);
   }
 
   // ── Helpers ──
