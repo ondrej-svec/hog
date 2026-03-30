@@ -437,10 +437,23 @@ export function Cockpit({ config }: CockpitProps) {
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-|-$/g, "");
                   const spec = description;
+                  const pipelineCtx = [
+                    `<hog_pipeline_context>`,
+                    `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
+                    `Feature ID: ${pipeline.featureId}`,
+                    ``,
+                    `After brainstorming, you MUST:`,
+                    `1. Write user stories to docs/stories/${slug}.md`,
+                    `2. Write architecture doc to docs/stories/${slug}.architecture.md`,
+                    `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
+                    ``,
+                    `Do NOT skip step 3 — the pipeline cannot advance without it.`,
+                    `</hog_pipeline_context>`,
+                  ].join("\n");
                   const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } =
                     resolvePromptForRole("brainstorm");
                   const brainstormPrompt = bsUsingSkill2
-                    ? `${resolvedBsPrompt2}\n\n${spec}`
+                    ? `${resolvedBsPrompt2}\n\n${spec}\n\n${pipelineCtx}`
                     : resolvedBsPrompt2
                         .replace(/\{title\}/g, pipeline.title)
                         .replace(/\{slug\}/g, slug)

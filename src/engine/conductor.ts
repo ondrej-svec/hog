@@ -1379,8 +1379,21 @@ export class Conductor {
     const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } =
       resolvePromptForRole("brainstorm");
     const spec = pipeline.description ?? bead.description ?? pipeline.title;
+    const pipelineContext = [
+      `<hog_pipeline_context>`,
+      `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
+      `Feature ID: ${pipeline.featureId}`,
+      ``,
+      `After brainstorming, you MUST:`,
+      `1. Write user stories to docs/stories/${slug}.md`,
+      `2. Write architecture doc to docs/stories/${slug}.architecture.md`,
+      `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
+      ``,
+      `Do NOT skip step 3 — the pipeline cannot advance without it.`,
+      `</hog_pipeline_context>`,
+    ].join("\n");
     const prompt = brainstormUsingSkill
-      ? `${resolvedBrainstormPrompt}\n\n${spec}`
+      ? `${resolvedBrainstormPrompt}\n\n${spec}\n\n${pipelineContext}`
       : resolvedBrainstormPrompt
           .replace(/\{title\}/g, pipeline.title)
           .replace(/\{slug\}/g, slug)
