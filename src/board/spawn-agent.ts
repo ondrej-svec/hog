@@ -183,6 +183,66 @@ export function writeResultFile(path: string, result: AgentResultFile): void {
   writeFileSync(path, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
 }
 
+// ── Environment Allowlist ──
+
+/**
+ * Allowlist of environment variable prefixes/names safe to pass to agents.
+ * Prevents secrets (API keys, tokens, credentials) from leaking to
+ * spawned agent processes that run with bypassPermissions.
+ */
+const ENV_ALLOWLIST = new Set([
+  "PATH",
+  "HOME",
+  "USER",
+  "SHELL",
+  "TERM",
+  "TERM_PROGRAM",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "EDITOR",
+  "VISUAL",
+  "TMPDIR",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_RUNTIME_DIR",
+  "NODE_ENV",
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NPM_CONFIG_PREFIX",
+  "NVM_DIR",
+  "VOLTA_HOME",
+  "FNM_DIR",
+  "SSH_AUTH_SOCK",
+  "DISPLAY",
+  "COLORTERM",
+  "FORCE_COLOR",
+  "NO_COLOR",
+  "CLICOLOR",
+  "CLICOLOR_FORCE",
+]);
+
+/** Prefix patterns — any env var starting with these is allowed. */
+const ENV_PREFIX_ALLOWLIST = ["npm_config_", "npm_package_"];
+
+/** Return a filtered copy of process.env with only safe variables. */
+export function safeEnv(): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (ENV_ALLOWLIST.has(key)) {
+      result[key] = value;
+      continue;
+    }
+    const lower = key.toLowerCase();
+    if (ENV_PREFIX_ALLOWLIST.some((prefix) => lower.startsWith(prefix))) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 // ── Spawn ──
 
 /** Spawn a background Claude agent process. Returns child process handle and PID. */
@@ -234,7 +294,7 @@ export function spawnBackgroundAgent(opts: SpawnAgentOptions): SpawnResult {
     cwd: opts.localPath,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...safeEnv(),
       HOG_REPO: opts.repoFullName,
       HOG_ISSUE: String(opts.issueNumber),
       ...opts.env,

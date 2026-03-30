@@ -11,12 +11,12 @@ describe("MemoryBeadsClient", () => {
   it("creates a feature DAG with 6 beads", async () => {
     const client = new MemoryBeadsClient();
     const dag = await client.createFeatureDAG("/tmp", "Test feature", "A test");
-    expect(dag.brainstorm.id).toBeDefined();
-    expect(dag.stories.id).toBeDefined();
-    expect(dag.tests.id).toBeDefined();
-    expect(dag.impl.id).toBeDefined();
-    expect(dag.redteam.id).toBeDefined();
-    expect(dag.merge.id).toBeDefined();
+    expect(dag["brainstorm"]!.id).toBeDefined();
+    expect(dag["stories"]!.id).toBeDefined();
+    expect(dag["tests"]!.id).toBeDefined();
+    expect(dag["impl"]!.id).toBeDefined();
+    expect(dag["redteam"]!.id).toBeDefined();
+    expect(dag["merge"]!.id).toBeDefined();
   });
 
   it("only brainstorm is ready initially (dependencies block others)", async () => {
@@ -24,27 +24,27 @@ describe("MemoryBeadsClient", () => {
     const dag = await client.createFeatureDAG("/tmp", "Test", "");
     const ready = await client.ready("");
     const readyIds = ready.map((b) => b.id);
-    expect(readyIds).toContain(dag.brainstorm.id);
-    expect(readyIds).not.toContain(dag.stories.id);
-    expect(readyIds).not.toContain(dag.tests.id);
+    expect(readyIds).toContain(dag["brainstorm"]!.id);
+    expect(readyIds).not.toContain(dag["stories"]!.id);
+    expect(readyIds).not.toContain(dag["tests"]!.id);
   });
 
   it("closing brainstorm unblocks stories", async () => {
     const client = new MemoryBeadsClient();
     const dag = await client.createFeatureDAG("/tmp", "Test", "");
-    await client.close("", dag.brainstorm.id, "done");
+    await client.close("", dag["brainstorm"]!.id, "done");
 
     const ready = await client.ready("");
     const readyIds = ready.map((b) => b.id);
-    expect(readyIds).toContain(dag.stories.id);
-    expect(readyIds).not.toContain(dag.tests.id);
+    expect(readyIds).toContain(dag["stories"]!.id);
+    expect(readyIds).not.toContain(dag["tests"]!.id);
   });
 
   it("claim sets status to in_progress", async () => {
     const client = new MemoryBeadsClient();
     const dag = await client.createFeatureDAG("/tmp", "Test", "");
-    await client.claim("", dag.brainstorm.id);
-    const bead = await client.show("", dag.brainstorm.id);
+    await client.claim("", dag["brainstorm"]!.id);
+    const bead = await client.show("", dag["brainstorm"]!.id);
     expect(bead.status).toBe("in_progress");
   });
 
@@ -52,13 +52,13 @@ describe("MemoryBeadsClient", () => {
     const client = new MemoryBeadsClient();
     const dag = await client.createFeatureDAG("/tmp", "Test", "");
     const order = [
-      dag.brainstorm,
-      dag.stories,
-      dag.scaffold,
-      dag.tests,
-      dag.impl,
-      dag.redteam,
-      dag.merge,
+      dag["brainstorm"]!,
+      dag["stories"]!,
+      dag["scaffold"]!,
+      dag["tests"]!,
+      dag["impl"]!,
+      dag["redteam"]!,
+      dag["merge"]!,
     ];
 
     for (const bead of order) {

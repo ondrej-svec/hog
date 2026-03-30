@@ -396,7 +396,7 @@ export class HogDaemon {
       try {
         await this.engine.beads.close(
           targetRepo.localPath ?? "",
-          result.beadIds.brainstorm,
+          result.beadIds["brainstorm"] ?? "",
           "Brainstorm completed in session",
         );
       } catch {
@@ -423,15 +423,11 @@ export class HogDaemon {
 
     // If no active phase set, find the first open bead
     if (!phase) {
-      const beadIdToPhase: Record<string, string> = {
-        [pipeline.beadIds.brainstorm]: "brainstorm",
-        [pipeline.beadIds.stories]: "stories",
-        ...(pipeline.beadIds.scaffold ? { [pipeline.beadIds.scaffold]: "scaffold" } : {}),
-        [pipeline.beadIds.tests]: "test",
-        [pipeline.beadIds.impl]: "impl",
-        [pipeline.beadIds.redteam]: "redteam",
-        [pipeline.beadIds.merge]: "merge",
-      };
+      // Build reverse lookup: bead ID → phase name (data-driven, not hardcoded)
+      const beadIdToPhase: Record<string, string> = {};
+      for (const [key, id] of Object.entries(pipeline.beadIds)) {
+        if (id) beadIdToPhase[id] = key === "tests" ? "test" : key;
+      }
       try {
         for (const [beadId, phaseName] of Object.entries(beadIdToPhase)) {
           const bead = await this.engine.beads.show(pipeline.localPath, beadId);
@@ -449,15 +445,11 @@ export class HogDaemon {
       }
     }
 
-    const beadIdMap: Record<string, string> = {
-      brainstorm: pipeline.beadIds.brainstorm,
-      stories: pipeline.beadIds.stories,
-      scaffold: pipeline.beadIds.scaffold,
-      test: pipeline.beadIds.tests,
-      impl: pipeline.beadIds.impl,
-      redteam: pipeline.beadIds.redteam,
-      merge: pipeline.beadIds.merge,
-    };
+    // Build phase → bead ID lookup (data-driven)
+    const beadIdMap: Record<string, string> = {};
+    for (const [key, id] of Object.entries(pipeline.beadIds)) {
+      if (id) beadIdMap[key === "tests" ? "test" : key] = id;
+    }
 
     const beadId = beadIdMap[phase];
     if (!beadId) {

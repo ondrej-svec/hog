@@ -29,6 +29,13 @@ const BEAD_SCHEMA = z.object({
 
 export type Bead = z.infer<typeof BEAD_SCHEMA>;
 
+/** DAG node definition for custom pipeline topologies. */
+export interface DagNode {
+  readonly id: string;
+  readonly label: string;
+  readonly dependsOn: readonly string[];
+}
+
 const BEAD_DEPENDENCY_SCHEMA = z.object({
   depends_on_id: z.string(),
   type: z.enum([
@@ -381,14 +388,53 @@ export class BeadsClient {
     return BEAD_SCHEMA.parse(item);
   }
 
-  /** Update a bead's status. */
+  /**
+   * Update a bead's status. For open transitions, handles the bd state machine:
+   * - closed → open: uses `bd reopen`
+   * - in_progress → open: closes first, then reopens (bd doesn't support direct unclaim)
+   */
   async updateStatus(cwd: string, beadId: string, status: string): Promise<void> {
-    await runBdAsync(["update", beadId, "--status", status], cwd);
+    if (status === "open") {
+      // First attempt: bd reopen (works for closed → open)
+      try {
+        await runBdAsync(["reopen", beadId], cwd);
+        return;
+      } catch {
+        // May fail if bead is in_progress, not closed
+      }
+      // Second attempt: close first, then reopen (in_progress → closed → open)
+      try {
+        await this.close(cwd, beadId, "Gate failed — reopening for retry");
+      } catch {
+        // Close may also fail — try update --status as fallback
+      }
+      // Now try reopen again (bead should be closed now)
+      try {
+        await runBdAsync(["reopen", beadId], cwd);
+      } catch {
+        // Last resort
+        await runBdAsync(["update", beadId, "--status", status], cwd);
+      }
+    } else {
+      await runBdAsync(["update", beadId, "--status", status], cwd);
+    }
   }
 
   /** Claim a bead (atomically set assignee + in_progress). */
   async claim(cwd: string, beadId: string): Promise<void> {
-    await runBdAsync(["update", beadId, "--claim"], cwd);
+    try {
+      await runBdAsync(["update", beadId, "--claim"], cwd);
+    } catch (err) {
+      // Only retry on "already claimed" errors (e.g., after gate retry close+reopen).
+      // Let other errors (infra, network) propagate.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("already claimed") || msg.includes("claimed")) {
+        await runBdAsync(["update", beadId, "--assignee", ""], cwd);
+        await runBdAsync(["update", beadId, "--claim"], cwd);
+      } else {
+        throw err;
+      }
+    }
   }
 
   /** Close a bead with a reason. */
@@ -397,7 +443,11 @@ export class BeadsClient {
   }
 
   /** Store structured metadata on a bead (JSON). */
-  async updateMetadata(cwd: string, beadId: string, metadata: Record<string, unknown>): Promise<void> {
+  async updateMetadata(
+    cwd: string,
+    beadId: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
     await runBdAsync(["update", beadId, "--notes", JSON.stringify(metadata)], cwd);
   }
 
@@ -435,9 +485,7 @@ export class BeadsClient {
   async cleanupOrphanedBeads(cwd: string): Promise<number> {
     try {
       const allBeads = await this.ready(cwd);
-      const orphans = allBeads.filter(
-        (b) => b.title.match(/^\[hog:/) && b.status !== "closed",
-      );
+      const orphans = allBeads.filter((b) => b.title.match(/^\[hog:/) && b.status !== "closed");
       let closed = 0;
       for (const orphan of orphans) {
         try {
@@ -460,82 +508,62 @@ export class BeadsClient {
   }
 
   /**
-   * Create a feature DAG: a standard bead dependency graph for a feature.
+   * DAG node definition for custom topologies.
+   */
+  static readonly DEFAULT_TOPOLOGY: readonly DagNode[] = [
+    { id: "brainstorm", label: "brainstorm", dependsOn: [] },
+    { id: "stories", label: "stories", dependsOn: ["brainstorm"] },
+    { id: "scaffold", label: "scaffold", dependsOn: ["stories"] },
+    { id: "tests", label: "test", dependsOn: ["scaffold"] },
+    { id: "impl", label: "impl", dependsOn: ["tests"] },
+    { id: "redteam", label: "redteam", dependsOn: ["impl"] },
+    { id: "merge", label: "merge", dependsOn: ["redteam"] },
+  ];
+
+  /**
+   * Create a feature DAG from a topology definition.
    *
-   * Creates: brainstorm → stories → scaffold → tests → impl → redteam → merge beads
-   * with blocking dependencies between each phase.
+   * Default topology: brainstorm → stories → scaffold → tests → impl → redteam → merge
+   * Custom topologies allow parallel nodes, fan-in, and additional phases.
    */
   async createFeatureDAG(
     cwd: string,
     featureTitle: string,
     featureDescription: string,
-  ): Promise<{
-    brainstorm: Bead;
-    stories: Bead;
-    scaffold: Bead;
-    tests: Bead;
-    impl: Bead;
-    redteam: Bead;
-    merge: Bead;
-  }> {
+    topology?: readonly DagNode[],
+  ): Promise<Record<string, Bead>> {
     // Clean up orphaned beads from previous pipelines before creating new ones
     await this.cleanupOrphanedBeads(cwd);
+
+    const nodes = topology ?? BeadsClient.DEFAULT_TOPOLOGY;
 
     // Truncate title for bead names (bd doesn't handle very long titles well)
     const shortTitle = featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
 
-    const brainstorm = await this.create(cwd, {
-      title: `[hog:brainstorm] ${shortTitle}`,
-      description: featureDescription,
-      type: "task",
-      priority: 1,
-    });
+    // Create all beads
+    const beadMap: Record<string, Bead> = {};
+    for (const node of nodes) {
+      const isFirst = node.id === nodes[0]?.id;
+      const bead = await this.create(cwd, {
+        title: `[hog:${node.label}] ${shortTitle}`,
+        ...(isFirst ? { description: featureDescription } : {}),
+        type: "task",
+        priority: node.label === "redteam" ? 2 : 1,
+      });
+      beadMap[node.id] = bead;
+    }
 
-    const stories = await this.create(cwd, {
-      title: `[hog:stories] ${shortTitle}`,
-      description: featureDescription,
-      type: "task",
-      priority: 1,
-    });
+    // Set up blocking dependencies
+    for (const node of nodes) {
+      for (const depId of node.dependsOn) {
+        const childBead = beadMap[node.id];
+        const parentBead = beadMap[depId];
+        if (childBead && parentBead) {
+          await this.addDependency(cwd, childBead.id, parentBead.id, "blocks");
+        }
+      }
+    }
 
-    const scaffold = await this.create(cwd, {
-      title: `[hog:scaffold] ${shortTitle}`,
-      type: "task",
-      priority: 1,
-    });
-
-    const tests = await this.create(cwd, {
-      title: `[hog:test] ${shortTitle}`,
-      type: "task",
-      priority: 1,
-    });
-
-    const impl = await this.create(cwd, {
-      title: `[hog:impl] ${shortTitle}`,
-      type: "task",
-      priority: 1,
-    });
-
-    const redteam = await this.create(cwd, {
-      title: `[hog:redteam] ${shortTitle}`,
-      type: "task",
-      priority: 2,
-    });
-
-    const merge = await this.create(cwd, {
-      title: `[hog:merge] ${shortTitle}`,
-      type: "task",
-      priority: 1,
-    });
-
-    // Set up blocking dependencies: brainstorm → stories → scaffold → tests → impl → redteam → merge
-    await this.addDependency(cwd, stories.id, brainstorm.id, "blocks");
-    await this.addDependency(cwd, scaffold.id, stories.id, "blocks");
-    await this.addDependency(cwd, tests.id, scaffold.id, "blocks");
-    await this.addDependency(cwd, impl.id, tests.id, "blocks");
-    await this.addDependency(cwd, redteam.id, impl.id, "blocks");
-    await this.addDependency(cwd, merge.id, redteam.id, "blocks");
-
-    return { brainstorm, stories, scaffold, tests, impl, redteam, merge };
+    return beadMap;
   }
 }

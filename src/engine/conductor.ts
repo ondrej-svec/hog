@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
@@ -15,13 +16,23 @@ import {
   saveQuestionQueue,
 } from "./question-queue.js";
 import type { Refinery } from "./refinery.js";
+import type { EscalationAction, RetryAction } from "./retry-engine.js";
+import { evaluateGate, GATE_CONFIGS } from "./retry-engine.js";
 import { writeRoleClaudeMd } from "./role-context.js";
 import type { PipelineRole } from "./roles.js";
 import { beadToRole, PIPELINE_ROLES, resolvePromptForRole } from "./roles.js";
-import { getSkillContract, resolveOutputPaths, validateContract, wirePhaseInputs } from "./skill-contract.js";
+import {
+  getSkillContract,
+  resolveOutputPaths,
+  validateContract,
+  wirePhaseInputs,
+} from "./skill-contract.js";
 import { checkSummaryForFailure } from "./summary-parser.js";
 import { checkTraceability, verifyRedState } from "./tdd-enforcement.js";
 import type { WorktreeManager } from "./worktree.js";
+
+// Gate config lookup by ID for quick access in runGate()
+const GATE_CONFIGS_LOOKUP = Object.fromEntries(GATE_CONFIGS.map((g) => [g.id, g]));
 
 // ── Types ──
 
@@ -35,15 +46,7 @@ export interface Pipeline {
   readonly repo: string;
   readonly localPath: string;
   readonly repoConfig: RepoConfig;
-  readonly beadIds: {
-    brainstorm: string;
-    stories: string;
-    scaffold: string;
-    tests: string;
-    impl: string;
-    redteam: string;
-    merge: string;
-  };
+  readonly beadIds: Record<string, string>;
   status: PipelineStatus;
   /** Number of completed (closed) beads out of 7. Updated by conductor tick. */
   completedBeads: number;
@@ -79,7 +82,7 @@ export interface RetryFeedback {
 }
 
 // Retry loop configuration lives in retry-engine.ts (GATE_CONFIGS).
-// The conductor's inline retry logic will be replaced by the engine in Phase 2.
+// Gate evaluation is handled by evaluateGate() — conductor applies the side effects.
 
 /** Shared context between pipeline stages. Grows as stages complete. */
 export interface PipelineContext {
@@ -151,7 +154,8 @@ export class Conductor {
   /** Maps session IDs to pipeline feature IDs for correct completion routing. */
   private readonly sessionToPipeline: Map<string, string> = new Map();
   /** Test baselines captured before impl agent runs — for diff-based GREEN verification. */
-  private readonly testBaselines: Map<string, import("./tdd-enforcement.js").TestBaseline> = new Map();
+  private readonly testBaselines: Map<string, import("./tdd-enforcement.js").TestBaseline> =
+    new Map();
   private questionQueue: QuestionQueue;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
@@ -244,11 +248,7 @@ export class Conductor {
       const pipeline = this.store.get(event.featureId);
       if (!pipeline) return;
 
-      this.log(
-        pipeline.featureId,
-        `refinery:merged:${event.role ?? "unknown"}`,
-        event.description,
-      );
+      this.log(pipeline.featureId, `refinery:merged:${event.role ?? "unknown"}`, event.description);
     });
   }
 
@@ -389,15 +389,9 @@ export class Conductor {
       repo,
       localPath: repoConfig.localPath,
       repoConfig,
-      beadIds: {
-        brainstorm: dag.brainstorm.id,
-        stories: dag.stories.id,
-        scaffold: dag.scaffold.id,
-        tests: dag.tests.id,
-        impl: dag.impl.id,
-        redteam: dag.redteam.id,
-        merge: dag.merge.id,
-      },
+      beadIds: Object.fromEntries(
+        Object.entries(dag).map(([key, bead]) => [key, bead.id]),
+      ),
       status: "running",
       completedBeads: 0,
       activePhase: "brainstorm",
@@ -568,17 +562,10 @@ export class Conductor {
         }
       } else {
         // No agents running — find the next ready phase from bead state
-        const phaseOrder: Array<[string, PipelineRole]> = [
-          ["brainstorm", "brainstorm"],
-          ["stories", "stories"],
-          ["scaffold", "scaffold"],
-          ["tests", "test"],
-          ["impl", "impl"],
-          ["redteam", "redteam"],
-          ["merge", "merge"],
-        ];
+        // Data-driven: iterate over pipeline's actual bead keys
         let nextPhase: string | undefined;
-        for (const [beadKey, role] of phaseOrder) {
+        for (const beadKey of Object.keys(pipeline.beadIds)) {
+          const role = beadKey === "tests" ? "test" : beadKey;
           const status = beadStatuses[beadKey];
           if (status === "in_progress" || status === "open") {
             nextPhase = role;
@@ -611,7 +598,9 @@ export class Conductor {
   }
 
   /** Find agents that belong to a specific pipeline. */
-  private getActiveAgentsForPipeline(featureId: string): Array<{ sessionId: string; phase: string }> {
+  private getActiveAgentsForPipeline(
+    featureId: string,
+  ): Array<{ sessionId: string; phase: string }> {
     const result: Array<{ sessionId: string; phase: string }> = [];
     for (const [sessionId, pipelineId] of this.sessionToPipeline) {
       if (pipelineId !== featureId) continue;
@@ -661,11 +650,11 @@ export class Conductor {
     if (!ctx) return undefined;
 
     const lines: string[] = [];
+    let hasContext = false;
 
     // impl, redteam, merge need test context
     if ((role === "impl" || role === "redteam" || role === "merge") && ctx.testCommand) {
-      lines.push("");
-      lines.push("<prior_stage_context>");
+      if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
       lines.push("<test_environment>");
       if (ctx.testCommand) {
         lines.push(`  <test_command>${ctx.testCommand}</test_command>`);
@@ -691,20 +680,34 @@ export class Conductor {
 
     // impl and redteam get summaries from earlier phases
     if ((role === "impl" || role === "redteam") && ctx.phaseSummaries) {
+      if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
       const relevantPhases = role === "impl" ? ["test"] : ["test", "impl"];
       for (const phase of relevantPhases) {
         const summary = ctx.phaseSummaries[phase];
         if (summary) {
-          lines.push(`<phase_summary phase="${phase}">${summary.slice(0, 300)}</phase_summary>`);
+          lines.push(`<phase_summary phase="${phase}">${summary.slice(0, 2000)}</phase_summary>`);
         }
       }
     }
 
-    if (lines.length > 0) {
+    // impl gets inline architecture doc content (don't make the agent discover it)
+    if (role === "impl" && pipeline.architecturePath && existsSync(pipeline.architecturePath)) {
+      if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
+      try {
+        const archContent = readFileSync(pipeline.architecturePath, "utf-8").slice(0, 3000);
+        lines.push(`<architecture path="${pipeline.architecturePath}">`);
+        lines.push(archContent);
+        lines.push("</architecture>");
+      } catch {
+        // Architecture doc not readable — agent will read it from path
+      }
+    }
+
+    if (hasContext) {
       lines.push("</prior_stage_context>");
     }
 
-    return lines.length > 0 ? lines.join("\n") : undefined;
+    return hasContext ? lines.join("\n") : undefined;
   }
 
   /**
@@ -721,16 +724,33 @@ export class Conductor {
 
     if (!pipeline.context) pipeline.context = {};
 
+    // On retry after gate rejection, recapture — test writer committed new files.
+    // On first run with pre-existing testFiles, preserve them.
+    const isRetry = pipeline.context.retryFeedback && (
+      pipeline.context.retryFeedback["spec-quality"] ??
+      pipeline.context.retryFeedback["coverage-gate"]
+    );
+    if (!isRetry && pipeline.context.testFiles && pipeline.context.testFiles.length > 0) return;
+
     // 1. Find test files via git diff
     try {
-      const { stdout } = await execFileAsync("git", ["diff", "--name-only", "--diff-filter=A", "HEAD~1", "HEAD"], {
-        cwd,
-        encoding: "utf-8",
-        timeout: 10_000,
-      });
+      const { stdout } = await execFileAsync(
+        "git",
+        ["diff", "--name-only", "--diff-filter=A", "HEAD~1", "HEAD"],
+        {
+          cwd,
+          encoding: "utf-8",
+          timeout: 10_000,
+        },
+      );
       const newFiles = stdout.trim().split("\n").filter(Boolean);
-      const testFiles = newFiles.filter((f) =>
-        f.includes("test") || f.endsWith(".test.ts") || f.endsWith(".test.py") || f.endsWith("_test.py") || f.endsWith("_test.go"),
+      const testFiles = newFiles.filter(
+        (f) =>
+          f.includes("test") ||
+          f.endsWith(".test.ts") ||
+          f.endsWith(".test.py") ||
+          f.endsWith("_test.py") ||
+          f.endsWith("_test.go"),
       );
       if (testFiles.length > 0) {
         pipeline.context.testFiles = testFiles;
@@ -760,13 +780,38 @@ export class Conductor {
     try {
       const { stdout } = await execFileAsync(
         "find",
-        [cwd, "-maxdepth", "4", "-name", "vitest.config.*", "-o", "-name", "jest.config.*", "-o", "-name", "pytest.ini", "-o", "-name", "pyproject.toml", "-o", "-name", "Cargo.toml", "-o", "-name", "go.mod"],
+        [
+          cwd,
+          "-maxdepth",
+          "4",
+          "-name",
+          "vitest.config.*",
+          "-o",
+          "-name",
+          "jest.config.*",
+          "-o",
+          "-name",
+          "pytest.ini",
+          "-o",
+          "-name",
+          "pyproject.toml",
+          "-o",
+          "-name",
+          "Cargo.toml",
+          "-o",
+          "-name",
+          "go.mod",
+        ],
         { cwd, encoding: "utf-8", timeout: 10_000 },
       );
       const configFiles = stdout.trim().split("\n").filter(Boolean);
 
       for (const configFile of configFiles) {
-        const relDir = configFile.replace(cwd + "/", "").split("/").slice(0, -1).join("/");
+        const relDir = configFile
+          .replace(cwd + "/", "")
+          .split("/")
+          .slice(0, -1)
+          .join("/");
         const cdPrefix = relDir ? `cd ${relDir} && ` : "";
 
         if (configFile.includes("vitest.config")) {
@@ -800,7 +845,8 @@ export class Conductor {
     }
 
     // 3. Store context on the bead metadata
-    const beadId = pipeline.beadIds.tests;
+    const beadId = pipeline.beadIds["tests"];
+    if (!beadId) return;
     try {
       await this.beads.updateMetadata(pipeline.localPath, beadId, {
         testCommand: pipeline.context.testCommand,
@@ -821,9 +867,7 @@ export class Conductor {
   }
 
   /** Detect stub/scaffolding patterns in recently changed files. */
-  private async detectStubs(
-    cwd: string,
-  ): Promise<{ stubRatio: number; stubFiles: string[] }> {
+  private async detectStubs(cwd: string): Promise<{ stubRatio: number; stubFiles: string[] }> {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const { readFileSync } = await import("node:fs");
@@ -837,7 +881,10 @@ export class Conductor {
         encoding: "utf-8",
         timeout: 10_000,
       });
-      changedFiles = stdout.trim().split("\n").filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+      changedFiles = stdout
+        .trim()
+        .split("\n")
+        .filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
     } catch {
       // No commits or git error — check unstaged changes
       try {
@@ -846,7 +893,10 @@ export class Conductor {
           encoding: "utf-8",
           timeout: 10_000,
         });
-        changedFiles = stdout.trim().split("\n").filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
+        changedFiles = stdout
+          .trim()
+          .split("\n")
+          .filter((f) => f.endsWith(".ts") || f.endsWith(".js"));
       } catch {
         return { stubRatio: 0, stubFiles: [] };
       }
@@ -933,14 +983,14 @@ export class Conductor {
   }
 
   /** Spawn an agent for a specific role. */
-  private async spawnForRole(
-    pipeline: Pipeline,
-    bead: Bead,
-    role: PipelineRole,
-  ): Promise<void> {
+  private async spawnForRole(pipeline: Pipeline, bead: Bead, role: PipelineRole): Promise<void> {
     const roleConfig = PIPELINE_ROLES[role];
 
-    this.log(pipeline.featureId, `agent:preparing:${role}`, `Preparing to spawn ${roleConfig.label}`);
+    this.log(
+      pipeline.featureId,
+      `agent:preparing:${role}`,
+      `Preparing to spawn ${roleConfig.label}`,
+    );
 
     // Brainstorm is a HUMAN activity — only launched by the user pressing Z
     // in the cockpit. The watcher/conductor never auto-launches it.
@@ -966,7 +1016,11 @@ export class Conductor {
           "phase:skipped:stories",
           `Stories already exist (from brainstorm) — advancing to scaffold`,
         );
-        await this.beads.close(pipeline.localPath, bead.id, "Stories already written by brainstorm");
+        await this.beads.close(
+          pipeline.localPath,
+          bead.id,
+          "Stories already written by brainstorm",
+        );
         pipeline.completedBeads = Math.min(7, pipeline.completedBeads + 1);
         this.store.save();
         return;
@@ -998,7 +1052,8 @@ export class Conductor {
         }
         // Re-open the test bead so tests get rewritten
         try {
-          await this.beads.updateStatus(pipeline.localPath, pipeline.beadIds.tests, "open");
+          const testBeadId = pipeline.beadIds["tests"];
+          if (testBeadId) await this.beads.updateStatus(pipeline.localPath, testBeadId, "open");
         } catch {
           // best-effort
         }
@@ -1018,7 +1073,8 @@ export class Conductor {
         // Traceability check (only once with RED verification)
         try {
           const { checkTraceability } = await import("./tdd-enforcement.js");
-          const traceStoriesPath = pipeline.storiesPath ?? join(pipeline.localPath, "docs", "stories");
+          const traceStoriesPath =
+            pipeline.storiesPath ?? join(pipeline.localPath, "docs", "stories");
           const traceability = await checkTraceability(testCwd, traceStoriesPath);
           if (traceability.uncoveredStories.length > 0) {
             this.log(
@@ -1065,8 +1121,7 @@ export class Conductor {
       findStoriesFile(pipeline.localPath, slug) ??
       `docs/stories/${slug}.md`;
     const archPath =
-      pipeline.architecturePath ??
-      resolvedStoriesPath.replace(/\.md$/, ".architecture.md");
+      pipeline.architecturePath ?? resolvedStoriesPath.replace(/\.md$/, ".architecture.md");
 
     // Resolve prompt: skill invocation (if toolkit installed) or fallback prompt
     const { prompt: resolvedPrompt, usingSkill } = resolvePromptForRole(role);
@@ -1076,6 +1131,19 @@ export class Conductor {
       // Skill prompt: slash command + explicit context in the prompt itself.
       // Env vars alone are unreliable — the agent may not check them.
       // Putting paths directly in the prompt ensures the skill sees them.
+      const implPlanStep = role === "impl"
+        ? [
+            "",
+            "BEFORE running /marvin:work, first:",
+            `1. Read the architecture doc at ${archPath}`,
+            `2. Read the stories at ${resolvedStoriesPath}`,
+            "3. Run the test suite to see all failing tests",
+            "4. Write .hog/impl-plan.md — a markdown plan with checkbox tasks grouped by story",
+            "   Each task references specific failing tests and architecture constraints.",
+            "   Acceptance criteria: All tests pass. No stubs. Architecture conformance verified.",
+            "5. Then run: /marvin:work .hog/impl-plan.md",
+          ]
+        : [];
       basePrompt = [
         resolvedPrompt,
         "",
@@ -1083,7 +1151,10 @@ export class Conductor {
         `Architecture doc: ${archPath}`,
         `Feature: ${pipeline.title}`,
         role === "merge" ? "Mode: merge readiness check (MERGE_CHECK=true)" : "",
-      ].filter(Boolean).join("\n");
+        ...implPlanStep,
+      ]
+        .filter(Boolean)
+        .join("\n");
     } else {
       // Fallback: substitute variables into the bundled prompt template
       basePrompt = resolvedPrompt
@@ -1099,10 +1170,25 @@ export class Conductor {
     const contextSection = this.buildContextSection(pipeline, role);
 
     // Inject retry context if this is a re-spawn (completeness gate feedback)
+    // Merge all feedback entries targeting this role (keyed by gate ID, not role)
     let retrySection = "";
-    const feedback = pipeline.context?.retryFeedback?.[role];
-    if (feedback) {
-      retrySection = `\n\n## Retry Context (attempt ${feedback.attempt})\n\nYour previous run did not complete all required work.\n\nIssue: ${feedback.reason}\nMissing: ${feedback.missing.slice(0, 20).join(", ")}\n\nPrevious agent's summary:\n> ${feedback.previousSummary.slice(0, 300)}\n\nFocus on completing the missing work. Do not redo work that was already done.\n`;
+    const allFeedback = pipeline.context?.retryFeedback;
+    if (allFeedback) {
+      const roleFeedback: RetryFeedback[] = [];
+      for (const [key, fb] of Object.entries(allFeedback)) {
+        // Match by gate ID → retryRole, or by legacy role key
+        const gateConfig = GATE_CONFIGS_LOOKUP[key];
+        if (gateConfig?.retryRole === role || key === role) {
+          roleFeedback.push(fb);
+        }
+      }
+      if (roleFeedback.length > 0) {
+        const maxAttempt = Math.max(...roleFeedback.map((f) => f.attempt));
+        const issues = roleFeedback.map((f) => f.reason).join("\n");
+        const missing = roleFeedback.flatMap((f) => f.missing).slice(0, 20).join(", ");
+        const lastSummary = roleFeedback[roleFeedback.length - 1]?.previousSummary ?? "";
+        retrySection = `\n\n## Retry Context (attempt ${maxAttempt})\n\nYour previous run did not complete all required work.\n\nIssues:\n${issues}\nMissing: ${missing}\n\nPrevious agent's summary:\n> ${lastSummary.slice(0, 300)}\n\nFocus on completing the missing work. Do not redo work that was already done.\n`;
+      }
     }
 
     const prompt = basePrompt + (contextSection ?? "") + retrySection;
@@ -1112,13 +1198,13 @@ export class Conductor {
       STORIES_PATH: resolvedStoriesPath,
       ARCH_PATH: archPath,
       FEATURE_ID: pipeline.featureId,
+      HOG_PIPELINE: "1",
     };
     if (role === "merge") {
       pipelineEnv["MERGE_CHECK"] = "true";
     }
     // BRAINSTORM_PATH is handled by contract-based wiring below (wirePhaseInputs).
     // Do NOT set it from phaseSummaries — that's a truncated summary string, not a file path.
-
 
     // Contract-based wiring: auto-wire outputs from previous phases as inputs
     const skillContract = usingSkill ? getSkillContract(roleConfig.skill) : undefined;
@@ -1233,7 +1319,8 @@ export class Conductor {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
 
-    const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } = resolvePromptForRole("brainstorm");
+    const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } =
+      resolvePromptForRole("brainstorm");
     const prompt = brainstormUsingSkill
       ? resolvedBrainstormPrompt
       : resolvedBrainstormPrompt
@@ -1323,6 +1410,17 @@ export class Conductor {
     const worktreeInfo = this.sessionWorktrees.get(sessionId);
     this.persistSessionMaps();
 
+    // ── Pre-close setup ──
+
+    // Capture test context early — spec-quality gate needs testFiles before bead close
+    if (phase === "test") {
+      try {
+        await this.captureTestContext(pipeline);
+      } catch {
+        // best-effort — don't block agent completion on context capture failure
+      }
+    }
+
     // ── Pre-close gates (run BEFORE closing the bead) ──
 
     // Gate: Summary sentiment — exit 0 ≠ success
@@ -1352,45 +1450,62 @@ export class Conductor {
       try {
         const traceability = await checkTraceability(pipeline.localPath, pipeline.storiesPath);
         const skipped = pipeline.context?.skippedStories ?? [];
-        const adjustedTotal = traceability.coveredStories.length + traceability.uncoveredStories.length - skipped.length;
-        const uncoveredCount = traceability.uncoveredStories.filter((s) => !skipped.includes(s)).length;
+        const adjustedTotal =
+          traceability.coveredStories.length +
+          traceability.uncoveredStories.length -
+          skipped.length;
+        const uncovered = traceability.uncoveredStories.filter((s) => !skipped.includes(s));
 
-        if (adjustedTotal > 0 && uncoveredCount / adjustedTotal > 0.25) {
-          const retryAttempt = (pipeline.context?.retryFeedback?.["test"]?.attempt ?? 0) + 1;
-          if (retryAttempt <= 2) {
-            if (!pipeline.context) pipeline.context = {};
-            if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
-            pipeline.context.retryFeedback["test"] = {
-              reason: `Story coverage: ${traceability.coveredStories.length}/${adjustedTotal} stories covered (${Math.round((1 - uncoveredCount / adjustedTotal) * 100)}%)`,
-              missing: traceability.uncoveredStories.filter((s) => !skipped.includes(s)).slice(0, 20),
-              previousSummary: summary?.slice(0, 300) ?? "",
-              attempt: retryAttempt,
-            };
-            this.log(
-              pipeline.featureId,
-              "gate:story-coverage:failed",
-              `${uncoveredCount}/${adjustedTotal} stories uncovered — reopening test phase (attempt ${retryAttempt}/2)`,
-            );
-            this.store.save();
-            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
-            return; // Don't close — retry
-          }
-          // Max retries — escalate to human
-          this.log(pipeline.featureId, "gate:story-coverage:exhausted", "Max retries reached. Escalating.");
-          const escResult = enqueueQuestion(this.questionQueue, {
-            featureId: pipeline.featureId,
-            question: `Test writer covered only ${traceability.coveredStories.length}/${adjustedTotal} stories after 2 attempts. Missing: ${traceability.uncoveredStories.slice(0, 5).join(", ")}`,
-            options: ["Retry tests", "Continue with partial coverage", "Cancel pipeline"],
-            source: "conductor",
-          });
-          this.questionQueue = escResult.queue;
-          saveQuestionQueue(this.questionQueue);
-          pipeline.status = "blocked";
-          this.store.save();
-          return;
+        if (adjustedTotal > 0 && uncovered.length / adjustedTotal > 0.25) {
+          const blocked = await this.runGate(
+            pipeline,
+            beadId,
+            "coverage-gate",
+            {
+              passed: false,
+              reason: `Story coverage: ${traceability.coveredStories.length}/${adjustedTotal} stories covered (${Math.round((1 - uncovered.length / adjustedTotal) * 100)}%)`,
+              missing: uncovered.slice(0, 20),
+            },
+            summary,
+            "retryFeedback",
+            "gate:story-coverage:failed",
+          );
+          if (blocked) return;
         }
       } catch {
         // Traceability check failed — proceed (don't block on check failure)
+      }
+    }
+
+    // Gate: Spec quality — after test phase, reject string-matching tests
+    if (phase === "test") {
+      try {
+        const testFiles = pipeline.context?.testFiles ?? [];
+        if (testFiles.length > 0) {
+          const { analyzeTestQuality } = await import("./tdd-enforcement.js");
+          const testCwd = pipeline.context?.workingDir
+            ? join(pipeline.localPath, pipeline.context.workingDir)
+            : pipeline.localPath;
+          const quality = analyzeTestQuality(testFiles, testCwd);
+          if (quality.ratio < 0.8 && quality.stringMatching.length > 0) {
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "spec-quality",
+              {
+                passed: false,
+                reason: `${quality.stringMatching.length}/${quality.stringMatching.length + quality.behavioral.length} test files are string-matching (readFileSync+toMatch), not behavioral (import+call). Tests must be tracer bullets that prove the architecture works.`,
+                missing: quality.stringMatching.slice(0, 20),
+              },
+              summary,
+              "retryFeedback",
+              "gate:spec-quality:failed",
+            );
+            if (blocked) return;
+          }
+        }
+      } catch {
+        // best-effort — don't block on analysis failure
       }
     }
 
@@ -1399,41 +1514,53 @@ export class Conductor {
       try {
         const stubResult = await this.detectStubs(pipeline.localPath);
         if (stubResult.stubRatio > 0.05) {
-          const retryAttempt = (pipeline.context?.retryFeedback?.["impl"]?.attempt ?? 0) + 1;
-          if (retryAttempt <= 2) {
-            if (!pipeline.context) pipeline.context = {};
-            if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
-            pipeline.context.retryFeedback["impl"] = {
+          const blocked = await this.runGate(
+            pipeline,
+            beadId,
+            "stub-gate",
+            {
+              passed: false,
               reason: `Stub detection: ${Math.round(stubResult.stubRatio * 100)}% of files appear to be scaffolding`,
               missing: stubResult.stubFiles.slice(0, 20),
-              previousSummary: summary?.slice(0, 300) ?? "",
-              attempt: retryAttempt,
-            };
-            this.log(
-              pipeline.featureId,
-              "gate:stub-detection:failed",
-              `${Math.round(stubResult.stubRatio * 100)}% stubs detected — reopening impl (attempt ${retryAttempt}/2)`,
-            );
-            this.store.save();
-            await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
-            return;
-          }
-          // Max retries exhausted — escalate to human
-          this.log(pipeline.featureId, "gate:stub-detection:exhausted", "Max retries reached. Escalating.");
-          const stubEscResult = enqueueQuestion(this.questionQueue, {
-            featureId: pipeline.featureId,
-            question: `Implementation still has ${Math.round(stubResult.stubRatio * 100)}% stubs after 2 attempts. Files: ${stubResult.stubFiles.slice(0, 5).join(", ")}`,
-            options: ["Retry impl", "Continue with stubs", "Cancel pipeline"],
-            source: "conductor",
-          });
-          this.questionQueue = stubEscResult.queue;
-          saveQuestionQueue(this.questionQueue);
-          pipeline.status = "blocked";
-          this.store.save();
-          return;
+            },
+            summary,
+            "retryFeedback",
+            "gate:stub-detection:failed",
+          );
+          if (blocked) return;
         }
       } catch {
         // best-effort
+      }
+    }
+
+    // Gate: Architecture conformance — after impl, verify arch doc is realized
+    if (phase === "impl" && pipeline.architecturePath) {
+      try {
+        const { checkArchitectureConformance } = await import("./conformance.js");
+        const conformCwd = pipeline.context?.workingDir
+          ? join(pipeline.localPath, pipeline.context.workingDir)
+          : pipeline.localPath;
+        const conformResult = await checkArchitectureConformance(conformCwd, pipeline.architecturePath);
+        if (!conformResult.passed) {
+          const blocked = await this.runGate(
+            pipeline,
+            beadId,
+            "conform-gate",
+            {
+              passed: false,
+              reason: conformResult.detail,
+              missing: [...conformResult.missingDeps, ...conformResult.missingFiles, ...conformResult.stubs].slice(0, 20),
+            },
+            summary,
+            "retryFeedback",
+            "gate:conformance:failed",
+          );
+          if (blocked) return;
+        }
+        this.log(pipeline.featureId, "gate:conformance:verified", conformResult.detail);
+      } catch {
+        // best-effort — don't block on conformance check failure
       }
     }
 
@@ -1463,12 +1590,20 @@ export class Conductor {
         // Strip session markers (from user's CLAUDE.md) from agent summary
         const cleanSummary = summary
           ?.split("\n")
-          .filter((l) => !l.includes("═══") && !l.includes("──~") && !l.includes("── ·") && !l.includes("── !") && !l.includes("── ✓") && !l.includes("Gargle Blaster"))
+          .filter(
+            (l) =>
+              !(
+                l.includes("═══") ||
+                l.includes("──~") ||
+                l.includes("── ·") ||
+                l.includes("── !") ||
+                l.includes("── ✓") ||
+                l.includes("Gargle Blaster")
+              ),
+          )
           .join(" ")
           .trim();
-        const summaryLine = cleanSummary
-          ? ` — ${cleanSummary.slice(0, 150)}`
-          : "";
+        const summaryLine = cleanSummary ? ` — ${cleanSummary.slice(0, 150)}` : "";
         this.log(
           pipeline.featureId,
           `phase:completed:${phase}`,
@@ -1483,7 +1618,7 @@ export class Conductor {
           pipeline.context.phaseSummaries = {};
         }
         if (summary) {
-          pipeline.context.phaseSummaries[phase] = summary.slice(0, 500);
+          pipeline.context.phaseSummaries[phase] = summary.slice(0, 2000);
         }
 
         // Store contract outputs for downstream phase wiring
@@ -1514,10 +1649,7 @@ export class Conductor {
           }
         }
 
-        // After test phase: detect test command and test files for subsequent stages
-        if (phase === "test") {
-          await this.captureTestContext(pipeline);
-        }
+        // captureTestContext already ran pre-close (needed by spec-quality gate)
 
         // GREEN verification after impl completes (Farley)
         // Uses baseline comparison — only NEW failures count, pre-existing ones are ignored
@@ -1527,36 +1659,31 @@ export class Conductor {
           const greenCwd = pipeline.context?.workingDir
             ? join(pipeline.localPath, pipeline.context.workingDir)
             : pipeline.localPath;
-          const green = await verifyGreenState(greenCwd, { baseline, testCommand: pipeline.context?.testCommand }).catch(() => ({
+          const green = await verifyGreenState(greenCwd, {
+            baseline,
+            testCommand: pipeline.context?.testCommand,
+          }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));
           if (!green.passed) {
-            // Track green failures to prevent infinite loops
-            const greenRetries = this.decisionLog.filter(
-              (e) => e.featureId === pipeline.featureId && e.action === "tdd:green-failed",
-            ).length;
-            if (greenRetries < 2) {
-              this.log(pipeline.featureId, "tdd:green-failed", `${green.detail} (attempt ${greenRetries + 1}/2)`);
-              await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
-              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 1);
-              return;
-            }
-            // Max green retries exhausted — escalate to human
-            this.log(pipeline.featureId, "tdd:green-exhausted", "Tests still failing after 2 impl retries. Escalating.");
-            const greenEscResult = enqueueQuestion(this.questionQueue, {
-              featureId: pipeline.featureId,
-              question: `Tests still failing after 2 impl attempts. Failures: ${green.detail.slice(0, 200)}`,
-              options: ["Retry impl", "Skip green check", "Cancel pipeline"],
-              source: "conductor",
-            });
-            this.questionQueue = greenEscResult.queue;
-            saveQuestionQueue(this.questionQueue);
-            pipeline.status = "blocked";
-            this.store.save();
-            return;
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "green-gate",
+              {
+                passed: false,
+                reason: green.detail,
+              },
+              summary,
+              "decisionLog",
+              "tdd:green-failed",
+            );
+            if (blocked) return;
           }
-          this.log(pipeline.featureId, "tdd:green-verified", green.detail);
+          if (green.passed) {
+            this.log(pipeline.featureId, "tdd:green-verified", green.detail);
+          }
 
           // Stub detection gate — warn if implementation looks like scaffolding
           try {
@@ -1587,45 +1714,27 @@ export class Conductor {
           const greenCwd = pipeline.context?.workingDir
             ? join(pipeline.localPath, pipeline.context.workingDir)
             : pipeline.localPath;
-          const green = await verifyGreenState(greenCwd, { baseline, testCommand: pipeline.context?.testCommand }).catch(() => ({
+          const green = await verifyGreenState(greenCwd, {
+            baseline,
+            testCommand: pipeline.context?.testCommand,
+          }).catch(() => ({
             passed: true,
             detail: "GREEN check failed to run — skipping",
           }));
           if (!green.passed) {
-            // Track redteam→impl iterations to prevent infinite loops
-            const implRetries = this.decisionLog.filter(
-              (e) => e.featureId === pipeline.featureId && e.action === "redteam:impl-loop",
-            ).length;
-            if (implRetries < 2) {
-              this.log(
-                pipeline.featureId,
-                "redteam:impl-loop",
-                `Redteam wrote failing tests — re-opening impl (attempt ${implRetries + 1}/2)`,
-              );
-              // Re-open impl AND merge so merge doesn't run while impl is re-doing work
-              const implBeadId = pipeline.beadIds.impl;
-              const mergeBeadId = pipeline.beadIds.merge;
-              await this.beads.updateStatus(pipeline.localPath, implBeadId, "open").catch(() => {});
-              await this.beads.updateStatus(pipeline.localPath, mergeBeadId, "open").catch(() => {});
-              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 2);
-              return; // Don't proceed — impl needs to fix the new failures
-            }
-            // Max iterations reached — escalate to human
-            this.log(
-              pipeline.featureId,
-              "redteam:impl-loop-exhausted",
-              "Max redteam→impl iterations reached. Escalating to human.",
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "redteam-gate",
+              {
+                passed: false,
+                reason: `Redteam wrote failing tests: ${green.detail}`,
+              },
+              summary,
+              "decisionLog",
+              "redteam:impl-loop",
             );
-            const result = enqueueQuestion(this.questionQueue, {
-              featureId: pipeline.featureId,
-              question: `Red team found issues that impl couldn't fix after 2 attempts. Manual intervention needed.`,
-              options: ["Retry impl", "Skip redteam issues", "Cancel pipeline"],
-              source: "conductor",
-            });
-            this.questionQueue = result.queue;
-            saveQuestionQueue(this.questionQueue);
-            pipeline.status = "blocked";
-            this.store.save();
+            if (blocked) return;
           }
         }
 
@@ -1634,50 +1743,20 @@ export class Conductor {
         if (phase === "merge") {
           const mergeBlocked = summary?.includes("BLOCK") || summary?.includes("FAIL");
           if (mergeBlocked) {
-            const mergeRetries = this.decisionLog.filter(
-              (e) => e.featureId === pipeline.featureId && e.action === "merge:impl-loop",
-            ).length;
-            if (mergeRetries < 2) {
-              this.log(
-                pipeline.featureId,
-                "merge:impl-loop",
-                `Merge review blocked — re-opening impl (attempt ${mergeRetries + 1}/2)`,
-              );
-              // Re-open impl bead so it can fix the issues
-              const implBeadId = pipeline.beadIds.impl;
-              await this.beads.updateStatus(pipeline.localPath, implBeadId, "open").catch(() => {});
-              // Re-open merge bead too so it re-runs after impl fixes
-              await this.beads.updateStatus(pipeline.localPath, beadId, "open").catch(() => {});
-              pipeline.completedBeads = Math.max(0, pipeline.completedBeads - 2);
-
-              // Inject merge review findings as retry context for impl
-              if (!pipeline.context) pipeline.context = {};
-              if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
-              pipeline.context.retryFeedback["impl"] = {
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "merge-gate",
+              {
+                passed: false,
                 reason: "Merge review reported BLOCK. Fix the issues and make all tests pass.",
-                missing: [],
-                previousSummary: summary?.slice(0, 300) ?? "",
-                attempt: (pipeline.context.retryFeedback["impl"]?.attempt ?? 0) + 1,
-              };
-              this.store.save();
-              return; // Don't proceed — impl needs to fix first
-            }
-            // Max iterations reached — escalate to human
-            this.log(
-              pipeline.featureId,
-              "merge:impl-loop-exhausted",
-              "Max merge→impl iterations reached. Escalating to human.",
+                ...(summary ? { context: summary.slice(0, 300) } : {}),
+              },
+              summary,
+              "decisionLog",
+              "merge:impl-loop",
             );
-            const mergeEscResult = enqueueQuestion(this.questionQueue, {
-              featureId: pipeline.featureId,
-              question: `Merge review blocked after 2 impl retries. Manual intervention needed. Last review: ${summary?.slice(0, 200)}`,
-              options: ["Retry impl", "Force merge", "Cancel pipeline"],
-              source: "conductor",
-            });
-            this.questionQueue = mergeEscResult.queue;
-            saveQuestionQueue(this.questionQueue);
-            pipeline.status = "blocked";
-            this.store.save();
+            if (blocked) return;
           }
         }
 
@@ -1731,9 +1810,10 @@ export class Conductor {
       const errorDetail = errorMessage || `Process exited with code ${exitCode}`;
 
       const phaseLabel = PIPELINE_ROLES[phase as PipelineRole]?.label ?? phase;
-      const failureCount = this.decisionLog.filter(
-        (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
-      ).length + 1; // +1 for current failure
+      const failureCount =
+        this.decisionLog.filter(
+          (e) => e.featureId === pipeline.featureId && e.action === `agent:failed:${phase}`,
+        ).length + 1; // +1 for current failure
 
       this.log(
         pipeline.featureId,
@@ -1802,24 +1882,119 @@ export class Conductor {
   // ── Helpers ──
 
   private roleToBeadId(pipeline: Pipeline, role: PipelineRole): string | undefined {
-    switch (role) {
-      case "brainstorm":
-        return pipeline.beadIds.brainstorm;
-      case "stories":
-        return pipeline.beadIds.stories;
-      case "scaffold":
-        return pipeline.beadIds.scaffold;
-      case "test":
-        return pipeline.beadIds.tests;
-      case "impl":
-        return pipeline.beadIds.impl;
-      case "redteam":
-        return pipeline.beadIds.redteam;
-      case "merge":
-        return pipeline.beadIds.merge;
-      default:
-        return undefined;
+    // "test" role maps to "tests" bead key (historical naming)
+    const key = role === "test" ? "tests" : role;
+    return pipeline.beadIds[key];
+  }
+
+  /**
+   * Apply a retry decision from evaluateGate(): set feedback, reopen beads, decrement.
+   * Returns true if retry was applied (caller should return early).
+   */
+  private async applyRetry(
+    pipeline: Pipeline,
+    _beadId: string,
+    retry: RetryAction,
+    summary: string | undefined,
+  ): Promise<void> {
+    if (!pipeline.context) pipeline.context = {};
+    if (!pipeline.context.retryFeedback) pipeline.context.retryFeedback = {};
+    const prevAttempt = pipeline.context.retryFeedback[retry.gateId]?.attempt ?? 0;
+    pipeline.context.retryFeedback[retry.gateId] = {
+      reason: retry.feedback.reason,
+      missing: [...retry.feedback.missing],
+      previousSummary: summary?.slice(0, 300) ?? "",
+      attempt: prevAttempt + 1,
+    };
+    // Reopen the retryRole bead — NOT the triggering bead.
+    // For post-close gates (redteam, merge) the retry target is impl,
+    // not the bead that just completed. Reopening the wrong bead causes
+    // infinite claim-failure loops (the closed bead keeps appearing in bd ready).
+    const retryBeadId = this.roleToBeadId(pipeline, retry.retryRole);
+    if (retryBeadId) {
+      await this.beads.updateStatus(pipeline.localPath, retryBeadId, "open").catch(() => {});
     }
+    // Reopen additional beads (e.g., merge when impl retries after redteam)
+    if (retry.alsoReopen) {
+      for (const role of retry.alsoReopen) {
+        const roleBeadId = this.roleToBeadId(pipeline, role);
+        if (roleBeadId) {
+          await this.beads.updateStatus(pipeline.localPath, roleBeadId, "open").catch(() => {});
+        }
+      }
+    }
+    if (retry.decrementBeads > 0) {
+      pipeline.completedBeads = Math.max(0, pipeline.completedBeads - retry.decrementBeads);
+    }
+    this.store.save();
+  }
+
+  /**
+   * Apply an escalation decision: enqueue question, block pipeline.
+   */
+  private applyEscalation(
+    pipeline: Pipeline,
+    escalation: EscalationAction,
+    context?: string,
+  ): void {
+    const result = enqueueQuestion(this.questionQueue, {
+      featureId: pipeline.featureId,
+      question: escalation.question,
+      options: [...escalation.options],
+      source: "conductor",
+      ...(context ? { context: context.slice(0, 500) } : {}),
+    });
+    this.questionQueue = result.queue;
+    saveQuestionQueue(this.questionQueue);
+    pipeline.status = "blocked";
+    this.store.save();
+  }
+
+  /**
+   * Run a gate check through the retry engine and apply the result.
+   * Returns true if the gate blocked progression (retry or escalate).
+   */
+  private async runGate(
+    pipeline: Pipeline,
+    beadId: string,
+    gateId: string,
+    result: { passed: boolean; reason?: string; missing?: string[]; context?: string },
+    summary: string | undefined,
+    trackingMethod: "retryFeedback" | "decisionLog",
+    logAction: string,
+  ): Promise<boolean> {
+    const currentAttempts =
+      trackingMethod === "retryFeedback"
+        ? (pipeline.context?.retryFeedback?.[gateId]?.attempt
+            ?? pipeline.context?.retryFeedback?.[GATE_CONFIGS_LOOKUP[gateId]?.retryRole ?? ""]?.attempt
+            ?? 0)
+        : this.decisionLog.filter(
+            (e) => e.featureId === pipeline.featureId && e.action === logAction,
+          ).length;
+
+    const decision = evaluateGate(gateId, result, currentAttempts);
+
+    if (decision.action === "retry") {
+      const retry = decision.retries[0];
+      if (!retry) return false;
+      this.log(
+        pipeline.featureId,
+        logAction,
+        `${result.reason ?? gateId} (attempt ${currentAttempts + 1}/${GATE_CONFIGS_LOOKUP[gateId]?.maxRetries ?? 2})`,
+      );
+      await this.applyRetry(pipeline, beadId, retry, summary);
+      return true;
+    }
+
+    if (decision.action === "escalate") {
+      const escalation = decision.escalations[0];
+      if (!escalation) return false;
+      this.log(pipeline.featureId, `${logAction}:exhausted`, "Max retries reached. Escalating.");
+      this.applyEscalation(pipeline, escalation, summary);
+      return true;
+    }
+
+    return false;
   }
 
   private log(featureId: string, action: string, detail: string): void {

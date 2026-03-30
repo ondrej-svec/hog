@@ -117,15 +117,7 @@ export class MemoryBeadsClient {
     _cwd: string,
     featureTitle: string,
     featureDescription: string,
-  ): Promise<{
-    brainstorm: Bead;
-    stories: Bead;
-    scaffold: Bead;
-    tests: Bead;
-    impl: Bead;
-    redteam: Bead;
-    merge: Bead;
-  }> {
+  ): Promise<Record<string, Bead>> {
     const shortTitle = featureTitle.length > 60 ? `${featureTitle.slice(0, 57)}...` : featureTitle;
 
     const brainstorm = await this.create("", {

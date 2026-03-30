@@ -307,12 +307,12 @@ describe("Conductor error handling", () => {
 
       expect("error" in result).toBe(false);
       if (!("error" in result)) {
-        expect(result.beadIds.brainstorm).toBeDefined();
-        expect(result.beadIds.stories).toBeDefined();
-        expect(result.beadIds.tests).toBeDefined();
-        expect(result.beadIds.impl).toBeDefined();
-        expect(result.beadIds.redteam).toBeDefined();
-        expect(result.beadIds.merge).toBeDefined();
+        expect(result.beadIds["brainstorm"]).toBeDefined();
+        expect(result.beadIds["stories"]).toBeDefined();
+        expect(result.beadIds["tests"]).toBeDefined();
+        expect(result.beadIds["impl"]).toBeDefined();
+        expect(result.beadIds["redteam"]).toBeDefined();
+        expect(result.beadIds["merge"]).toBeDefined();
         expect(result.title).toBe("Auth feature");
         expect(result.status).toBe("running");
       }

@@ -160,11 +160,11 @@ describe("Conductor Pipeline", () => {
       expect("error" in result).toBe(false);
       if ("error" in result) return;
 
-      expect(result.beadIds.stories).toBe("bd-stories");
-      expect(result.beadIds.tests).toBe("bd-tests");
-      expect(result.beadIds.impl).toBe("bd-impl");
-      expect(result.beadIds.redteam).toBe("bd-redteam");
-      expect(result.beadIds.merge).toBe("bd-merge");
+      expect(result.beadIds["stories"]).toBe("bd-stories");
+      expect(result.beadIds["tests"]).toBe("bd-tests");
+      expect(result.beadIds["impl"]).toBe("bd-impl");
+      expect(result.beadIds["redteam"]).toBe("bd-redteam");
+      expect(result.beadIds["merge"]).toBe("bd-merge");
     });
 
     it("calls createFeatureDAG with the title and description", async () => {
@@ -390,7 +390,9 @@ describe("Conductor Pipeline", () => {
       const isBlocked = pipeline.status === "blocked";
       const queue = conductor.getQuestionQueue();
       const hasQuestion = queue.questions.some(
-        (q) => q.featureId === "feat-test" && (q.question.includes("impl") || q.question.includes("Implementer")),
+        (q) =>
+          q.featureId === "feat-test" &&
+          (q.question.includes("impl") || q.question.includes("Implementer")),
       );
       expect(isBlocked || hasQuestion).toBe(true);
     });

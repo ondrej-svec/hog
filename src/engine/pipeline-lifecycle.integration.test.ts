@@ -117,7 +117,15 @@ function createMockBeads(): BeadsClient {
       ),
     ready: vi.fn().mockImplementation(async () => {
       // Simulate DAG: return beads whose dependencies are all closed
-      const order = ["brainstorm", "stories", "scaffold", "tests", "impl", "redteam", "merge"] as const;
+      const order = [
+        "brainstorm",
+        "stories",
+        "scaffold",
+        "tests",
+        "impl",
+        "redteam",
+        "merge",
+      ] as const;
       const result: Bead[] = [];
       for (const phase of order) {
         const bead = PHASE_BEADS[phase];
@@ -274,7 +282,7 @@ describe("Pipeline Lifecycle Integration", () => {
     expect("error" in result).toBe(false);
     if ("error" in result) return;
     expect(result.status).toBe("running");
-    expect(result.beadIds.stories).toBe("bd-stories");
+    expect(result.beadIds["stories"]).toBe("bd-stories");
 
     // Close brainstorm (simulating --brainstorm-done)
     await beads.close("/tmp/test-repo", "bd-brainstorm", "Brainstorm completed by user");

@@ -13,13 +13,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HogConfig, RepoConfig } from "../config.js";
 import type { AgentManager } from "../engine/agent-manager.js";
 import type { Bead, BeadsClient } from "../engine/beads.js";
-import { Conductor } from "../engine/conductor.js";
 import type { PipelineStatus } from "../engine/conductor.js";
+import { Conductor } from "../engine/conductor.js";
 import { EventBus } from "../engine/event-bus.js";
-import { Refinery } from "../engine/refinery.js";
 import { PipelineStore } from "../engine/pipeline-store.js";
-import { WorktreeManager } from "../engine/worktree.js";
-import { startEventLog, readEventLog, summarizeEventLog } from "./event-log.js";
+import { Refinery } from "../engine/refinery.js";
+import type { WorktreeManager } from "../engine/worktree.js";
+import { readEventLog, startEventLog, summarizeEventLog } from "./event-log.js";
 
 // ── Test Helpers ──
 
@@ -135,13 +135,28 @@ function createMockRefinery(): Refinery {
     stop: vi.fn(),
     pause: vi.fn(),
     resume: vi.fn(),
-    submit: vi.fn().mockImplementation(
-      (featureId: string, branch: string, worktreePath: string, repoPath: string, role?: string) => {
-        const id = `merge-${queue.length + 1}`;
-        queue.push({ id, featureId, branch, worktreePath, repoPath, ...(role !== undefined ? { role } : {}) });
-        return id;
-      },
-    ),
+    submit: vi
+      .fn()
+      .mockImplementation(
+        (
+          featureId: string,
+          branch: string,
+          worktreePath: string,
+          repoPath: string,
+          role?: string,
+        ) => {
+          const id = `merge-${queue.length + 1}`;
+          queue.push({
+            id,
+            featureId,
+            branch,
+            worktreePath,
+            repoPath,
+            ...(role !== undefined ? { role } : {}),
+          });
+          return id;
+        },
+      ),
     getQueue: vi.fn().mockImplementation(() => queue),
     get depth() {
       return queue.filter((e) => !("status" in e)).length;
@@ -260,15 +275,11 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
       });
 
       // Manually populate session maps as if an agent was spawned in a worktree
-      const sessionMap = (
-        conductor as unknown as { sessionToPipeline: Map<string, string> }
-      ).sessionToPipeline;
+      const sessionMap = (conductor as unknown as { sessionToPipeline: Map<string, string> })
+        .sessionToPipeline;
       const worktreeMap = (
         conductor as unknown as {
-          sessionWorktrees: Map<
-            string,
-            { worktreePath: string; branch: string; repoPath: string }
-          >;
+          sessionWorktrees: Map<string, { worktreePath: string; branch: string; repoPath: string }>;
         }
       ).sessionWorktrees;
 
@@ -331,15 +342,11 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
       });
 
       // Populate session maps and pipeline store as above
-      const sessionMap = (
-        conductor as unknown as { sessionToPipeline: Map<string, string> }
-      ).sessionToPipeline;
+      const sessionMap = (conductor as unknown as { sessionToPipeline: Map<string, string> })
+        .sessionToPipeline;
       const worktreeMap = (
         conductor as unknown as {
-          sessionWorktrees: Map<
-            string,
-            { worktreePath: string; branch: string; repoPath: string }
-          >;
+          sessionWorktrees: Map<string, { worktreePath: string; branch: string; repoPath: string }>;
         }
       ).sessionWorktrees;
 
@@ -392,21 +399,17 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
   // ── Tracer 4: Session maps cleanup after completion ──
 
   describe("TRACER-4: Session maps are cleaned up after agent completion", () => {
-    it("removes session from sessionToPipeline after agent completes", () => {
+    it("removes session from sessionToPipeline after agent completes", async () => {
       const conductor = new Conductor(TEST_CONFIG, eventBus, agents, beads, {
         worktrees,
         refinery,
       });
 
-      const sessionMap = (
-        conductor as unknown as { sessionToPipeline: Map<string, string> }
-      ).sessionToPipeline;
+      const sessionMap = (conductor as unknown as { sessionToPipeline: Map<string, string> })
+        .sessionToPipeline;
       const worktreeMap = (
         conductor as unknown as {
-          sessionWorktrees: Map<
-            string,
-            { worktreePath: string; branch: string; repoPath: string }
-          >;
+          sessionWorktrees: Map<string, { worktreePath: string; branch: string; repoPath: string }>;
         }
       ).sessionWorktrees;
 
@@ -449,6 +452,9 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
         phase: "test",
         summary: "Tests done",
       });
+
+      // onAgentCompleted is async — wait for it to complete
+      await new Promise((r) => setTimeout(r, 100));
 
       // After completion — session should be cleaned up
       expect(sessionMap.has("session-cleanup")).toBe(false);
@@ -621,9 +627,7 @@ describe("Phase 1 Wiring — Tracer Bullets", () => {
 
       // 4. Verify worktree was requested
       const branchCalls = (worktrees.branchName as ReturnType<typeof vi.fn>).mock.calls;
-      const implBranchCall = branchCalls.find(
-        (c: string[]) => c[1] === "impl",
-      );
+      const implBranchCall = branchCalls.find((c: string[]) => c[1] === "impl");
       if (implBranchCall) {
         expect(implBranchCall[0]).toBe(featureId);
       }

@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { buildEscalationOptions, GATE_CONFIGS, gatesForPhase } from "./retry-engine.js";
+import type { RetryGateResult } from "./retry-engine.js";
+import {
+  buildEscalationOptions,
+  evaluateGate,
+  GATE_CONFIGS,
+  gatesForPhase,
+} from "./retry-engine.js";
 
 describe("retry-engine", () => {
-  it("defines 5 gate configurations", () => {
-    expect(GATE_CONFIGS).toHaveLength(5);
+  it("defines 7 gate configurations", () => {
+    expect(GATE_CONFIGS).toHaveLength(7);
   });
 
-  it("all gates have max 2 retries", () => {
+  it("all gates have max 2-3 retries", () => {
     for (const gate of GATE_CONFIGS) {
-      expect(gate.maxRetries).toBe(2);
+      expect(gate.maxRetries).toBeGreaterThanOrEqual(2);
+      expect(gate.maxRetries).toBeLessThanOrEqual(3);
     }
   });
 
@@ -22,8 +29,10 @@ describe("retry-engine", () => {
 
   it("returns correct gates for test phase", () => {
     const gates = gatesForPhase("test");
-    expect(gates).toHaveLength(1);
-    expect(gates[0]?.id).toBe("coverage-gate");
+    expect(gates).toHaveLength(2);
+    const ids = gates.map((g) => g.id);
+    expect(ids).toContain("coverage-gate");
+    expect(ids).toContain("spec-quality");
   });
 
   it("returns correct gates for redteam phase", () => {
@@ -60,5 +69,67 @@ describe("retry-engine", () => {
     const merge = GATE_CONFIGS.find((g) => g.id === "merge-gate");
     expect(merge?.alsoReopen).toContain("merge");
     expect(merge?.decrementBeads).toBe(2);
+  });
+
+  describe("evaluateGate", () => {
+    const passed: RetryGateResult = { passed: true };
+    const failed: RetryGateResult = {
+      passed: false,
+      reason: "Tests failing",
+      missing: ["story-1", "story-2"],
+      context: "2/5 stories uncovered",
+    };
+
+    it("returns proceed when gate passes", () => {
+      expect(evaluateGate("coverage-gate", passed, 0)).toEqual({ action: "proceed" });
+    });
+
+    it("returns proceed for unknown gate ID", () => {
+      expect(evaluateGate("nonexistent-gate", failed, 0)).toEqual({ action: "proceed" });
+    });
+
+    it("returns retry on first failure", () => {
+      const decision = evaluateGate("coverage-gate", failed, 0);
+      expect(decision.action).toBe("retry");
+      if (decision.action === "retry") {
+        expect(decision.retries).toHaveLength(1);
+        expect(decision.retries[0]?.gateId).toBe("coverage-gate");
+        expect(decision.retries[0]?.retryRole).toBe("test");
+        expect(decision.retries[0]?.decrementBeads).toBe(0);
+        expect(decision.retries[0]?.feedback.reason).toBe("Tests failing");
+        expect(decision.retries[0]?.feedback.missing).toEqual(["story-1", "story-2"]);
+      }
+    });
+
+    it("returns retry on second failure (attempt 1 < maxRetries 2)", () => {
+      const decision = evaluateGate("coverage-gate", failed, 1);
+      expect(decision.action).toBe("retry");
+    });
+
+    it("returns escalate when max retries exhausted", () => {
+      const decision = evaluateGate("coverage-gate", failed, 2);
+      expect(decision.action).toBe("escalate");
+      if (decision.action === "escalate") {
+        expect(decision.escalations).toHaveLength(1);
+        expect(decision.escalations[0]?.gateId).toBe("coverage-gate");
+        expect(decision.escalations[0]?.options).toContain("Cancel pipeline");
+      }
+    });
+
+    it("redteam gate retry includes alsoReopen", () => {
+      const decision = evaluateGate("redteam-gate", failed, 0);
+      if (decision.action === "retry") {
+        expect(decision.retries[0]?.alsoReopen).toContain("merge");
+        expect(decision.retries[0]?.decrementBeads).toBe(2);
+      }
+    });
+
+    it("uses default reason when result has none", () => {
+      const noReason: RetryGateResult = { passed: false };
+      const decision = evaluateGate("stub-gate", noReason, 0);
+      if (decision.action === "retry") {
+        expect(decision.retries[0]?.feedback.reason).toBe("Gate check failed");
+      }
+    });
   });
 });

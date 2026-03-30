@@ -440,3 +440,54 @@ describe("sessionFromResult", () => {
     expect(session.resultFile).toBe("/test/result.json");
   });
 });
+
+describe("safeEnv", () => {
+  it("includes allowlisted variables", async () => {
+    const { safeEnv } = await import("./spawn-agent.js");
+    const original = { ...process.env };
+    try {
+      process.env["PATH"] = "/usr/bin";
+      process.env["HOME"] = "/home/test";
+      process.env["SHELL"] = "/bin/zsh";
+      const env = safeEnv();
+      expect(env["PATH"]).toBe("/usr/bin");
+      expect(env["HOME"]).toBe("/home/test");
+      expect(env["SHELL"]).toBe("/bin/zsh");
+    } finally {
+      Object.keys(process.env).forEach((k) => delete process.env[k]);
+      Object.assign(process.env, original);
+    }
+  });
+
+  it("excludes secret-like variables", async () => {
+    const { safeEnv } = await import("./spawn-agent.js");
+    const original = { ...process.env };
+    try {
+      process.env["AWS_SECRET_ACCESS_KEY"] = "secret123";
+      process.env["GITHUB_TOKEN"] = "ghp_abc";
+      process.env["ANTHROPIC_API_KEY"] = "sk-ant-abc";
+      process.env["DATABASE_URL"] = "postgres://secret";
+      const env = safeEnv();
+      expect(env["AWS_SECRET_ACCESS_KEY"]).toBeUndefined();
+      expect(env["GITHUB_TOKEN"]).toBeUndefined();
+      expect(env["ANTHROPIC_API_KEY"]).toBeUndefined();
+      expect(env["DATABASE_URL"]).toBeUndefined();
+    } finally {
+      Object.keys(process.env).forEach((k) => delete process.env[k]);
+      Object.assign(process.env, original);
+    }
+  });
+
+  it("includes npm_config_ prefixed variables", async () => {
+    const { safeEnv } = await import("./spawn-agent.js");
+    const original = { ...process.env };
+    try {
+      process.env["npm_config_registry"] = "https://registry.npmjs.org";
+      const env = safeEnv();
+      expect(env["npm_config_registry"]).toBe("https://registry.npmjs.org");
+    } finally {
+      Object.keys(process.env).forEach((k) => delete process.env[k]);
+      Object.assign(process.env, original);
+    }
+  });
+});

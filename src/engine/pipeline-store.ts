@@ -71,15 +71,7 @@ export interface PipelineSnapshot {
   readonly repo: string;
   readonly localPath: string;
   readonly repoConfig: RepoConfig;
-  readonly beadIds: {
-    readonly brainstorm: string;
-    readonly stories: string;
-    readonly scaffold: string;
-    readonly tests: string;
-    readonly impl: string;
-    readonly redteam: string;
-    readonly merge: string;
-  };
+  readonly beadIds: Readonly<Record<string, string>>;
   readonly status: PipelineStatus;
   readonly completedBeads: number;
   readonly activePhase?: string | undefined;
@@ -226,7 +218,9 @@ export class PipelineStore {
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
           ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
-          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.architecturePath !== undefined
+            ? { architecturePath: data.architecturePath }
+            : {}),
           ...(data.context !== undefined ? { context: data.context } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),
@@ -305,7 +299,9 @@ export class PipelineStore {
           startedAt: data.startedAt,
           ...(data.completedAt !== undefined ? { completedAt: data.completedAt } : {}),
           ...(data.storiesPath !== undefined ? { storiesPath: data.storiesPath } : {}),
-          ...(data.architecturePath !== undefined ? { architecturePath: data.architecturePath } : {}),
+          ...(data.architecturePath !== undefined
+            ? { architecturePath: data.architecturePath }
+            : {}),
           ...(data.context !== undefined ? { context: data.context } : {}),
           ...(data.costByPhase !== undefined ? { costByPhase: data.costByPhase } : {}),
           ...(data.totalCost !== undefined ? { totalCost: data.totalCost } : {}),

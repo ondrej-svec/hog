@@ -83,11 +83,27 @@ export const GATE_CONFIGS: readonly RetryGateConfig[] = [
     trackingMethod: "retryFeedback",
   },
   {
+    id: "spec-quality",
+    phases: ["test"],
+    retryRole: "test",
+    decrementBeads: 0,
+    maxRetries: 2,
+    trackingMethod: "retryFeedback",
+  },
+  {
     id: "stub-gate",
     phases: ["impl"],
     retryRole: "impl",
     decrementBeads: 0,
     maxRetries: 2,
+    trackingMethod: "retryFeedback",
+  },
+  {
+    id: "conform-gate",
+    phases: ["impl"],
+    retryRole: "impl",
+    decrementBeads: 0,
+    maxRetries: 3,
     trackingMethod: "retryFeedback",
   },
   {
@@ -114,7 +130,7 @@ export const GATE_CONFIGS: readonly RetryGateConfig[] = [
     alsoReopen: ["merge"],
     decrementBeads: 2,
     maxRetries: 2,
-    trackingMethod: "retryFeedback",
+    trackingMethod: "decisionLog",
   },
 ] as const;
 
@@ -133,8 +149,12 @@ export function buildEscalationOptions(gateId: string): readonly string[] {
   switch (gateId) {
     case "coverage-gate":
       return ["Retry tests", "Continue with partial coverage", "Cancel pipeline"];
+    case "spec-quality":
+      return ["Retry tests", "Continue with string-matching tests", "Cancel pipeline"];
     case "stub-gate":
       return ["Retry impl", "Continue with stubs", "Cancel pipeline"];
+    case "conform-gate":
+      return ["Retry impl", "Skip conformance check", "Cancel pipeline"];
     case "green-gate":
       return ["Retry impl", "Skip green check", "Cancel pipeline"];
     case "redteam-gate":
@@ -144,4 +164,51 @@ export function buildEscalationOptions(gateId: string): readonly string[] {
     default:
       return ["Retry", "Skip", "Cancel pipeline"];
   }
+}
+
+/**
+ * Evaluate a gate check result against its config to produce a decision.
+ *
+ * Pure function: given check result + current attempt count, returns
+ * proceed / retry / escalate. The conductor applies the side effects.
+ */
+export function evaluateGate(
+  gateId: string,
+  result: RetryGateResult,
+  currentAttempts: number,
+): GateDecision {
+  if (result.passed) return { action: "proceed" };
+
+  const config = GATE_CONFIGS.find((g) => g.id === gateId);
+  if (!config) return { action: "proceed" };
+
+  if (currentAttempts < config.maxRetries) {
+    return {
+      action: "retry",
+      retries: [
+        {
+          gateId,
+          retryRole: config.retryRole,
+          alsoReopen: config.alsoReopen,
+          decrementBeads: config.decrementBeads,
+          feedback: {
+            reason: result.reason ?? "Gate check failed",
+            missing: [...(result.missing ?? [])],
+            context: result.context ?? "",
+          },
+        },
+      ],
+    };
+  }
+
+  return {
+    action: "escalate",
+    escalations: [
+      {
+        gateId,
+        question: result.reason ?? `${gateId} failed after ${config.maxRetries} retries`,
+        options: [...buildEscalationOptions(gateId)],
+      },
+    ],
+  };
 }
