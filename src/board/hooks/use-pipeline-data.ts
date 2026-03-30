@@ -144,6 +144,7 @@ export function usePipelineData(
   },
 ): UsePipelineDataResult {
   const clientRef = useRef<DaemonClient | null>(null);
+  const pipelinesRef = useRef<Pipeline[]>([]);
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [agents, setAgents] = useState<readonly DaemonAgentInfo[]>([]);
   const [pendingDecisions, setPendingDecisions] = useState<Question[]>([]);
@@ -199,6 +200,7 @@ export function usePipelineData(
         }
 
         setPipelines(pipelineData);
+        pipelinesRef.current = pipelineData;
         const enrichedAgents = agentData.map((a) => ({ ...a, isRunning: true }));
         setAgents(enrichedAgents);
         setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
@@ -238,8 +240,34 @@ export function usePipelineData(
       }
     };
 
-    // Map sessionId → featureId for routing activity entries
+    // Map sessionId → featureId for routing activity entries.
+    // Seeded from agent.list on connect, updated on agent:spawned.
     const sessionFeatureMap = new Map<string, string>();
+
+    // Resolve featureId from (1) event data, (2) session map, (3) single-pipeline fallback
+    const resolveFeatureId = (
+      data: Record<string, unknown>,
+      sessionId: string | undefined,
+    ): string | undefined => {
+      // 1. Explicit in event data (rare, but future-proof)
+      const explicit = data["featureId"] as string | undefined;
+      if (explicit) return explicit;
+      // 2. Session map (populated from agent.list + agent:spawned)
+      if (sessionId) {
+        const mapped = sessionFeatureMap.get(sessionId);
+        if (mapped) return mapped;
+      }
+      // 3. If there's only one pipeline, route there (most common case)
+      const current = pipelinesRef.current;
+      if (current.length === 1) return current[0]?.featureId;
+      // 4. Match via repo if available (events carry repo)
+      const repo = data["repo"] as string | undefined;
+      if (repo) {
+        const match = current.find((p) => p.repo === repo);
+        if (match) return match.featureId;
+      }
+      return undefined;
+    };
 
     const handleEvent = (event: RpcEvent) => {
       const data = event.data as Record<string, unknown>;
@@ -249,8 +277,7 @@ export function usePipelineData(
 
       switch (event.event) {
         case "agent:spawned": {
-          const featureId = (data["featureId"] as string | undefined)
-            ?? (sessionId ? sessionFeatureMap.get(sessionId) : undefined);
+          const featureId = resolveFeatureId(data, sessionId);
           if (sessionId && featureId) sessionFeatureMap.set(sessionId, featureId);
           setAgents((prev) => [
             ...prev,
@@ -278,7 +305,9 @@ export function usePipelineData(
 
         case "agent:progress": {
           const toolName = data["toolName"] as string | undefined;
-          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
+          const featureId = resolveFeatureId(data, sessionId);
+          // Update the map if we resolved it (e.g. via single-pipeline fallback)
+          if (sessionId && featureId) sessionFeatureMap.set(sessionId, featureId);
           setAgents((prev) =>
             prev.map((a) =>
               a.sessionId === sessionId
@@ -290,7 +319,6 @@ export function usePipelineData(
             pushActivity(featureId, {
               timestamp: ts,
               type: "agent-progress",
-              phase: undefined, // agent:progress doesn't carry phase
               agentSessionId: sessionId,
               detail: toolName,
             });
@@ -299,7 +327,7 @@ export function usePipelineData(
         }
 
         case "agent:completed": {
-          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
+          const featureId = resolveFeatureId(data, sessionId);
           setAgents((prev) =>
             prev.map((a) => (a.sessionId === sessionId ? { ...a, isRunning: false } : a)),
           );
@@ -317,7 +345,7 @@ export function usePipelineData(
         }
 
         case "agent:failed": {
-          const featureId = sessionId ? sessionFeatureMap.get(sessionId) : undefined;
+          const featureId = resolveFeatureId(data, sessionId);
           setAgents((prev) =>
             prev.map((a) => (a.sessionId === sessionId ? { ...a, isRunning: false } : a)),
           );
@@ -336,8 +364,15 @@ export function usePipelineData(
 
         case "workflow:phase-changed": {
           const state = data["state"] as string | undefined;
-          // We need featureId — look it up from pipelines
-          // Phase changes don't carry sessionId, so route via latest pipeline match
+          const featureId = resolveFeatureId(data, sessionId);
+          if (featureId && phase && state) {
+            pushActivity(featureId, {
+              timestamp: ts,
+              type: state === "completed" ? "phase-complete" : "phase-start",
+              phase,
+              detail: `${phase} → ${state}`,
+            });
+          }
           break;
         }
       }
@@ -362,6 +397,7 @@ export function usePipelineData(
           client.call("mergeQueue.list", {}),
         ]);
         setPipelines(pipelineData);
+        pipelinesRef.current = pipelineData;
         setPendingDecisions(decisionData.filter((q) => !q.resolvedAt));
         setMergeQueue(mergeQueueData);
       } catch {
