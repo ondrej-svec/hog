@@ -1378,12 +1378,13 @@ export class Conductor {
 
     const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } =
       resolvePromptForRole("brainstorm");
+    const spec = pipeline.description ?? bead.description ?? pipeline.title;
     const prompt = brainstormUsingSkill
-      ? resolvedBrainstormPrompt
+      ? `${spec}\n\n${resolvedBrainstormPrompt}`
       : resolvedBrainstormPrompt
           .replace(/\{title\}/g, pipeline.title)
           .replace(/\{slug\}/g, slug)
-          .replace(/\{spec\}/g, bead.description ?? pipeline.title)
+          .replace(/\{spec\}/g, spec)
           .replace(/\{featureId\}/g, pipeline.featureId);
 
     const result = launchClaude({
