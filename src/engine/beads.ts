@@ -479,13 +479,15 @@ export class BeadsClient {
 
   /**
    * Close orphaned hog beads from previous pipeline runs.
-   * Finds all open beads with [hog:*] title prefix and closes them.
-   * Called automatically before creating a new feature DAG.
+   * Finds all open beads with [hog:*] title prefix and closes them,
+   * UNLESS they belong to an active pipeline (protected by activeBeadIds).
    */
-  async cleanupOrphanedBeads(cwd: string): Promise<number> {
+  async cleanupOrphanedBeads(cwd: string, activeBeadIds?: ReadonlySet<string>): Promise<number> {
     try {
       const allBeads = await this.ready(cwd);
-      const orphans = allBeads.filter((b) => b.title.match(/^\[hog:/) && b.status !== "closed");
+      const orphans = allBeads.filter(
+        (b) => b.title.match(/^\[hog:/) && b.status !== "closed" && !(activeBeadIds?.has(b.id)),
+      );
       let closed = 0;
       for (const orphan of orphans) {
         try {
@@ -531,9 +533,10 @@ export class BeadsClient {
     featureTitle: string,
     featureDescription: string,
     topology?: readonly DagNode[],
+    activeBeadIds?: ReadonlySet<string>,
   ): Promise<Record<string, Bead>> {
-    // Clean up orphaned beads from previous pipelines before creating new ones
-    await this.cleanupOrphanedBeads(cwd);
+    // Clean up orphaned beads — protects beads belonging to active pipelines
+    await this.cleanupOrphanedBeads(cwd, activeBeadIds);
 
     const nodes = topology ?? BeadsClient.DEFAULT_TOPOLOGY;
 

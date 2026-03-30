@@ -465,7 +465,8 @@ const STORY_ID_RE = /STORY-\d{3,}/g;
 
 function extractStoryIds(cwd: string, storiesPath: string): string[] {
   try {
-    const content = readFileSync(join(cwd, storiesPath), "utf-8");
+    const fullPath = storiesPath.startsWith("/") ? storiesPath : join(cwd, storiesPath);
+    const content = readFileSync(fullPath, "utf-8");
     const matches = content.match(STORY_ID_RE);
     return [...new Set(matches ?? [])];
   } catch {

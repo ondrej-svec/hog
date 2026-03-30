@@ -155,7 +155,8 @@ export async function checkArchitectureConformance(
   cwd: string,
   archPath: string,
 ): Promise<ConformanceResult> {
-  if (!existsSync(archPath)) {
+  const resolvedArchPath = archPath.startsWith("/") ? archPath : join(cwd, archPath);
+  if (!existsSync(resolvedArchPath)) {
     return {
       passed: true,
       missingDeps: [],
@@ -167,7 +168,7 @@ export async function checkArchitectureConformance(
 
   let archContent: string;
   try {
-    archContent = readFileSync(archPath, "utf-8");
+    archContent = readFileSync(resolvedArchPath, "utf-8");
   } catch {
     return {
       passed: true,

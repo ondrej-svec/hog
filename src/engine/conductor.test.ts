@@ -184,6 +184,8 @@ describe("Conductor Pipeline", () => {
         "/tmp/test-repo",
         "Add rate limiting",
         "Max 5 requests per minute per IP",
+        undefined,
+        expect.any(Set),
       );
     });
 
