@@ -356,6 +356,34 @@ describe("launchClaude — tmux path", () => {
     expect(result.ok).toBe(true);
     expect(mockSpawnFn).toHaveBeenCalledWith("tmux", expect.anything(), expect.anything());
   });
+
+  it("passes env vars as tmux -e flags", () => {
+    const result = launchClaude(
+      makeOpts({
+        launchMode: "tmux",
+        env: {
+          HOG_PIPELINE: "1",
+          FEATURE_ID: "feat-001",
+          HOG_SLUG: "add-auth",
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    const [, args] = mockSpawnFn.mock.calls[0] as [string, string[]];
+    expect(args).toContain("-e");
+    expect(args).toContain("HOG_PIPELINE=1");
+    expect(args).toContain("FEATURE_ID=feat-001");
+    expect(args).toContain("HOG_SLUG=add-auth");
+  });
+
+  it("omits env flags when env option is absent", () => {
+    const result = launchClaude(makeOpts({ launchMode: "tmux" }));
+    expect(result.ok).toBe(true);
+    const [, args] = mockSpawnFn.mock.calls[0] as [string, string[]];
+    // Only HOG_REPO and HOG_ISSUE should be -e flags, not pipeline env vars
+    const envFlags = args.filter((_a: string, i: number) => args[i - 1] === "-e");
+    expect(envFlags.every((f: string) => f.startsWith("HOG_REPO=") || f.startsWith("HOG_ISSUE="))).toBe(true);
+  });
 });
 
 describe("launchClaude — terminal fallback", () => {

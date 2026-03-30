@@ -13,6 +13,7 @@ import { TextInput } from "@inkjs/ui";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import { useEffect, useRef, useState } from "react";
 import type { HogConfig, RepoConfig } from "../../config.js";
+import { buildBrainstormLaunchContext } from "../../engine/brainstorm-context.js";
 import { PIPELINE_ROLES, resolvePromptForRole } from "../../engine/roles.js";
 import { usePipelineData } from "../hooks/use-pipeline-data.js";
 import { useToast } from "../hooks/use-toast.js";
@@ -226,25 +227,17 @@ export function Cockpit({ config }: CockpitProps) {
             toast.error("Pipeline has no localPath configured");
             return;
           }
-          const slug = selected.title
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-|-$/g, "");
-          const spec = selected.description ?? selected.title;
-          const { prompt: resolvedBsPrompt, usingSkill: bsUsingSkill } =
-            resolvePromptForRole("brainstorm");
-          const brainstormPrompt = bsUsingSkill
-            ? resolvedBsPrompt
-            : resolvedBsPrompt
-                .replace(/\{title\}/g, selected.title)
-                .replace(/\{slug\}/g, slug)
-                .replace(/\{spec\}/g, spec)
-                .replace(/\{featureId\}/g, selected.featureId);
+          const bs = buildBrainstormLaunchContext({
+            title: selected.title,
+            description: selected.description ?? selected.title,
+            featureId: selected.featureId,
+          });
 
           const result = launchClaude({
             localPath,
             issue: { number: 0, title: selected.title, url: "" },
-            promptTemplate: brainstormPrompt,
+            promptTemplate: bs.prompt,
+            env: bs.env,
             launchMode: config.pipeline.launchMode ?? "auto",
             ...(config.pipeline.terminalApp ? { terminalApp: config.pipeline.terminalApp } : {}),
           });
@@ -432,52 +425,17 @@ export function Cockpit({ config }: CockpitProps) {
                 if (!("error" in result)) {
                   const pipeline = result;
                   const localPath = pipeline.localPath || cwd;
-                  const slug = pipeline.title
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/^-|-$/g, "");
-                  const spec = description;
-                  const storiesPath = `docs/stories/${slug}.md`;
-                  const archPath = `docs/stories/${slug}.architecture.md`;
-                  const pipelineCtx = [
-                    `<hog_pipeline_context>`,
-                    `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
-                    `Feature ID: ${pipeline.featureId}`,
-                    ``,
-                    `After brainstorming, you MUST produce these artifacts:`,
-                    `1. Write user stories to ${storiesPath}`,
-                    `   - Each story: unique ID (STORY-001), description, acceptance criteria, edge cases`,
-                    `2. Write architecture doc to ${archPath}`,
-                    `   - Requirements (FR/NFR), ADRs, Dependencies, Integration Pattern, File Structure`,
-                    `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
-                    ``,
-                    `Do NOT skip step 3 — the pipeline cannot advance without it.`,
-                    `These file paths are EXACT — do not use different names.`,
-                    `</hog_pipeline_context>`,
-                  ].join("\n");
-                  const { prompt: resolvedBsPrompt2, usingSkill: bsUsingSkill2 } =
-                    resolvePromptForRole("brainstorm");
-                  const brainstormPrompt = bsUsingSkill2
-                    ? `${resolvedBsPrompt2}\n\n${spec}\n\n${pipelineCtx}`
-                    : resolvedBsPrompt2
-                        .replace(/\{title\}/g, pipeline.title)
-                        .replace(/\{slug\}/g, slug)
-                        .replace(/\{spec\}/g, spec)
-                        .replace(/\{featureId\}/g, pipeline.featureId);
-
-                  const brainstormEnv: Record<string, string> = {
-                    HOG_PIPELINE: "1",
-                    FEATURE_ID: pipeline.featureId,
-                    HOG_SLUG: slug,
-                    STORIES_PATH: storiesPath,
-                    ARCH_PATH: archPath,
-                  };
+                  const bs = buildBrainstormLaunchContext({
+                    title: pipeline.title,
+                    description,
+                    featureId: pipeline.featureId,
+                  });
 
                   const launchResult = launchClaude({
                     localPath,
                     issue: { number: 0, title: pipeline.title, url: "" },
-                    promptTemplate: brainstormPrompt,
-                    env: brainstormEnv,
+                    promptTemplate: bs.prompt,
+                    env: bs.env,
                     launchMode: config.pipeline.launchMode ?? "auto",
                     ...(config.pipeline.terminalApp
                       ? { terminalApp: config.pipeline.terminalApp }

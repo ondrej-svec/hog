@@ -24,14 +24,16 @@ describe("StartPipelineOverlay", () => {
       expect(frame).toContain("What do you want to build?");
     });
 
-    it("shows the pipeline phase description", () => {
+    it("shows all 8 pipeline phases", () => {
       const { lastFrame } = renderOverlay();
       const frame = lastFrame() ?? "";
+      expect(frame).toContain("brainstorm");
       expect(frame).toContain("stories");
       expect(frame).toContain("tests");
-      expect(frame).toContain("implementation");
+      expect(frame).toContain("impl");
       expect(frame).toContain("red team");
       expect(frame).toContain("merge");
+      expect(frame).toContain("ship");
     });
 
     it("shows text input placeholder", () => {

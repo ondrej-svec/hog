@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
+import { buildBrainstormLaunchContext } from "./brainstorm-context.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
 import type { EventBus } from "./event-bus.js";
@@ -1371,48 +1372,11 @@ export class Conductor {
       return; // Already claimed
     }
 
-    const slug = pipeline.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-
-    const { prompt: resolvedBrainstormPrompt, usingSkill: brainstormUsingSkill } =
-      resolvePromptForRole("brainstorm");
-    const spec = pipeline.description ?? bead.description ?? pipeline.title;
-    const storiesPath = `docs/stories/${slug}.md`;
-    const archPath = `docs/stories/${slug}.architecture.md`;
-    const pipelineContext = [
-      `<hog_pipeline_context>`,
-      `You are running inside a hog pipeline. Feature: "${pipeline.title}"`,
-      `Feature ID: ${pipeline.featureId}`,
-      ``,
-      `After brainstorming, you MUST produce these artifacts:`,
-      `1. Write user stories to ${storiesPath}`,
-      `   - Each story: unique ID (STORY-001), description, acceptance criteria, edge cases`,
-      `2. Write architecture doc to ${archPath}`,
-      `   - Requirements (FR/NFR), ADRs, Dependencies, Integration Pattern, File Structure`,
-      `3. Run \`hog pipeline done ${pipeline.featureId}\` to close brainstorm and advance the pipeline`,
-      ``,
-      `Do NOT skip step 3 — the pipeline cannot advance without it.`,
-      `These file paths are EXACT — do not use different names.`,
-      `</hog_pipeline_context>`,
-    ].join("\n");
-    const prompt = brainstormUsingSkill
-      ? `${resolvedBrainstormPrompt}\n\n${spec}\n\n${pipelineContext}`
-      : resolvedBrainstormPrompt
-          .replace(/\{title\}/g, pipeline.title)
-          .replace(/\{slug\}/g, slug)
-          .replace(/\{spec\}/g, spec)
-          .replace(/\{featureId\}/g, pipeline.featureId);
-
-    // Pipeline env vars — skills can read these programmatically
-    const brainstormEnv: Record<string, string> = {
-      HOG_PIPELINE: "1",
-      FEATURE_ID: pipeline.featureId,
-      HOG_SLUG: slug,
-      STORIES_PATH: storiesPath,
-      ARCH_PATH: archPath,
-    };
+    const { prompt, env: brainstormEnv } = buildBrainstormLaunchContext({
+      title: pipeline.title,
+      description: pipeline.description ?? bead.description ?? pipeline.title,
+      featureId: pipeline.featureId,
+    });
 
     const result = launchClaude({
       localPath: pipeline.localPath,
