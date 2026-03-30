@@ -474,14 +474,21 @@ export class Conductor {
 
   // ── Core Loop ──
 
+  private tickRunning = false;
+
   /** One tick of the conductor — check all running pipelines for ready work. */
   private async tick(): Promise<void> {
     if (this.stopped) return;
+    // Prevent re-entrant ticks — setInterval can fire while previous tick is still running
+    if (this.tickRunning) return;
+    this.tickRunning = true;
 
     try {
       await this.tickInner();
     } catch (err) {
       console.error(`[conductor] Tick failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      this.tickRunning = false;
     }
   }
 
@@ -972,6 +979,13 @@ export class Conductor {
       const pipelineRole = role === "tests" ? "test" : (role as PipelineRole);
       beadIdToRole[id] = pipelineRole;
     }
+
+    // Only spawn one agent per pipeline at a time — prevents merge+impl from
+    // running simultaneously after a gate reopens both beads
+    const hasRunningAgent = this.agentManager
+      .getAgents()
+      .some((a) => a.monitor.isRunning && this.sessionToPipeline.get(a.sessionId) === pipeline.featureId);
+    if (hasRunningAgent) return;
 
     for (const bead of pipelineReady) {
       // Skip beads already being worked on
@@ -1783,7 +1797,8 @@ export class Conductor {
         // Merge→impl feedback loop
         // After merge review, if agent reports BLOCK, re-invoke impl to fix issues
         if (phase === "merge") {
-          const mergeBlocked = summary?.includes("BLOCK") || summary?.includes("FAIL");
+          const upperSummary = summary?.toUpperCase() ?? "";
+          const mergeBlocked = upperSummary.includes("BLOCK") || upperSummary.includes("FAIL");
           if (mergeBlocked) {
             const blocked = await this.runGate(
               pipeline,
@@ -1838,7 +1853,6 @@ export class Conductor {
 
     // Find the specific pipeline this session belongs to
     const featureId = this.sessionToPipeline.get(sessionId);
-    if (featureId) this.completionInProgress.add(featureId);
     this.sessionToPipeline.delete(sessionId);
     this.persistSessionMaps();
 
@@ -1920,8 +1934,6 @@ export class Conductor {
         `${phaseLabel} failed ${failureCount} times — waiting for your decision`,
       );
     }
-    // Release completion lock
-    if (featureId) this.completionInProgress.delete(featureId);
   }
 
   // ── Helpers ──
@@ -1964,6 +1976,9 @@ export class Conductor {
         `bead:reopen-error:${role}`,
         `Failed to reopen bead ${beadId}: ${err instanceof Error ? err.message : String(err)}`,
       );
+      // Escalate — don't silently proceed with a broken retry
+      pipeline.status = "blocked";
+      this.store.save();
     }
   }
 
