@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.31.0](https://github.com/ondrej-svec/hog/compare/hog-v1.30.2...hog-v1.31.0) (2026-03-30)
+
+
+### Features
+
+* conformance checker, tracer bullet prompts, flexible cockpit ([448658c](https://github.com/ondrej-svec/hog/commit/448658cb1a3a92f464bdb2624ee7e5b649d6b28b))
+* rich activity feed from JSONL event log instead of decision log ([0f1a576](https://github.com/ondrej-svec/hog/commit/0f1a576f4713860caa9015f7a7035b12e06ded5e))
+* tracer bullet pipeline — architecture-driven gates and feedback loops ([e10ddb2](https://github.com/ondrej-svec/hog/commit/e10ddb27691428e9c0e5b42d24249a9729674f35))
+
+
+### Bug Fixes
+
+* add viewport windowing and compact selector for pipeline list ([a63976d](https://github.com/ondrej-svec/hog/commit/a63976d915731a8bfa7c2ddfd14ca2ea393c6c30))
+* redesign cockpit with lazygit-style bordered panels ([f36cffe](https://github.com/ondrej-svec/hog/commit/f36cffe2c0f48d64c9f80519f892e270306b3cfa))
+* use alternate screen buffer for cockpit TUI (lazygit pattern) ([f8054be](https://github.com/ondrej-svec/hog/commit/f8054be68d97994ba042d82e020c98c93ed23e61))
+
 ## [1.30.2](https://github.com/ondrej-svec/hog/compare/hog-v1.30.1...hog-v1.30.2) (2026-03-29)
 
 
