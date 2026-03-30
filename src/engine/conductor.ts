@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
@@ -1889,13 +1889,48 @@ export class Conductor {
             if (blocked) return;
           }
 
-          // Fallback README verification
+          // Log ship artifacts — surface what was actually produced
+          const artifacts: string[] = [];
           const readmePath = join(pipeline.localPath, "README.md");
-          if (!existsSync(readmePath)) {
+          if (existsSync(readmePath)) {
+            artifacts.push("README.md");
+          } else {
             this.log(
               pipeline.featureId,
               "ship:warning",
               "Ship completed but README.md not found — manual documentation may be needed",
+            );
+          }
+          // Check for changelog entries
+          const changelogDir = join(pipeline.localPath, "docs", "changelog");
+          if (existsSync(changelogDir)) {
+            try {
+              const entries = readdirSync(changelogDir).filter((f) => f.endsWith(".md"));
+              if (entries.length > 0) artifacts.push(`${entries.length} changelog entr${entries.length === 1 ? "y" : "ies"}`);
+            } catch { /* best-effort */ }
+          }
+          if (existsSync(join(pipeline.localPath, "CHANGELOG.md"))) {
+            artifacts.push("CHANGELOG.md");
+          }
+          // Check for knowledge docs
+          const solutionsDir = join(pipeline.localPath, "docs", "solutions");
+          if (existsSync(solutionsDir)) {
+            try {
+              const docs = readdirSync(solutionsDir, { recursive: true })
+                .filter((f) => String(f).endsWith(".md"));
+              if (docs.length > 0) artifacts.push(`${docs.length} knowledge doc${docs.length === 1 ? "" : "s"}`);
+            } catch { /* best-effort */ }
+          }
+          // Check for .env.example
+          if (existsSync(join(pipeline.localPath, ".env.example"))) {
+            artifacts.push(".env.example");
+          }
+
+          if (artifacts.length > 0) {
+            this.log(
+              pipeline.featureId,
+              "ship:artifacts",
+              `Ship produced: ${artifacts.join(", ")}`,
             );
           }
         }
