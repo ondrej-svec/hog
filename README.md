@@ -3,32 +3,52 @@
 [![CI](https://github.com/ondrej-svec/hog/actions/workflows/ci.yml/badge.svg)](https://github.com/ondrej-svec/hog/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/@ondrej-svec/hog)](https://www.npmjs.com/package/@ondrej-svec/hog)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js 22+](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
+[![Node.js](https://img.shields.io/node/v/@ondrej-svec/hog)](https://nodejs.org)
 
 **The Rails of agent-assisted development.** One right way. Convention over configuration. `hog init` and go.
 
-hog orchestrates AI agents through a TDD-enforced development pipeline with structural role separation, adversarial review, and quality gates. Describe a feature, walk away, come back to tested and reviewed code.
+## What is hog?
+
+AI agents write code. They also write tests that pass by construction, skip edge cases, and mark their own homework. The feedback loop collapses.
+
+hog enforces a TDD-locked pipeline where no agent can see what the previous one wrote:
+
+- The **test writer** gets the spec. It cannot read the codebase.
+- The **implementer** gets failing tests. It cannot read the spec.
+- The **red team** gets the implementation. It tries to break it.
+- The **ship agent** produces docs, verifies operational readiness, and captures knowledge.
+
+The result is code where tests were written adversarially, not collaboratively.
 
 ```
-brainstorm → stories → tests (RED) → implementation (GREEN) → red team → merge
+brainstorm → stories → tests (RED) → impl (GREEN) → red team → merge → ship
 ```
 
-No agent marks its own homework. The test writer can't see the spec. The implementer can only see failing tests. The red team tries to break what was built. Structure enables autonomy.
+One command starts the pipeline. The cockpit TUI watches it run. You come back to tested, reviewed, documented code.
 
 ---
+
+## Requirements
+
+| Dependency | Required | Purpose |
+|------------|----------|---------|
+| [Node.js 22+](https://nodejs.org) | Yes | Runtime |
+| [Claude Code](https://claude.ai/code) | Yes | AI agent runtime |
+| [Beads](https://github.com/steveyegge/beads) (`bd` CLI) | Yes | DAG-based phase gating |
+| [GitHub CLI](https://cli.github.com/) (`gh`) | No | Issue sync |
+| [tmux](https://github.com/tmux/tmux) | No | Agent session attachment |
 
 ## Quick Start
 
 ```sh
 npm install -g @ondrej-svec/hog
-hog init                              # interactive setup
+hog init                              # interactive setup (installs Beads, checks deps)
 hog pipeline create "Add user auth"   # start your first pipeline
 hog cockpit                           # watch it run
 ```
 
-**Requirements:** [Node.js 22+](https://nodejs.org) and [Beads](https://github.com/steveyegge/beads) (`bd` CLI). Optionally: [GitHub CLI](https://cli.github.com/) for issue sync, [tmux](https://github.com/tmux/tmux) for agent session attachment.
-
-### Heart of Gold Toolkit (recommended)
+<details>
+<summary><strong>Recommended: Heart of Gold Toolkit</strong> (Claude Code plugins)</summary>
 
 hog works best with the [Heart of Gold toolkit](https://github.com/ondrej-svec/heart-of-gold-toolkit) — Claude Code plugins that provide skill-based pipeline intelligence with Stop hooks, knowledge directories, and quality enforcement.
 
@@ -46,29 +66,19 @@ claude plugin install heart-of-gold-toolkit
 
 | Plugin | Skills | Purpose |
 |--------|--------|---------|
-| **marvin** | `scaffold`, `test-writer`, `work`, `redteam`, `review`, `compound` | Execution: TDD test writing, implementation, adversarial review, merge gating |
+| **marvin** | `scaffold`, `test-writer`, `work`, `redteam`, `review`, `ship` | Execution: TDD test writing, implementation, adversarial review, merge gating, shipping |
 | **deep-thought** | `brainstorm`, `architect`, `plan`, `review`, `think`, `investigate` | Thinking: problem exploration, architecture design, strategic planning |
 
 Each skill works standalone (`/marvin:test-writer`) AND in pipeline mode (hog passes context via env vars).
 
----
-
-## How It Works
-
-1. `hog pipeline create` creates a [Beads](https://github.com/steveyegge/beads) dependency DAG with 7 phases
-2. The `hogd` daemon polls `bd ready` and spawns role-separated Claude agents as phases unblock
-3. Each agent runs in an isolated git worktree with a role-specific prompt and restricted context
-4. On completion, the bead closes and downstream phases become ready
-5. The Refinery merges completed work: rebase → test → quality gates → fast-forward merge
-
-**No GitHub required.** The pipeline runs entirely locally via Beads. GitHub is an optional sync target.
+</details>
 
 ---
 
-## The 7 Phases
+## The 8 Phases
 
-| Phase | Role | Skill | What it does | Constraint |
-|-------|------|-------|-------------|------------|
+| Phase | Role | Skill | What it does | Structural constraint (enforced) |
+|-------|------|-------|-------------|----------------------------------|
 | **Brainstorm** | Human + AI | `deep-thought:brainstorm` | Interactive exploration of the problem space | Only phase with human involvement |
 | **Architect** | Autonomous | `deep-thought:architect` | Writes user stories + architecture doc (ADRs, dependencies, file structure) | Cannot write code |
 | **Scaffold** | Autonomous | `marvin:scaffold` | Creates dirs, installs deps, sets up tooling | Cannot create source or test files |
@@ -76,6 +86,7 @@ Each skill works standalone (`/marvin:test-writer`) AND in pipeline mode (hog pa
 | **Implementation** | Autonomous | `marvin:work` | Makes tests pass with REAL implementations — architecture doc is BINDING | Cannot modify tests |
 | **Red Team** | Adversarial | `marvin:redteam` | Writes new failing tests exposing architecture violations, stubs, security issues | Cannot modify implementation |
 | **Merge** | Autonomous | `marvin:review` | Runs full suite, linter, security scan — MERGE or BLOCK verdict | Cannot fix — only reports |
+| **Ship** | Autonomous | `marvin:ship` | README, changelog, deployment guide, knowledge docs, operational readiness | Cannot modify source or tests |
 
 **Key insight:** The test writer and implementer have different context windows. The implementer can only see failing tests, not the original spec. This prevents the most common AI coding failure mode — writing tests that pass by construction.
 
@@ -90,6 +101,29 @@ verifyRedState(projectDir)
   → if tests FAIL → proceed to implementation
 ```
 
+### Retry Loops
+
+Quality gates automatically loop agents back when issues are found:
+
+- **Red team** finds failing tests → reopens impl (+ merge + ship)
+- **Merge** blocks → reopens impl (+ merge + ship)
+- **Ship** finds operational gaps (hardcoded secrets, missing health check) → reopens impl (+ redteam + merge + ship)
+
+Each gate has a retry limit before escalating to the human.
+
+---
+
+## How It Works
+
+1. `hog pipeline create` creates a [Beads](https://github.com/steveyegge/beads) dependency DAG with 8 phases
+2. The `hogd` daemon polls `bd ready` and spawns role-separated Claude agents as phases unblock
+3. Each agent runs in an isolated git worktree with a role-specific prompt and restricted context
+4. On completion, the bead closes and downstream phases become ready
+5. The Refinery merges completed work: rebase → test → quality gates → fast-forward merge
+6. The ship phase produces documentation and verifies operational readiness
+
+**No GitHub required.** The pipeline runs entirely locally via Beads. GitHub is an optional sync target.
+
 ---
 
 ## Cockpit TUI
@@ -99,12 +133,13 @@ verifyRedState(projectDir)
 ```
 ▶ ◐ Add user auth    ████░░░░ 50%    ┌─────────────────────────────┐
   ✓ Search feature    ████████ 100%   │ brainstorm ✓ → stories ✓   │
-  ⚠ Rate limiting     ██░░░░░░ 17%   │ → tests ✓ → impl ● →       │
-                                       │ redteam ○ → merge ○        │
-  Agents (1)                           │                             │
-  impl · Read · 3m                     │ ⚠ DECISION NEEDED          │
-                                       │ Should auth use OAuth?      │
-1 pipeline · 1 agent                   │ [1] OAuth  [2] API keys    │
+  ⚠ Rate limiting     ██░░░░░░ 13%   │ → tests ✓ → impl ● →       │
+                                       │ redteam ○ → merge ○ →      │
+  Agents (1)                           │ ship ○                      │
+  impl · Read · 3m                     │                             │
+                                       │ ⚠ DECISION NEEDED          │
+1 pipeline · 1 agent                   │ Should auth use OAuth?      │
+                                       │ [1] OAuth  [2] API keys    │
 ```
 
 | Key | Action |
@@ -253,6 +288,7 @@ hog can sync pipeline phase transitions to GitHub Issues:
 
 - **Labels:** Each phase adds a label (e.g., `phase:red`, `phase:green`)
 - **Comments:** Phase completion posted as issue comments
+- **Completion:** Issue closed or labeled when pipeline finishes
 
 ```sh
 hog pipeline create --issue owner/repo#42 "Implement OAuth"  # link to existing issue
@@ -274,16 +310,34 @@ Three-layer stack:
 ├─────────────────────────────────────┤
 │  Hog Engine (hogd)                  │
 │  Conductor · Agent Manager ·        │
-│  Refinery · Quality Gates · Policies│
+│  Refinery · Quality Gates · Retry   │
+│  Engine · Ship Detection            │
 ├─────────────────────────────────────┤
 │  Beads Layer                        │
 │  DAG task memory · bd CLI · Dolt    │
 └─────────────────────────────────────┘
 ```
 
-- **Human layer**: where you interact — cockpit TUI, CLI commands, GitHub (optional)
-- **Hog Engine**: the opinionated orchestration layer — role separation, TDD enforcement, quality gates, batched human interaction
-- **Beads layer**: local-first, git-backed DAG that gates phase transitions
+The daemon/client split means the cockpit, CLI, and future integrations all read the same consistent state. All pipeline state lives in Beads (a local Dolt database), so pipelines survive CLI restarts and the audit trail is queryable. The retry engine handles feedback loops declaratively — each quality gate specifies which phases to reopen and how many beads to decrement, rather than embedding retry logic inline.
+
+---
+
+## Troubleshooting
+
+**`hog cockpit` shows no pipelines**
+Make sure the daemon is running: `hog daemon start`. Check `hog daemon logs` for errors.
+
+**`bd: command not found`**
+Beads is a required dependency. Install from [github.com/steveyegge/beads](https://github.com/steveyegge/beads). Run `hog init` to verify setup.
+
+**Agent stuck / pipeline not advancing**
+Run `hog pipeline status <id>` to see the current phase and any pending decisions. Check `hog daemon logs --follow` for gate failures or retry loops.
+
+**Config schema error on upgrade**
+Run `hog init` to re-run the setup wizard. Your existing pipelines are unaffected.
+
+**Pipeline blocked on a decision**
+Check `hog decisions` for pending questions, or use the cockpit (`1-9` keys to answer inline).
 
 ---
 
@@ -298,16 +352,13 @@ npm run test                        # vitest
 npm run ci                          # typecheck + lint + tests
 ```
 
-**Toolchain:** TypeScript (strict), [Biome](https://biomejs.dev/) for lint/format, [tsup](https://tsup.egoist.dev/) for bundling, [Vitest](https://vitest.dev/) for tests. 80% coverage threshold.
+**Architecture:** Engine in `src/engine/` (Conductor, Refinery, quality gates, retry engine, ship detection). Daemon in `src/daemon/`. TUI cockpit in `src/board/` (Ink/React).
 
----
+**Commits:** [Conventional commits](https://www.conventionalcommits.org/) — release-please generates changelogs automatically.
 
-## Requirements
+**Tests:** Every PR needs tests. 80% coverage threshold enforced. Tests live alongside source as `*.test.ts`. Integration tests use `*.integration.test.ts`.
 
-- **Node.js 22+**
-- **Beads** (`bd` CLI) — DAG-based task management
-- **GitHub CLI** (`gh`) — optional, for issue sync
-- **tmux** — optional, for agent session attachment
+**Toolchain:** TypeScript (strict), [Biome](https://biomejs.dev/) for lint/format, [tsup](https://tsup.egoist.dev/) for bundling, [Vitest](https://vitest.dev/) for tests.
 
 ---
 

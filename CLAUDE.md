@@ -32,7 +32,7 @@ npm run dev -- init
 
 ## Architecture
 
-`hog` is a Node.js CLI tool (ESM, TypeScript, Node 22+) that orchestrates AI agents through TDD-enforced development pipelines using Beads for DAG-based task management.
+`hog` is a Node.js CLI tool (ESM, TypeScript, Node 22+) that orchestrates AI agents through TDD-enforced development pipelines using Beads for DAG-based task management. The pipeline has 8 phases: brainstorm → stories → scaffold → tests → impl → redteam → merge → ship.
 
 ### Entry Points
 
@@ -48,7 +48,7 @@ The pipeline orchestration layer. All pipeline logic lives here.
 | `engine.ts` | Top-level wiring: EventBus, WorkflowEngine, AgentManager, ActionExecutor, Orchestrator, BeadsClient |
 | `conductor.ts` | Pipeline state machine: polls `bd ready`, spawns role-separated agents, manages lifecycle |
 | `beads.ts` | Beads CLI wrapper: createFeatureDAG, ready, claim, close, ensureDoltRunning |
-| `roles.ts` | 6 pipeline roles with prompt templates: brainstorm, stories, test, impl, redteam, merge |
+| `roles.ts` | 8 pipeline roles with prompt templates: brainstorm, stories, scaffold, test, impl, redteam, merge, ship |
 | `role-context.ts` | Writes role-specific CLAUDE.md to worktrees, builds agent launch args |
 | `agent-manager.ts` | Spawns Claude processes, polls PID liveness, reconciles results |
 | `tdd-enforcement.ts` | RED state verification, story traceability, mutation testing |
@@ -59,6 +59,10 @@ The pipeline orchestration layer. All pipeline logic lives here.
 | `event-bus.ts` | Typed EventEmitter for engine events |
 | `workflow.ts` | Phase resolution and status derivation |
 | `beads-sync.ts` | GitHub issue ↔ Bead ID mapping |
+| `ship-detection.ts` | Deployment detection and operational readiness checks |
+| `summary-parser.ts` | Sentiment analysis on agent output — detects failure signals |
+| `retry-engine.ts` | Declarative retry gates: coverage, spec-quality, stub, conform, green, redteam, merge, ship |
+| `skill-contract.ts` | Skill input/output contracts for phase wiring |
 
 ### Cockpit TUI (`src/board/`)
 
