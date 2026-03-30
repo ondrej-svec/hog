@@ -249,7 +249,7 @@ function PipelineDetail({
       {/* Activity panel — fills remaining space */}
       <Panel title="Activity" isActive={false} width={width} flexGrow={1}>
         {activityEntries && activityEntries.length > 0 ? (
-          <ActivityFeed entries={activityEntries} width={width - 4} />
+          <ActivityFeed entries={activityEntries} />
         ) : (
           <Text dimColor>No activity yet</Text>
         )}
@@ -452,16 +452,20 @@ function ActivityFeed({
   entries,
 }: {
   entries: readonly ActivityEntry[];
-  width?: number;
 }) {
   // Deduplicate rapid agent:progress events — keep last per agent within 2s windows
   const deduplicated = deduplicateProgress(entries);
-  const visible = deduplicated.slice(-20);
+  const maxVisible = 30;
+  const visible = deduplicated.slice(-maxVisible);
+  const olderCount = deduplicated.length - visible.length;
 
   if (visible.length === 0) return <Text dimColor>No activity yet</Text>;
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" flexGrow={1} justifyContent="flex-end">
+      {olderCount > 0 ? (
+        <Text dimColor>  ↑ {olderCount} older entries (press l for full log)</Text>
+      ) : null}
       {visible.map((entry, i) => {
         const ts = formatTime(entry.timestamp);
         const style = ACTIVITY_STYLE[entry.type] ?? { icon: "·" };
