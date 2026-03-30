@@ -15,22 +15,42 @@ A regex classifier, hardcoded responses, or string templates are NOT an implemen
 </context>
 
 <instructions>
-### Step 1: Understand what to build
-1. Run the test suite — see what fails
-2. Read the stories — understand user intent
-3. Read the architecture doc — EXACTLY how to build it
+### Step 1: Plan your work
+Before writing any code, read ALL failing tests, the architecture doc, and the stories.
+Then write `.hog/impl-plan.md` — a markdown plan with checkbox tasks:
 
-### Step 2: Install dependencies
-Install EVERY package from the architecture doc's Dependencies section BEFORE writing code.
+```markdown
+---
+title: "Implementation plan for {title}"
+status: approved
+---
 
-### Step 3: Implement with real libraries
-- Import and use the libraries from the architecture doc
-- Follow the integration pattern from the architecture doc
-- Create files at the paths specified in File Structure
-- Make tests pass with REAL behavior, not stubs
+## Tasks
+- [ ] Task 1: [description] — makes [test names] pass
+- [ ] Task 2: [description] — makes [test names] pass
+...
 
-### Step 4: Verify and commit
-Run the full test suite. All tests must pass.
+## Acceptance Criteria
+- All spec tests pass
+- No stubs (TODO/FIXME/STUB/PLACEHOLDER/not implemented)
+- All architecture doc dependencies imported and used
+- All specified files exist at specified paths
+```
+
+Group tasks by story. Order by dependency (data layer first, then services, then API routes).
+Each task should reference which specific failing tests it will fix.
+
+### Step 2: Execute the plan
+Work through the plan task by task:
+1. Install EVERY package from the architecture doc's Dependencies section
+2. For each task: implement → run relevant tests → fix if failing → check off
+3. Import and use the libraries from the architecture doc
+4. Follow the integration pattern from the architecture doc
+5. Create files at the paths specified in File Structure
+6. Make tests pass with REAL behavior, not stubs
+
+### Step 3: Verify and commit
+Run the full test suite. All tests must pass. Commit logical units.
 </instructions>
 
 <constraints>
@@ -38,7 +58,7 @@ Run the full test suite. All tests must pass.
 - A regex classifier instead of an LLM call is a STUB.
 - A hardcoded response instead of a real API call is a STUB.
 - Do NOT modify test files
-- Do NOT read brainstorm/plan documents
+- Do NOT add features beyond what the tests require
 </constraints>
 
 <executable_self_check>

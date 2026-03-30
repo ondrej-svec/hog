@@ -8,7 +8,15 @@
 import { MemoryBeadsClient } from "../engine/beads-memory.js";
 import { EventBus } from "../engine/event-bus.js";
 
-const PHASE_ORDER = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"] as const;
+const PHASE_ORDER = [
+  "brainstorm",
+  "stories",
+  "scaffold",
+  "test",
+  "impl",
+  "redteam",
+  "merge",
+] as const;
 
 const PHASE_LABELS: Record<string, string> = {
   brainstorm: "Zaphod (brainstorm)",
@@ -55,22 +63,16 @@ export async function runDemo(speedMultiplier = 2): Promise<void> {
     "Allow users to customize the greeting message with templates",
   );
 
-  const beadIds = {
-    brainstorm: dag.brainstorm.id,
-    stories: dag.stories.id,
-    scaffold: dag.scaffold.id,
-    tests: dag.tests.id,
-    impl: dag.impl.id,
-    redteam: dag.redteam.id,
-    merge: dag.merge.id,
-  };
+  const beadIds = Object.fromEntries(
+    Object.entries(dag).map(([key, bead]) => [key, bead.id]),
+  );
 
   console.log('Heart of Gold launched. Course: "Add greeting customization"\n');
 
   // Simulate each phase
   for (const phase of PHASE_ORDER) {
     const beadKey = phase === "test" ? "tests" : phase;
-    const beadId = beadIds[beadKey as keyof typeof beadIds];
+    const beadId = beadIds[beadKey]!;
     const label = PHASE_LABELS[phase] ?? phase;
     const tools = MOCK_TOOLS[phase] ?? ["Read"];
 

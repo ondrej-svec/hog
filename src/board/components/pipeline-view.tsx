@@ -44,7 +44,8 @@ const PHASE_LABELS: Record<string, string> = {
   merge: "merge",
 };
 
-const PHASE_ORDER = [
+/** Default phase order — used as fallback when pipeline doesn't specify its own. */
+const DEFAULT_PHASE_ORDER = [
   "brainstorm",
   "stories",
   "scaffold",
@@ -320,14 +321,14 @@ function PhaseBar({ pipeline, width }: { pipeline: Pipeline; width?: number }) {
 
   return (
     <Box>
-      {PHASE_ORDER.map((phase, i) => {
+      {DEFAULT_PHASE_ORDER.map((phase, i) => {
         const label = PHASE_LABELS[phase] ?? phase;
         const beadKey = phase === "test" ? "tests" : phase;
         const isCompleted = i < completed;
         const isActive =
           phase === pipeline.activePhase || (phase === "test" && pipeline.activePhase === "test");
 
-        const sep = i < PHASE_ORDER.length - 1 ? connector : "";
+        const sep = i < DEFAULT_PHASE_ORDER.length - 1 ? connector : "";
 
         if (isCompleted) {
           return (
@@ -402,7 +403,7 @@ function CompletedPhases({
   const completed = pipeline.completedBeads ?? 0;
   if (completed === 0) return null;
 
-  const completedPhases = PHASE_ORDER.slice(0, completed);
+  const completedPhases = DEFAULT_PHASE_ORDER.slice(0, completed);
 
   return (
     <Box flexDirection="column">

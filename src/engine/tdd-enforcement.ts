@@ -197,9 +197,7 @@ export async function verifyGreenState(
   const baseline = options?.baseline;
   if (baseline) {
     const newFailures = result.failingTests - baseline.totalFailing;
-    const newFailingFiles = [...result.failingFiles].filter(
-      (f) => !baseline.failingFiles.has(f),
-    );
+    const newFailingFiles = [...result.failingFiles].filter((f) => !baseline.failingFiles.has(f));
 
     if (newFailures <= 0 && newFailingFiles.length === 0) {
       return {
@@ -562,4 +560,114 @@ function getErrorOutput(err: unknown): string {
     return (e.stdout ?? "") + (e.stderr ?? "") + (e.message ?? "");
   }
   return String(err);
+}
+
+// ── Test Quality Analysis ──
+
+export interface TestQualityReport {
+  /** Test files that import and call source functions. */
+  readonly behavioral: string[];
+  /** Test files that read source files as strings and regex-match content. */
+  readonly stringMatching: string[];
+  /** Ratio of behavioral to total classified files (0-1). */
+  readonly ratio: number;
+}
+
+/** Patterns indicating a test reads source files as strings (per language). */
+const STRING_MATCHING_PATTERNS: Record<string, readonly RegExp[]> = {
+  ts: [
+    /readFileSync\s*\(/,
+    /readFile\s*\(/,
+    /\.toMatch\s*\(/,
+    /\.toContain\s*\([^)]*(?:import|export|function|class|const|let|var)\b/,
+    /expect\s*\(\s*\w*content\w*\s*\)/i,
+  ],
+  py: [
+    /open\s*\([^)]*['"]r['"]\s*\)/,
+    /\.read\s*\(\s*\)/,
+    /re\.search\s*\(/,
+    /re\.match\s*\(/,
+    /re\.findall\s*\(/,
+  ],
+  rs: [
+    /std::fs::read_to_string\s*\(/,
+    /File::open\s*\(/,
+    /\.contains\s*\(/,
+  ],
+};
+
+/** Patterns indicating a test imports and calls source functions. */
+const BEHAVIORAL_PATTERNS: Record<string, readonly RegExp[]> = {
+  ts: [
+    /import\s+\{[^}]+\}\s+from\s+["'](?!node:|vitest|@testing|jest|assert)[^"']*["']/,
+    /require\s*\(\s*["'](?!node:|vitest|@testing|jest|assert)[^"']*["']\s*\)/,
+  ],
+  py: [
+    /from\s+(?!pytest|unittest|mock|os|sys|re|json|pathlib)\S+\s+import\b/,
+    /import\s+(?!pytest|unittest|mock|os|sys|re|json|pathlib)\S+/,
+  ],
+  rs: [
+    /use\s+(?!std::|test|assert)\S+/,
+    /extern\s+crate\s+(?!test)\S+/,
+  ],
+};
+
+function detectLanguage(filePath: string): string {
+  if (filePath.endsWith(".ts") || filePath.endsWith(".tsx") || filePath.endsWith(".js") || filePath.endsWith(".jsx")) return "ts";
+  if (filePath.endsWith(".py")) return "py";
+  if (filePath.endsWith(".rs")) return "rs";
+  return "ts"; // default
+}
+
+function classifyTestFile(filePath: string, content: string): "behavioral" | "stringMatching" | "unknown" {
+  const lang = detectLanguage(filePath);
+  const smPatterns = STRING_MATCHING_PATTERNS[lang] ?? STRING_MATCHING_PATTERNS["ts"]!;
+  const bhPatterns = BEHAVIORAL_PATTERNS[lang] ?? BEHAVIORAL_PATTERNS["ts"]!;
+
+  const hasStringMatching = smPatterns.some((p) => p.test(content));
+  const hasBehavioral = bhPatterns.some((p) => p.test(content));
+
+  // If it reads source files AND doesn't import source functions → string-matching
+  if (hasStringMatching && !hasBehavioral) return "stringMatching";
+  // If it imports source functions → behavioral (even if it also reads some files for fixtures)
+  if (hasBehavioral) return "behavioral";
+  // Can't tell
+  return "unknown";
+}
+
+/**
+ * Analyze test file quality: classify as behavioral (tracer bullet) or string-matching.
+ *
+ * Behavioral tests import and call source functions. String-matching tests read
+ * source files as strings and regex-match for keywords. When >20% of tests are
+ * string-matching, the spec-quality gate rejects them.
+ */
+export function analyzeTestQuality(testFiles: readonly string[], cwd: string): TestQualityReport {
+  const behavioral: string[] = [];
+  const stringMatching: string[] = [];
+
+  for (const file of testFiles) {
+    const fullPath = file.startsWith("/") ? file : join(cwd, file);
+    if (!existsSync(fullPath)) continue;
+
+    let content: string;
+    try {
+      content = readFileSync(fullPath, "utf-8");
+    } catch {
+      continue;
+    }
+
+    const classification = classifyTestFile(file, content);
+    if (classification === "behavioral") {
+      behavioral.push(file);
+    } else if (classification === "stringMatching") {
+      stringMatching.push(file);
+    }
+    // "unknown" files are not counted — they don't affect the ratio
+  }
+
+  const total = behavioral.length + stringMatching.length;
+  const ratio = total > 0 ? behavioral.length / total : 1;
+
+  return { behavioral, stringMatching, ratio };
 }

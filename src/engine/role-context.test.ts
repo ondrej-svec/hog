@@ -19,7 +19,15 @@ describe("role-context", () => {
   // STORY-008: As a pipeline operator, each worktree gets a role-specific CLAUDE.md
   // that restricts what the agent can do
   describe("STORY-008: Role-specific CLAUDE.md generation", () => {
-    const roles: PipelineRole[] = ["brainstorm", "stories", "scaffold", "test", "impl", "redteam", "merge"];
+    const roles: PipelineRole[] = [
+      "brainstorm",
+      "stories",
+      "scaffold",
+      "test",
+      "impl",
+      "redteam",
+      "merge",
+    ];
 
     for (const role of roles) {
       it(`writes CLAUDE.md for ${role} role (fallback mode)`, () => {

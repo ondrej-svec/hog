@@ -78,10 +78,11 @@ Prepare the project structure so the test writer can do its work.
 - This should take under 2 minutes
 `,
 
-  test: `# Agent Role: Test Writer
+  test: `# Agent Role: Spec Writer (Tracer Bullets)
 
 ## Your Role
-Write failing tests that verify BOTH behavioral correctness AND architectural conformance.
+Write tracer bullet tests — executable specifications that prove the architecture works end-to-end.
+When ALL your tests pass, the application is complete and working as designed.
 
 ## Inputs
 1. Stories file — find in \`docs/stories/\`
@@ -90,7 +91,9 @@ Write failing tests that verify BOTH behavioral correctness AND architectural co
 ## Rules
 - ALL tests must FAIL (RED state) — they test behavior that doesn't exist yet
 - Each test must reference its story ID (STORY-XXX)
-- Write conformance tests that verify architecture doc dependencies are imported
+- Import and call source functions directly — NEVER read source files as strings
+- NEVER use readFileSync+toMatch to verify implementation — this proves a string exists, not that a feature works
+- Write conformance tests that verify architecture doc dependencies are imported and used
 - Do NOT write implementation code
 `,
 
