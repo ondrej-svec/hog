@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.33.0](https://github.com/ondrej-svec/hog/compare/hog-v1.32.0...hog-v1.33.0) (2026-03-31)
+
+
+### Features
+
+* log ship artifacts in cockpit activity feed ([9391ac6](https://github.com/ondrej-svec/hog/commit/9391ac648421ba730e2eee029582fdfdcb018c2d))
+* stack-aware validation gate — auto-detect framework, run build checks ([f49883a](https://github.com/ondrej-svec/hog/commit/f49883a20d7e09d6cc1fa714bd9c4f11140228c1))
+
 ## [1.32.0](https://github.com/ondrej-svec/hog/compare/hog-v1.31.0...hog-v1.32.0) (2026-03-30)
 
 
