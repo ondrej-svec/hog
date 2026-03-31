@@ -8,8 +8,8 @@ import {
 } from "./retry-engine.js";
 
 describe("retry-engine", () => {
-  it("defines 8 gate configurations", () => {
-    expect(GATE_CONFIGS).toHaveLength(8);
+  it("defines 9 gate configurations", () => {
+    expect(GATE_CONFIGS).toHaveLength(9);
   });
 
   it("all gates have max 1-3 retries", () => {

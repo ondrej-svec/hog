@@ -231,6 +231,7 @@ export function Cockpit({ config }: CockpitProps) {
             title: selected.title,
             description: selected.description ?? selected.title,
             featureId: selected.featureId,
+            cwd: localPath,
           });
 
           const result = launchClaude({
@@ -428,6 +429,7 @@ export function Cockpit({ config }: CockpitProps) {
                   title: pipeline.title,
                   description,
                   featureId: pipeline.featureId,
+                  cwd: localPath,
                 });
 
                 const launchResult = launchClaude({

@@ -61,6 +61,8 @@ Run the full test suite. All tests must pass. Commit logical units.
 - Do NOT add features beyond what the tests require
 </constraints>
 
+{buildRequirements}
+
 <executable_self_check>
 1. Run the FULL test suite → ALL tests must pass
 2. For EACH dependency in architecture doc, grep source files for its import

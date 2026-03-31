@@ -2,7 +2,7 @@
 title: "feat: stack-aware validation gate — build checks, convention enforcement, dependency completeness"
 type: plan
 date: 2026-03-30
-status: approved
+status: complete
 confidence: high
 ---
 
@@ -54,7 +54,7 @@ detectStack(projectPath)
 
 ### Phase 0: Stack detection module
 
-- [ ] 0.1 Create `src/engine/stack-detection.ts` with `detectStack(cwd)` returning `StackInfo`:
+- [x] 0.1 Create `src/engine/stack-detection.ts` with `detectStack(cwd)` returning `StackInfo`:
   ```ts
   interface StackInfo {
     framework: string;          // "expo" | "nextjs" | "rails" | "generic-ts" | "python" | "rust" | ...
@@ -65,7 +65,7 @@ detectStack(projectPath)
     testingGuidance: string;    // injected into test-writer context
   }
   ```
-- [ ] 0.2 Implement framework detection — config file first, then package.json deps:
+- [x] 0.2 Implement framework detection — config file first, then package.json deps:
 
   | Signal (priority order) | Framework | Build command | Typecheck |
   |------------------------|-----------|---------------|-----------|
@@ -81,9 +81,9 @@ detectStack(projectPath)
   | `pyproject.toml` or `setup.py` | `python` | — | `mypy .` (if installed) |
   | `tsconfig.json` (fallback) | `generic-ts` | `scripts.build` from package.json | `npx tsc --noEmit` |
 
-- [ ] 0.3 Implement `scripts.build` and `scripts.typecheck` detection from `package.json` — use these as overrides when present (user's configured commands > framework defaults)
-- [ ] 0.4 Implement monorepo detection: `turbo.json` → use `turbo run build`, `nx.json` → use `nx run-many --target=build`, `pnpm-workspace.yaml` → check workspace root. When in a monorepo, scope to the affected workspace.
-- [ ] 0.5 Implement convention checks registry:
+- [x] 0.3 Implement `scripts.build` and `scripts.typecheck` detection from `package.json` — use these as overrides when present (user's configured commands > framework defaults)
+- [x] 0.4 Implement monorepo detection: `turbo.json` → use `turbo run build`, `nx.json` → use `nx run-many --target=build`, `pnpm-workspace.yaml` → check workspace root. When in a monorepo, scope to the affected workspace.
+- [x] 0.5 Implement convention checks registry:
 
   | Framework | Convention check | Implementation |
   |-----------|-----------------|----------------|
@@ -96,7 +96,7 @@ detectStack(projectPath)
   | `rails` | Specs loadable | `bundle exec rspec --dry-run` |
   | `generic-ts` | No `any` in new files | `grep -n ": any" <changed-files>` |
 
-- [ ] 0.6 Implement testing guidance strings per framework:
+- [x] 0.6 Implement testing guidance strings per framework:
 
   | Framework | Guidance injected into test-writer context |
   |-----------|-------------------------------------------|
@@ -105,23 +105,23 @@ detectStack(projectPath)
   | `rails` | "Use RSpec with FactoryBot. Write request specs for API endpoints, system specs for critical flows." |
   | `generic-ts` | "Use the project's test runner (vitest/jest). Write unit tests for pure functions, integration tests for API routes." |
 
-- [ ] 0.7 Tests for `detectStack` — detection for each framework, fallback behavior, monorepo detection
+- [x] 0.7 Tests for `detectStack` — detection for each framework, fallback behavior, monorepo detection
 
 ### Phase 1: Build gate in retry engine
 
-- [ ] 1.1 Add `build-gate` to `GATE_CONFIGS` in `retry-engine.ts`:
+- [x] 1.1 Add `build-gate` to `GATE_CONFIGS` in `retry-engine.ts`:
   - phases: `["impl"]`
   - retryRole: `"impl"`
   - alsoReopen: `[]` (impl only — build failures are impl's problem)
   - decrementBeads: `0` (don't decrement — impl bead stays open)
   - maxRetries: `2`
   - trackingMethod: `"retryFeedback"`
-- [ ] 1.2 Add escalation options: `["Retry impl", "Skip build check", "Cancel pipeline"]`
-- [ ] 1.3 Update `GATE_CONFIGS` count in `retry-engine.test.ts`
+- [x] 1.2 Add escalation options: `["Retry impl", "Skip build check", "Cancel pipeline"]`
+- [x] 1.3 Update `GATE_CONFIGS` count in `retry-engine.test.ts`
 
 ### Phase 2: Wire into conductor
 
-- [ ] 2.1 In `onAgentCompleted` for `phase === "impl"`, after conform-gate and before the `implGateBlocked` check, add the build-gate:
+- [x] 2.1 In `onAgentCompleted` for `phase === "impl"`, after conform-gate and before the `implGateBlocked` check, add the build-gate:
   ```
   const stack = detectStack(pipeline.localPath);
   const buildResult = await runBuildValidation(pipeline.localPath, stack);
@@ -130,35 +130,35 @@ detectStack(projectPath)
     implGateBlocked = true;
   }
   ```
-- [ ] 2.2 Create `runBuildValidation(cwd, stack)` in `stack-detection.ts`:
+- [x] 2.2 Create `runBuildValidation(cwd, stack)` in `stack-detection.ts`:
   - Runs `stack.typecheckCommand` first (fast, catches most errors)
   - Runs `stack.buildCommands` (slower, catches bundling/asset issues)
   - Runs `stack.conventionChecks` (fast, file-system only)
   - Returns `{ passed, reason, missing, context }` matching the gate result shape
   - Each command gets a 60s timeout (build commands can be slow)
   - Captures stderr/stdout for the retry feedback context
-- [ ] 2.3 Cache `detectStack` result on the pipeline context — don't re-detect on every retry. Add `stackInfo` to `PipelineContext` in conductor.ts.
+- [x] 2.3 Cache `detectStack` result on the pipeline context — don't re-detect on every retry. Add `stackInfo` to `PipelineContext` in conductor.ts.
 
 ### Phase 3: Context injection into agents
 
-- [ ] 3.1 In `buildContextSection` for `role === "test"`, inject `stack.testingGuidance` as a `<stack_context>` block. The test writer learns what testing libraries to use.
-- [ ] 3.2 In `buildContextSection` for `role === "impl"`, inject a `<build_requirements>` block listing what commands the build-gate will run. The impl agent knows what "done" means.
-- [ ] 3.3 In the brainstorm context (`brainstorm-context.ts`), inject detected framework so the architect knows the stack context.
-- [ ] 3.4 In the ship phase context, inject `stack.framework` so the ship agent knows what deployment docs to produce.
+- [x] 3.1 In `buildContextSection` for `role === "test"`, inject `stack.testingGuidance` as a `<stack_context>` block. The test writer learns what testing libraries to use.
+- [x] 3.2 In `buildContextSection` for `role === "impl"`, inject a `<build_requirements>` block listing what commands the build-gate will run. The impl agent knows what "done" means.
+- [x] 3.3 In the brainstorm context (`brainstorm-context.ts`), inject detected framework so the architect knows the stack context.
+- [x] 3.4 In the ship phase context, inject `stack.framework` so the ship agent knows what deployment docs to produce.
 
 ### Phase 4: Tests
 
-- [ ] 4.1 Unit tests for `detectStack` — each framework detection, fallback, monorepo, package.json scripts override
-- [ ] 4.2 Unit tests for `runBuildValidation` — typecheck pass/fail, build pass/fail, convention pass/fail, timeout handling
-- [ ] 4.3 Unit tests for convention checks — expo default exports, nextjs page exports, missing deps
-- [ ] 4.4 Update conductor tests — build-gate wired after conform-gate, retry feedback includes build errors
-- [ ] 4.5 Update retry-engine test — gate count, build-gate config assertions
+- [x] 4.1 Unit tests for `detectStack` — each framework detection, fallback, monorepo, package.json scripts override
+- [x] 4.2 Unit tests for `runBuildValidation` — typecheck pass/fail, build pass/fail, convention pass/fail, timeout handling
+- [x] 4.3 Unit tests for convention checks — expo default exports, nextjs page exports, missing deps
+- [x] 4.4 Update conductor tests — build-gate wired after conform-gate, retry feedback includes build errors
+- [x] 4.5 Update retry-engine test — gate count, build-gate config assertions
 
 ### Phase 5: Fallback prompt updates
 
-- [ ] 5.1 Update `fallback-prompts/test-writer.md` — add `{stackGuidance}` placeholder, replaced with detected testing guidance
-- [ ] 5.2 Update `fallback-prompts/work.md` — add `{buildRequirements}` placeholder, replaced with "before finishing, run: ..."
-- [ ] 5.3 Update `role-context.ts` — pass stack guidance through `writeRoleClaudeMd` for skill-mode agents
+- [x] 5.1 Update `fallback-prompts/test-writer.md` — add `{stackGuidance}` placeholder, replaced with detected testing guidance
+- [x] 5.2 Update `fallback-prompts/work.md` — add `{buildRequirements}` placeholder, replaced with "before finishing, run: ..."
+- [x] 5.3 Update `role-context.ts` — pass stack guidance through `writeRoleClaudeMd` for skill-mode agents
 
 ## Decision Rationale
 

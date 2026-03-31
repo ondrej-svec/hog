@@ -5,6 +5,7 @@
  * where to write stories/architecture docs and how to advance the pipeline.
  */
 import { resolvePromptForRole } from "./roles.js";
+import { detectStack } from "./stack-detection.js";
 
 export interface BrainstormLaunchContext {
   /** The full prompt to pass to Claude (skill invocation + spec + pipeline context). */
@@ -29,6 +30,8 @@ export function buildBrainstormLaunchContext(opts: {
   title: string;
   description: string;
   featureId: string;
+  /** Project directory — used for stack detection. */
+  cwd?: string | undefined;
 }): BrainstormLaunchContext {
   const slug = opts.title
     .toLowerCase()
@@ -38,6 +41,17 @@ export function buildBrainstormLaunchContext(opts: {
   const storiesPath = `docs/stories/${slug}.md`;
   const archPath = `docs/stories/${slug}.architecture.md`;
   const spec = opts.description;
+
+  // Detect stack for framework-aware brainstorming
+  let stackLine = "";
+  if (opts.cwd) {
+    try {
+      const stack = detectStack(opts.cwd);
+      if (stack) {
+        stackLine = `\nDetected stack: ${stack.framework} (${stack.runtime}). Keep this in mind for architecture decisions.\n`;
+      }
+    } catch { /* best-effort */ }
+  }
 
   const pipelineContext = [
     `<hog_pipeline_context>`,
@@ -53,6 +67,7 @@ export function buildBrainstormLaunchContext(opts: {
     ``,
     `Do NOT skip step 3 — the pipeline cannot advance without it.`,
     `These file paths are EXACT — do not use different names.`,
+    stackLine,
     `</hog_pipeline_context>`,
   ].join("\n");
 

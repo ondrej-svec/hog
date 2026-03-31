@@ -10,6 +10,8 @@ Your tests must be impossible to pass with stubs, hardcoded data, or shortcut im
 - Architecture doc: `{archPath}` — READ THIS SECOND
 </context>
 
+{stackGuidance}
+
 <instructions>
 ### Step 1: Read the architecture doc
 Extract: File Structure (where files go), Dependencies (every listed package),

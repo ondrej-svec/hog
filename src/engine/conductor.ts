@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { launchClaude } from "../board/launch-claude.js";
 import type { HogConfig, RepoConfig } from "../config.js";
 import { buildBrainstormLaunchContext } from "./brainstorm-context.js";
+import { detectStack as detectStackSync } from "./stack-detection.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { Bead, BeadsClient } from "./beads.js";
 import type { EventBus } from "./event-bus.js";
@@ -103,6 +104,8 @@ export interface PipelineContext {
   skippedStories?: string[] | undefined;
   /** Accumulated outputs from completed phases — used by contract-based wiring. */
   pipelineOutputs?: Record<string, string> | undefined;
+  /** Detected stack framework (cached from first detection). */
+  stackInfo?: string | undefined;
 }
 
 export interface ConductorOptions {
@@ -723,6 +726,41 @@ export class Conductor {
         lines.push("</architecture>");
       } catch {
         // Architecture doc not readable — agent will read it from path
+      }
+    }
+
+    // Stack-aware context for test, impl, and ship roles
+    if (role === "test" || role === "impl" || role === "ship") {
+      try {
+        const stackCwd = ctx?.workingDir
+          ? join(pipeline.localPath, ctx.workingDir)
+          : pipeline.localPath;
+        const stack = detectStackSync(stackCwd);
+        if (stack) {
+          if (!hasContext) { lines.push(""); lines.push("<prior_stage_context>"); hasContext = true; }
+          if (role === "test") {
+            lines.push(`<stack_context framework="${stack.framework}">`);
+            lines.push(stack.testingGuidance);
+            lines.push("</stack_context>");
+          } else if (role === "impl") {
+            const checks = [
+              stack.typecheckCommand ? `- Run \`${stack.typecheckCommand}\` — must pass` : "",
+              ...stack.buildCommands.map((c) => `- Run \`${c}\` — must succeed`),
+              ...stack.conventionChecks.map((c) => `- ${c.description}`),
+            ].filter(Boolean);
+            if (checks.length > 0) {
+              lines.push(`<build_requirements framework="${stack.framework}">`);
+              lines.push("Before finishing, verify:");
+              lines.push(...checks);
+              lines.push("The build-gate will run these checks automatically after you complete.");
+              lines.push("</build_requirements>");
+            }
+          } else if (role === "ship") {
+            lines.push(`<stack_context framework="${stack.framework}" />`);
+          }
+        }
+      } catch {
+        // best-effort — stack detection failure shouldn't block context building
       }
     }
 
@@ -1376,6 +1414,7 @@ export class Conductor {
       title: pipeline.title,
       description: pipeline.description ?? bead.description ?? pipeline.title,
       featureId: pipeline.featureId,
+      cwd: pipeline.localPath,
     });
 
     const result = launchClaude({
@@ -1627,6 +1666,44 @@ export class Conductor {
         }
       } catch {
         // best-effort — don't block on conformance check failure
+      }
+    }
+
+    // Gate: Build validation — after impl, verify the project builds and follows conventions
+    if (phase === "impl") {
+      try {
+        const { detectStack, runBuildValidation } = await import("./stack-detection.js");
+        const buildCwd = pipeline.context?.workingDir
+          ? join(pipeline.localPath, pipeline.context.workingDir)
+          : pipeline.localPath;
+        const stack = detectStack(buildCwd);
+        if (stack) {
+          // Cache stack info on pipeline context for downstream phases
+          if (!pipeline.context) pipeline.context = {};
+          (pipeline.context as Record<string, unknown>)["stackInfo"] = stack.framework;
+          const buildResult = runBuildValidation(buildCwd, stack);
+          if (!buildResult.passed) {
+            const blocked = await this.runGate(
+              pipeline,
+              beadId,
+              "build-gate",
+              {
+                passed: false,
+                reason: buildResult.reason ?? "Build validation failed",
+                missing: [...(buildResult.missing ?? [])],
+                ...(buildResult.context ? { context: buildResult.context } : {}),
+              },
+              summary,
+              "retryFeedback",
+              "gate:build:failed",
+            );
+            if (blocked) implGateBlocked = true;
+          } else {
+            this.log(pipeline.featureId, "gate:build:passed", `Build validation passed (${stack.framework})`);
+          }
+        }
+      } catch {
+        // best-effort — don't block on build validation failure
       }
     }
 

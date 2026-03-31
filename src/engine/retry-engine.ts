@@ -133,6 +133,14 @@ export const GATE_CONFIGS: readonly RetryGateConfig[] = [
     trackingMethod: "decisionLog",
   },
   {
+    id: "build-gate",
+    phases: ["impl"],
+    retryRole: "impl",
+    decrementBeads: 0,
+    maxRetries: 2,
+    trackingMethod: "retryFeedback",
+  },
+  {
     id: "ship-gate",
     phases: ["ship"],
     retryRole: "impl",
@@ -170,6 +178,8 @@ export function buildEscalationOptions(gateId: string): readonly string[] {
       return ["Retry impl", "Skip redteam issues", "Cancel pipeline"];
     case "merge-gate":
       return ["Retry impl", "Force merge", "Cancel pipeline"];
+    case "build-gate":
+      return ["Retry impl", "Skip build check", "Cancel pipeline"];
     case "ship-gate":
       return ["Retry impl", "Ship anyway", "Cancel pipeline"];
     default:
